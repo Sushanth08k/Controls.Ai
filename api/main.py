@@ -1,0 +1,38 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from api.routers import controls, evidence, findings, gates, health, interactive, runs
+from api.sse import sse_broker
+
+app = FastAPI(
+    title="Agentic Control Automation Platform BFF",
+    version="1.0.0",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(health.router)
+app.include_router(controls.router)
+app.include_router(runs.router)
+app.include_router(gates.router)
+app.include_router(findings.router)
+app.include_router(evidence.router)
+app.include_router(interactive.router)
+
+
+@app.get("/events")
+async def events_stream() -> StreamingResponse:
+    """Server-Sent Events endpoint streaming realtime platform updates."""
+    return StreamingResponse(
+        sse_broker.subscribe(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )

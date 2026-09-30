@@ -1,0 +1,12 @@
+critical_endpoints:
+  - method: POST
+    path: /auth/login
+    slo_ms: 250.0
+
+  - method: GET
+    path: /accounts/{id}/balance
+    slo_ms: 150.0
+
+  - method: POST
+    path: /transfers
+    slo_ms: 300.0

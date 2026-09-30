@@ -1,0 +1,37 @@
+control_id: CTL-ARCH-001
+version: 1.0.0
+title: Data Archival Compliance
+archetype: D
+frequency: "0 1 * * 0"
+trigger_events: [policy.uploaded]
+owner_role: data_governance_owner
+reviewer_role: control_reviewer
+risk_rating: critical
+scope:
+  - {type: postgres_table, ref: core_banking_sim.public.transactions}
+composition:
+  - {step: interpret_policy, archetype: E, params_ref: interpret}
+  - {step: verify_copy,      archetype: C, params_ref: verify}
+archetype_params:
+  policy_source: {connector: files, path_glob: "sim/policies/retention/*.txt"}
+  interpret:
+    output_contract: PolicyIR
+    dual_extraction: {roles: [reasoner, fast]}
+    guardrails: {retention_years: {min: 1, max: 10}}
+  plan:
+    batch_size: 5000
+    volume_anomaly_k_sigma: 3
+    volume_cap: 5000000
+  copy: {mode: copy_protocol_idempotent}
+  verify: {method: merkle_full, hash_spec_version: "1"}
+  attest: {transit_key: verifier-attest, ttl_minutes: 30}
+  commit: {operation: delete_by_manifest, recheck: [row_hash, exclusions]}
+agent_tasks:
+  - {agent: planner,    template_id: archival_plan_review, template_version: 1, when: after_plan}
+  - {agent: challenger, template_id: verification_review,  template_version: 1, when: after_verify}
+  - {agent: reporter,   template_id: archival_workpaper,   template_version: 1, when: end}
+gates:
+  - {gate: policy_version, condition: "new_policy_version or interpreter_disagreement", approver_role: data_governance_owner}
+  - {gate: run_plan,       condition: "first_run or volume_anomaly or fk_cycle", approver_role: data_governance_owner}
+  - {gate: deletion,       condition: "run_plan_gate_triggered", approver_role: data_governance_owner}
+outputs: {workpaper_template: execute_verify_v1, conclusion_scale: [completed, completed_with_exceptions, failed]}

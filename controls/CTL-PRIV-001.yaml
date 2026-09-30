@@ -1,0 +1,28 @@
+control_id: CTL-PRIV-001
+version: 1.0.0
+title: Privileged Database Users Monthly Review
+archetype: A
+frequency: "0 3 1 * *"
+owner_role: db_security_owner
+reviewer_role: control_reviewer
+risk_rating: high
+scope:
+  - {type: postgres_instance, ref: core_banking_sim}
+  - {type: postgres_instance, ref: archive}
+evidence:
+  - {id: superusers, connector: postgres, operation: catalog_query, catalog_ref: VQ-001}
+  - {id: createrole, connector: postgres, operation: catalog_query, catalog_ref: VQ-011}
+  - {id: dormant,    connector: postgres, operation: catalog_query, catalog_ref: VQ-002}
+rules:
+  - {id: R1, primitive: subset_of, evidence_ref: superusers, field: rolname, baseline_key: approved_superusers, severity: high, on_fail: finding}
+  - {id: R2, primitive: subset_of, evidence_ref: createrole, field: rolname, baseline_key: approved_role_admins, severity: medium, on_fail: finding}
+  - {id: R3, primitive: row_count, evidence_ref: dormant, op: "==", n: 0, severity: medium, on_fail: finding}
+  - {id: R4, primitive: no_drift, evidence_ref: superusers, key_fields: [rolname], severity: medium, on_fail: finding}
+baseline_ref: baselines/privileged_access.yaml
+agent_tasks:
+  - {agent: challenger, template_id: finding_challenge, template_version: 1, when: per_finding}
+  - {agent: reporter,   template_id: review_workpaper,  template_version: 1, when: end}
+gates:
+  - {gate: finding_signoff, condition: always, approver_role: db_security_owner}
+outputs: {workpaper_template: query_review_v1, conclusion_scale: [effective, effective_with_exceptions, ineffective]}
+severity_policy: {critical: 7, high: 30, medium: 60, low: 90}

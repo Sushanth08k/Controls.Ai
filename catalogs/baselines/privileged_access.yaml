@@ -1,0 +1,6 @@
+approved_superusers:
+  - postgres
+
+approved_role_admins:
+  - user_admin
+  - security_admin

@@ -1,0 +1,30 @@
+from typing import Any
+from fastapi import Header, HTTPException
+from pydantic import BaseModel, ConfigDict
+
+
+class UserSession(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    user_id: str
+    roles: list[str]
+    email: str
+
+
+# Default demo users
+DEMO_USERS = {
+    "sec_owner_1": UserSession(user_id="sec_owner_1", roles=["db_security_owner", "control_owner"], email="owner@bank.internal"),
+    "sec_reviewer_1": UserSession(user_id="sec_reviewer_1", roles=["control_reviewer"], email="reviewer@bank.internal"),
+    "release_owner_1": UserSession(user_id="release_owner_1", roles=["release_owner"], email="release@bank.internal"),
+}
+
+
+def get_current_user(
+    x_user_id: str = Header(default="sec_reviewer_1"),
+    x_user_roles: str | None = Header(default=None),
+) -> UserSession:
+    """Resolve current user session from headers."""
+    if x_user_id in DEMO_USERS and not x_user_roles:
+        return DEMO_USERS[x_user_id]
+
+    roles = [r.strip() for r in x_user_roles.split(",")] if x_user_roles else ["control_reviewer"]
+    return UserSession(user_id=x_user_id, roles=roles, email=f"{x_user_id}@bank.internal")

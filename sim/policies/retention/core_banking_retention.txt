@@ -1,0 +1,10 @@
+DATA RETENTION AND ARCHIVAL POLICY #POL-FIN-2024-001
+
+1. Scope and Target:
+This policy establishes mandatory data retention guidelines for the core banking database entity 'transactions'. All records located in source table 'transactions' with date identified by 'txn_date' must be governed according to this standard.
+
+2. Retention Horizon:
+Records must be retained actively for a period of 7 years from transaction execution date. Upon reaching the 7 years retention threshold, records shall be archived and deleted ('archive_then_delete'). Archived records must be deposited into destination 'transactions_archive'.
+
+3. Mandatory Exclusions:
+Accounts subject to active regulatory preservation ('legal_hold') or ongoing fraud investigations are strictly excluded from archival and deletion actions until such holds are formally released.

@@ -1,0 +1,272 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ctl_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 32g
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: ctl_litellm
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--host", "0.0.0.0"]
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  pg_core:
+    image: postgres:16-alpine
+    container_name: ctl_pg_core
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: core_banking_sim
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    volumes:
+      - pg_core_data:/var/lib/postgresql/data
+      - ../sim/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+
+  pg_archive:
+    image: postgres:16-alpine
+    container_name: ctl_pg_archive
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: archive
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    volumes:
+      - pg_archive_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+
+  pg_meta:
+    image: pgvector/pgvector:pg16
+    container_name: ctl_pg_meta
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: control_meta
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    volumes:
+      - pg_meta_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1536m
+
+  pg_vuln_target:
+    image: postgres:16-alpine
+    container_name: ctl_pg_vuln_target
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_DB: vuln_target
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    volumes:
+      - pg_vuln_data:/var/lib/postgresql/data
+      - ../sim/vuln_target/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  temporal:
+    image: temporalio/admin-tools:latest
+    container_name: ctl_temporal
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    environment:
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  openbao:
+    image: openbao/openbao:latest
+    container_name: ctl_openbao
+    ports:
+      - "8200:8200"
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: root
+      BAO_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    command: ["server", "-dev"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: ctl_opa
+    ports:
+      - "8181:8181"
+    volumes:
+      - ./opa/policies:/policies:ro
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+  objectstore:
+    image: chrislusf/seaweedfs:latest
+    container_name: ctl_seaweedfs
+    ports:
+      - "9000:8333"
+      - "9001:9333"
+    command: ["server", "-s3"]
+    volumes:
+      - seaweed_data:/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: ctl_phoenix
+    ports:
+      - "6006:6006"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ctl_prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: ctl_grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+
+  bank_api:
+    build:
+      context: ../sim/bank_api
+    container_name: ctl_bank_api
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  webhook:
+    build:
+      context: ../webhook
+    container_name: ctl_webhook
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  api:
+    build:
+      context: ..
+      dockerfile: api/Dockerfile
+    container_name: ctl_api
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+    depends_on:
+      - pg_meta
+      - temporal
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+
+  web:
+    build:
+      context: ../web
+    container_name: ctl_web
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+
+  worker:
+    build:
+      context: ..
+      dockerfile: workflows/Dockerfile
+    container_name: ctl_worker
+    depends_on:
+      - temporal
+      - pg_meta
+      - openbao
+      - opa
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+volumes:
+  ollama_models:
+  pg_core_data:
+  pg_archive_data:
+  pg_meta_data:
+  pg_vuln_data:
+  seaweed_data:

@@ -1,0 +1,39 @@
+control_id: CTL-VULN-001
+version: 1.0.0
+title: Database Vulnerability Management Review
+archetype: A
+frequency: "0 2 1 * *"
+owner_role: db_security_owner
+reviewer_role: control_reviewer
+risk_rating: high
+scope:
+  - {type: postgres_instance, ref: vuln_target}
+  - {type: postgres_instance, ref: core_banking_sim}
+evidence:
+  - {id: superusers,    connector: postgres, operation: catalog_query, catalog_ref: VQ-001}
+  - {id: public_grants, connector: postgres, operation: catalog_query, catalog_ref: VQ-003}
+  - {id: pw_enc,        connector: postgres, operation: catalog_query, catalog_ref: VQ-004}
+  - {id: ssl,           connector: postgres, operation: catalog_query, catalog_ref: VQ-005}
+  - {id: hba,           connector: postgres, operation: catalog_query, catalog_ref: VQ-007}
+  - {id: extensions,    connector: postgres, operation: catalog_query, catalog_ref: VQ-008}
+  - {id: version,       connector: postgres, operation: catalog_query, catalog_ref: VQ-009}
+rules:
+  - {id: R1, primitive: subset_of, evidence_ref: superusers, field: rolname, baseline_key: approved_superusers, severity: high, on_fail: finding}
+  - {id: R2, primitive: row_count, evidence_ref: public_grants, op: "==", n: 0, severity: medium, on_fail: finding}
+  - {id: R3, primitive: equals, evidence_ref: pw_enc, field: setting, value: scram-sha-256, severity: medium, on_fail: finding}
+  - {id: R4, primitive: equals, evidence_ref: ssl, field: setting, value: "on", severity: high, on_fail: finding}
+  - {id: R5, primitive: row_count, evidence_ref: hba, op: "==", n: 0, severity: critical, on_fail: finding}
+  - {id: R6, primitive: subset_of, evidence_ref: extensions, field: extname, baseline_key: approved_extensions, severity: low, on_fail: finding}
+  - {id: R7, primitive: version_not_vulnerable, evidence_ref: version, field: version, product: postgresql, severity: high, on_fail: finding,
+     evaluator_task: {agent: evaluator, template_id: cve_applicability, template_version: 1}}
+  - {id: R8, primitive: no_drift, evidence_ref: superusers, key_fields: [rolname], severity: medium, on_fail: finding}
+baseline_ref: baselines/postgres_cis_min.yaml
+agent_tasks:
+  - {agent: challenger, template_id: finding_challenge, template_version: 1, when: per_finding}
+  - {agent: reporter,   template_id: review_workpaper,  template_version: 1, when: end}
+archetype_params:
+  risk_formula: {alpha_kev: 1.0, beta_epss: 1.0}
+gates:
+  - {gate: finding_signoff, condition: always, approver_role: db_security_owner}
+outputs: {workpaper_template: query_review_v1, conclusion_scale: [effective, effective_with_exceptions, ineffective]}
+severity_policy: {critical: 7, high: 30, medium: 60, low: 90}

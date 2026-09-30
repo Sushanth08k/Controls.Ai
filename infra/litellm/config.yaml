@@ -1,0 +1,33 @@
+model_list:
+  - model_name: reasoner
+    litellm_params:
+      model: ollama/gpt-oss:120b
+      api_base: http://ctl_ollama:11434
+      temperature: 0.0
+
+  - model_name: reasoner-dev
+    litellm_params:
+      model: ollama/gpt-oss:20b
+      api_base: http://ctl_ollama:11434
+      temperature: 0.0
+
+  - model_name: fast
+    litellm_params:
+      model: ollama/qwen3:30b
+      api_base: http://ctl_ollama:11434
+      temperature: 0.0
+
+  - model_name: critic
+    litellm_params:
+      model: ollama/qwen3:30b
+      api_base: http://ctl_ollama:11434
+      temperature: 0.0
+
+  - model_name: embed
+    litellm_params:
+      model: ollama/bge-m3
+      api_base: http://ctl_ollama:11434
+
+general_settings:
+  master_key: sk-controls-platform-local-key
+  alerting: []

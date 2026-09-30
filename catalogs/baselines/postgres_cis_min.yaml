@@ -1,0 +1,8 @@
+approved_superusers:
+  - postgres
+
+approved_extensions:
+  - plpgsql
+  - pg_stat_statements
+  - pgcrypto
+  - uuid-ossp

@@ -1,0 +1,31 @@
+[importlinter]
+root_packages =
+    contracts
+    core
+    tools
+    agents
+    workflows
+    api
+
+[importlinter:contract:agents-isolation]
+name = Agents isolation rule
+type = forbidden
+source_modules =
+    agents
+forbidden_modules =
+    tools
+    workflows
+    api
+    psycopg
+    httpx
+    sqlalchemy
+
+[importlinter:contract:api-isolation]
+name = API isolation rule
+type = forbidden
+source_modules =
+    api
+forbidden_modules =
+    agents
+    tools
+    workflows.activities

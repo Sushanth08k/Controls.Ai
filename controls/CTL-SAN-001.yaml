@@ -1,0 +1,23 @@
+control_id: CTL-SAN-001
+version: 1.0.0
+title: Post-change Sanity Testing
+archetype: B
+frequency: on_event
+trigger_events: [change.deployed]
+owner_role: release_owner
+reviewer_role: control_reviewer
+risk_rating: high
+scope:
+  - {type: http_service, ref: bank_api}
+archetype_params:
+  critical_set_ref: catalogs/critical_endpoints.yaml
+  service_graph_ref: catalogs/service_graph.yaml
+  reruns_on_fail: 3
+  latency: {ewma_lambda: 0.2, k_sigma: 3}
+  redaction_profile: pii_default
+agent_tasks:
+  - {agent: impact_analyst, template_id: change_impact, template_version: 1, when: start}
+  - {agent: reporter,       template_id: sanity_workpaper, template_version: 1, when: end}
+gates:
+  - {gate: rollback, condition: "any(regression)", approver_role: release_owner}
+outputs: {workpaper_template: test_exec_v1, conclusion_scale: [verified, blocked, verified_with_exceptions]}

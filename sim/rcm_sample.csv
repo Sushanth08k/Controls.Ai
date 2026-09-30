@@ -1,0 +1,6 @@
+control_id,title,description,test_procedure,frequency,risk_rating,expected_archetype
+CTL-SAMPLE-001,Monthly Superuser Access Review,Review all active superusers on core database against approved baseline,Query pg_roles for rolsuper=true and compare against security baseline,monthly,high,A
+CTL-SAMPLE-002,API Post-Deployment Verification,Execute automated sanity testing across critical endpoints after production deployment,Execute contract test suite against auth and payment endpoints,on_event,high,B
+CTL-SAMPLE-003,General Ledger to Sub-ledger Reconciliation,Reconcile daily transaction totals between core banking and archive store,Compare row hashes and compute Merkle tree root matches,daily,critical,C
+CTL-SAMPLE-004,Customer Retention Policy Archival,Purge customer transactional records older than 7 years after copying to archive,Execute idempotent copy verify hash root and delete under attestation,weekly,critical,D
+CTL-SAMPLE-005,Third-Party Vendor Due Diligence,Review vendor compliance SOC2 PDF documents annually,Extract compliance dates and verify auditor citations,annual,medium,E

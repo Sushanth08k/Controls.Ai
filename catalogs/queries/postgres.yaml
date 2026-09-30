@@ -1,0 +1,84 @@
+queries:
+  - id: VQ-001
+    version: 1
+    title: Superuser roles
+    sql: "SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin FROM pg_roles WHERE rolsuper = true ORDER BY rolname;"
+    expected_columns: [rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin]
+    notes: Check for unapproved superusers
+
+  - id: VQ-002
+    version: 1
+    title: Login roles without password expiry or dormant
+    sql: "SELECT rolname, rolvaliduntil FROM pg_roles WHERE rolcanlogin = true AND (rolvaliduntil IS NULL OR rolvaliduntil < NOW()) ORDER BY rolname;"
+    expected_columns: [rolname, rolvaliduntil]
+    notes: Dormant or non-expiring login roles
+
+  - id: VQ-003
+    version: 1
+    title: Privileges granted to PUBLIC on non-system objects
+    sql: "SELECT grantee, table_schema, table_name, privilege_type FROM information_schema.role_table_grants WHERE grantee = 'PUBLIC' AND table_schema NOT IN ('pg_catalog', 'information_schema') ORDER BY table_schema, table_name, privilege_type;"
+    expected_columns: [grantee, table_schema, table_name, privilege_type]
+    notes: Public grants on application tables
+
+  - id: VQ-004
+    version: 1
+    title: Password encryption setting
+    sql: "SELECT name, setting FROM pg_settings WHERE name = 'password_encryption';"
+    expected_columns: [name, setting]
+    notes: Expected scram-sha-256
+
+  - id: VQ-005
+    version: 1
+    title: SSL setting
+    sql: "SELECT name, setting FROM pg_settings WHERE name = 'ssl';"
+    expected_columns: [name, setting]
+    notes: Expected on
+
+  - id: VQ-006
+    version: 1
+    title: Connection logging settings
+    sql: "SELECT name, setting FROM pg_settings WHERE name IN ('log_connections', 'log_disconnections') ORDER BY name;"
+    expected_columns: [name, setting]
+    notes: Audit connection logging
+
+  - id: VQ-007
+    version: 1
+    title: Insecure pg_hba rules
+    sql: "SELECT line_number, type, database, user_name, address, auth_method FROM pg_hba_file_rules WHERE auth_method = 'trust' OR address = '0.0.0.0/0' ORDER BY line_number;"
+    expected_columns: [line_number, type, database, user_name, address, auth_method]
+    notes: Insecure authentication or open CIDR rules
+
+  - id: VQ-008
+    version: 1
+    title: Installed extensions
+    sql: "SELECT extname, extversion FROM pg_extension ORDER BY extname;"
+    expected_columns: [extname, extversion]
+    notes: Check against approved extension baseline
+
+  - id: VQ-009
+    version: 1
+    title: Database version
+    sql: "SELECT version();"
+    expected_columns: [version]
+    notes: Postgres engine version check for CVE mapping
+
+  - id: VQ-010
+    version: 1
+    title: Default databases or roles
+    sql: "SELECT datname FROM pg_database WHERE datname IN ('template0', 'template1') ORDER BY datname;"
+    expected_columns: [datname]
+    notes: Default sample databases
+
+  - id: VQ-011
+    version: 1
+    title: Roles with CREATEROLE or CREATEDB
+    sql: "SELECT rolname, rolcreaterole, rolcreatedb FROM pg_roles WHERE (rolcreaterole = true OR rolcreatedb = true) AND rolsuper = false ORDER BY rolname;"
+    expected_columns: [rolname, rolcreaterole, rolcreatedb]
+    notes: Privileged non-superuser roles for monthly access review
+
+  - id: VQ-012
+    version: 1
+    title: SECURITY DEFINER functions owned by superusers
+    sql: "SELECT p.proname, p.prosecdef, r.rolname FROM pg_proc p JOIN pg_roles r ON p.proowner = r.oid WHERE p.prosecdef = true AND r.rolsuper = true ORDER BY p.proname;"
+    expected_columns: [proname, prosecdef, rolname]
+    notes: High privilege escalation risk functions

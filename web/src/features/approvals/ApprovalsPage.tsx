@@ -1,0 +1,83 @@
+import React from 'react';
+import { GateItemDTO, UserSessionDTO } from '../../types';
+import { GateCard } from '../../components/GateCard';
+import { ShieldCheck, Info } from 'lucide-react';
+
+interface ApprovalsPageProps {
+  gates: GateItemDTO[];
+  currentUser: UserSessionDTO;
+  onDecideGate: (gateId: string, decision: 'approved' | 'rejected', comment: string) => Promise<void>;
+}
+
+export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({ gates, currentUser, onDecideGate }) => {
+  const pending = gates.filter((g) => g.status === 'pending');
+  const history = gates.filter((g) => g.status !== 'pending');
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-xl font-bold text-slate-900 tracking-tight">HITL Approval Gates</h2>
+        <p className="text-xs text-slate-500 mt-1">
+          Human-in-the-loop review for high-risk steps, policy discrepancies, and irreversible operations.
+        </p>
+      </div>
+
+      {/* Governance Banner */}
+      <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 shadow-xs">
+        <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+        <div>
+          <span className="font-semibold block mb-0.5 text-blue-950">Strict Maker-Checker Governance</span>
+          <span className="text-blue-800">
+            The proposer (maker) cannot approve their own gate, even if they possess the approver role. All approvals are cryptographically hash-chained into the evidence ledger.
+          </span>
+        </div>
+      </div>
+
+      {/* Pending Gates */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+          <span>Pending Approvals Queue</span>
+          <span className="px-2 py-0.5 text-xs font-mono font-bold rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+            {pending.length}
+          </span>
+        </h3>
+
+        {pending.length === 0 ? (
+          <div className="bg-white p-8 rounded-xl border border-slate-200 text-center shadow-xs">
+            <ShieldCheck className="w-10 h-10 text-emerald-600 mx-auto mb-2 opacity-80" />
+            <p className="text-sm font-semibold text-slate-800">No Pending Approvals</p>
+            <p className="text-xs text-slate-500 mt-1">All control execution gates are currently cleared.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {pending.map((gate) => (
+              <GateCard
+                key={gate.gate_id}
+                gate={gate}
+                currentUser={currentUser}
+                onDecide={onDecideGate}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Decided History */}
+      {history.length > 0 && (
+        <div className="space-y-3 pt-4 border-t border-slate-200">
+          <h3 className="text-sm font-semibold text-slate-600">Decided Gate History</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {history.map((gate) => (
+              <GateCard
+                key={gate.gate_id}
+                gate={gate}
+                currentUser={currentUser}
+                onDecide={onDecideGate}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
