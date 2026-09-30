@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from api.routers import controls, evidence, findings, gates, health, interactive, runs
+from api.routers import controls, evidence, findings, gates, health, interactive, runs, vulnerability
 from api.sse import sse_broker
 
 app = FastAPI(
@@ -26,6 +26,9 @@ app.include_router(gates.router)
 app.include_router(findings.router)
 app.include_router(evidence.router)
 app.include_router(interactive.router)
+app.include_router(vulnerability.router)
+app.include_router(vulnerability.router, prefix="/api")
+
 
 
 @app.get("/events")

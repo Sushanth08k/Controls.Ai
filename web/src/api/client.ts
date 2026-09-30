@@ -176,3 +176,81 @@ export async function fetchLiveDb(tableName: string): Promise<any> {
   if (!res.ok) throw new Error(`Failed to fetch live database: ${res.statusText}`);
   return res.json();
 }
+
+export async function fetchVulnerabilityDefaults(controlId?: string): Promise<any> {
+  const url = controlId ? `${API_BASE}/vulnerability/defaults?control_id=${encodeURIComponent(controlId)}` : `${API_BASE}/vulnerability/defaults`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch vulnerability defaults: ${res.statusText}`);
+  return res.json();
+}
+
+export async function interpretVulnerabilityPolicy(controlId: string, documentText?: string, filename?: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/interpret`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      control_id: controlId,
+      document_text: documentText || null,
+      filename: filename || null,
+    }),
+  });
+  if (!res.ok) throw new Error(`Failed to interpret vulnerability policy: ${res.statusText}`);
+  return res.json();
+}
+
+export async function previewVulnerabilityTargets(controlId: string, approvedRules?: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      control_id: controlId,
+      approved_rules: approvedRules || null,
+    }),
+  });
+  if (!res.ok) throw new Error(`Failed to preview vulnerability targets: ${res.statusText}`);
+  return res.json();
+}
+
+export async function executeVulnerabilityControl(
+  controlId: string,
+  runId?: string,
+  documentText?: string,
+  customRules?: any,
+  querySql?: string
+): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/execute`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      control_id: controlId,
+      run_id: runId || null,
+      document_text: documentText || null,
+      custom_rules: customRules || null,
+      query_sql: querySql || null,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Vulnerability execution failed with ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchVulnerabilityResults(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/results/${encodeURIComponent(runId)}`);
+  if (!res.ok) throw new Error(`Failed to fetch results: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchVulnerabilityFindings(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/findings/${encodeURIComponent(runId)}`);
+  if (!res.ok) throw new Error(`Failed to fetch findings: ${res.statusText}`);
+  return res.json();
+}
+
+export async function fetchVulnerabilityEvidence(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/evidence/${encodeURIComponent(runId)}`);
+  if (!res.ok) throw new Error(`Failed to fetch evidence: ${res.statusText}`);
+  return res.json();
+}
+

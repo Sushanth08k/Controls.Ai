@@ -2,10 +2,10 @@ control_id: CTL-VULN-001
 version: 1.0.0
 title: Database Vulnerability Management Review
 archetype: A
-frequency: "0 2 1 * *"
+frequency: "Daily"
 owner_role: db_security_owner
 reviewer_role: control_reviewer
-risk_rating: high
+risk_rating: medium
 scope:
   - {type: postgres_instance, ref: vuln_target}
   - {type: postgres_instance, ref: core_banking_sim}
@@ -37,3 +37,7 @@ gates:
   - {gate: finding_signoff, condition: always, approver_role: db_security_owner}
 outputs: {workpaper_template: query_review_v1, conclusion_scale: [effective, effective_with_exceptions, ineffective]}
 severity_policy: {critical: 7, high: 30, medium: 60, low: 90}
+metadata:
+  control_type: Detective
+  testing_method: Automated Testing
+  evidence_type: Database Query Result

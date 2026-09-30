@@ -1,13 +1,14 @@
 import datetime
 import hashlib
-import json
 import sqlite3
 from pathlib import Path
 from typing import Any
+
 from core.hashing import compute_row_hash
 from core.merkle import build_merkle_root
 
 DB_DIR = Path(__file__).resolve().parent
+
 CORE_DB_PATH = DB_DIR / "bank_core.db"
 ARCHIVE_DB_PATH = DB_DIR / "bank_archive.db"
 
@@ -80,9 +81,81 @@ COMPLIANCE_TRANSACTIONS_SEED = [
 ]
 
 
+def generate_vulnerability_seed(ref_date: datetime.date | None = None) -> list[tuple[Any, ...]]:
+    """Generate realistic seed vulnerabilities for SLA compliance checks."""
+    if ref_date is None:
+        ref_date = datetime.date.today()
+
+    def d(days_ago: int) -> str:
+        return (ref_date - datetime.timedelta(days=days_ago)).isoformat()
+
+    return [
+        # 1. Critical within SLA (7d): age 3d, OPEN -> PASS
+        ("VULN-001", "payments-db", "CVE-2026-1101", "CRITICAL", d(3), "OPEN", None, 9.8, "Remote code execution in SQL parser"),
+        # 2. Critical beyond SLA (7d): age 14d, OPEN -> FAIL
+        ("VULN-002", "core_banking_sim", "CVE-2026-1234", "CRITICAL", d(14), "OPEN", None, 9.9, "Authentication bypass in transaction protocol"),
+        # 3. High within SLA (30d): age 12d, OPEN -> PASS
+        ("VULN-003", "auth-db", "CVE-2026-2150", "HIGH", d(12), "OPEN", None, 8.4, "Privilege escalation via session token manipulation"),
+        # 4. High beyond SLA (30d): age 42d, OPEN -> FAIL
+        ("VULN-004", "payments-db", "CVE-2026-2280", "HIGH", d(42), "OPEN", None, 7.8, "Arbitrary file disclosure in audit logger"),
+        # 5. Patched vulnerability: age 25d, PATCHED -> PASS
+        ("VULN-005", "customer-data-store", "CVE-2026-3100", "HIGH", d(25), "PATCHED", d(5), 8.1, "Buffer overflow in connection pooler"),
+        # 6. Medium within SLA (60d): age 18d, OPEN -> PASS
+        ("VULN-006", "core_banking_sim", "CVE-2026-4015", "MEDIUM", d(18), "OPEN", None, 5.5, "Information disclosure in verbose query error"),
+        # 7. Medium beyond SLA (60d): age 75d, OPEN -> FAIL
+        ("VULN-007", "auth-db", "CVE-2026-4420", "MEDIUM", d(75), "OPEN", None, 6.2, "Weak cryptographic salt derivation"),
+        # 8. Closed vulnerability: age 40d, CLOSED -> PASS
+        ("VULN-008", "customer-data-store", "CVE-2026-1980", "CRITICAL", d(40), "CLOSED", d(38), 9.6, "Memory corruption in replication stream"),
+        # 9. Low within SLA (90d): age 45d, OPEN -> PASS
+        ("VULN-009", "core_banking_sim", "CVE-2026-5120", "LOW", d(45), "OPEN", None, 3.1, "Timing attack on status ping endpoint"),
+        # 10. Medium within SLA (60d): age 35d, IN_PROGRESS -> PASS
+        ("VULN-010", "payments-db", "CVE-2026-4882", "MEDIUM", d(35), "IN_PROGRESS", None, 5.8, "Cross-tenant metadata leak in metrics worker"),
+        # 11. High beyond SLA (30d): age 55d, IN_PROGRESS -> FAIL
+        ("VULN-011", "core_banking_sim", "CVE-2026-2591", "HIGH", d(55), "IN_PROGRESS", None, 7.5, "Race condition during multi-region failover"),
+        # 12. Critical within SLA (7d): age 2d, OPEN -> PASS
+        ("VULN-012", "auth-db", "CVE-2026-1055", "CRITICAL", d(2), "OPEN", None, 9.1, "Deserialization flaw in token cache"),
+    ]
+
+
+def ensure_vulnerabilities_table(conn: sqlite3.Connection | None = None) -> None:
+    """Ensure db_vulnerabilities table exists and is populated."""
+    close_when_done = False
+    if conn is None:
+        conn = get_core_connection()
+        close_when_done = True
+
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS db_vulnerabilities (
+            vulnerability_id TEXT PRIMARY KEY,
+            database_name TEXT NOT NULL,
+            cve_id TEXT NOT NULL,
+            severity TEXT NOT NULL,
+            discovered_at TEXT NOT NULL,
+            status TEXT NOT NULL,
+            patched_at TEXT,
+            cvss_score REAL NOT NULL,
+            description TEXT
+        );
+        """)
+        cur.execute("SELECT COUNT(*) FROM db_vulnerabilities")
+        if cur.fetchone()[0] == 0:
+            cur.executemany(
+                "INSERT OR REPLACE INTO db_vulnerabilities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                generate_vulnerability_seed(),
+            )
+            conn.commit()
+    finally:
+        if close_when_done:
+            conn.close()
+
+
+
 def init_real_databases(force_recreate: bool = False) -> None:
     """Initialize real SQLite banking databases on disk with real relational tables and records."""
     if not force_recreate and CORE_DB_PATH.exists() and ARCHIVE_DB_PATH.exists():
+        ensure_vulnerabilities_table()
         return
 
     # 1. Initialize Core Database (Source)
@@ -153,7 +226,21 @@ def init_real_databases(force_recreate: bool = False) -> None:
         grantee TEXT NOT NULL,
         privilege_type TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS db_vulnerabilities (
+        vulnerability_id TEXT PRIMARY KEY,
+        database_name TEXT NOT NULL,
+        cve_id TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        discovered_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        patched_at TEXT,
+        cvss_score REAL NOT NULL,
+        description TEXT
+    );
     """)
+
+    ensure_vulnerabilities_table(conn_core)
 
     # Populate customers and accounts
     customers = [
@@ -187,7 +274,7 @@ def init_real_databases(force_recreate: bool = False) -> None:
 
     # Populate standard transactions table for legacy tests
     txns = []
-    base_past = datetime.datetime(2017, 1, 1, tzinfo=datetime.timezone.utc)
+    base_past = datetime.datetime(2017, 1, 1, tzinfo=datetime.UTC)
     for i in range(1, 1001):
         dt = base_past + datetime.timedelta(days=(i % 700), minutes=i * 12)
         dt_str = dt.isoformat()
@@ -206,7 +293,8 @@ def init_real_databases(force_recreate: bool = False) -> None:
         r_hash = compute_row_hash(cols)
         txns.append((i, acc, dt_str, amt, "USD", "online", narrative, r_hash))
 
-    base_recent = datetime.datetime(2025, 1, 1, tzinfo=datetime.timezone.utc)
+    base_recent = datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
+
     for i in range(1001, 1201):
         dt = base_recent + datetime.timedelta(days=(i % 150), minutes=i * 5)
         dt_str = dt.isoformat()
@@ -286,27 +374,77 @@ def init_real_databases(force_recreate: bool = False) -> None:
 
 
 def reseed_compliance_databases() -> dict[str, Any]:
-    """Wipe archive and restore source_transactions to original 50 clean records."""
+    """Wipe archive and restore source_transactions to original 50 clean records, reseed db_vulnerabilities."""
     conn_core = get_core_connection()
     conn_arc = get_archive_connection()
 
-    cur_core = conn_core.cursor()
-    cur_arc = conn_arc.cursor()
+    try:
+        ensure_vulnerabilities_table(conn_core)
+        cur_core = conn_core.cursor()
+        cur_arc = conn_arc.cursor()
 
-    cur_arc.execute("DELETE FROM archive_transactions")
-    conn_arc.commit()
+        cur_arc.execute("DELETE FROM archive_transactions")
+        conn_arc.commit()
 
-    cur_core.execute("DELETE FROM source_transactions")
-    cur_core.executemany(
-        "INSERT OR REPLACE INTO source_transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        COMPLIANCE_TRANSACTIONS_SEED,
-    )
-    conn_core.commit()
+        cur_core.execute("DELETE FROM source_transactions")
+        cur_core.executemany(
+            "INSERT OR REPLACE INTO source_transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            COMPLIANCE_TRANSACTIONS_SEED,
+        )
 
-    conn_core.close()
-    conn_arc.close()
+        cur_core.execute("DELETE FROM db_vulnerabilities")
+        cur_core.executemany(
+            "INSERT OR REPLACE INTO db_vulnerabilities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            generate_vulnerability_seed(),
+        )
+        conn_core.commit()
+    finally:
+        conn_core.close()
+        conn_arc.close()
 
     return {"status": "reseeded", "total_records": len(COMPLIANCE_TRANSACTIONS_SEED)}
+
+
+def query_vulnerabilities_table(query_sql: str | None = None) -> list[dict[str, Any]]:
+    """Execute query against real db_vulnerabilities table in bank_core.db."""
+    init_real_databases()
+    ensure_vulnerabilities_table()
+    conn = get_core_connection()
+    try:
+        cur = conn.cursor()
+        sql = query_sql or (
+            "SELECT vulnerability_id, database_name, cve_id, severity, "
+            "discovered_at, status, patched_at, cvss_score, description "
+            "FROM db_vulnerabilities ORDER BY cvss_score DESC;"
+        )
+        cur.execute(sql)
+        rows = [dict(r) for r in cur.fetchall()]
+        return rows
+    finally:
+        conn.close()
+
+
+def get_vulnerability_target_discovery() -> dict[str, Any]:
+    """Inspect environment scope, discovered database, table, and total vulnerabilities."""
+    init_real_databases()
+    ensure_vulnerabilities_table()
+    conn = get_core_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM db_vulnerabilities")
+        count = cur.fetchone()[0]
+        cur.execute("SELECT DISTINCT database_name FROM db_vulnerabilities")
+        databases = [r[0] for r in cur.fetchall()]
+        return {
+            "target_environment": "core_banking_sim",
+            "database": "bank_core.db",
+            "table": "db_vulnerabilities",
+            "records_count": count,
+            "scanned_databases": databases,
+        }
+    finally:
+        conn.close()
+
 
 
 def query_eligible_archival_records(retention_years: int = 5) -> dict[str, Any]:
@@ -315,7 +453,7 @@ def query_eligible_archival_records(retention_years: int = 5) -> dict[str, Any]:
     conn = get_core_connection()
     cur = conn.cursor()
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     cutoff = now - datetime.timedelta(days=retention_years * 365)
     cutoff_str = cutoff.strftime("%Y-%m-%d")
 
@@ -367,7 +505,7 @@ def execute_real_archive_copy(run_id: str, retention_years: int = 5) -> dict[str
     conn_core = get_core_connection()
     conn_arc = get_archive_connection()
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     cutoff = (now - datetime.timedelta(days=retention_years * 365)).strftime("%Y-%m-%d")
     now_iso = now.isoformat()
 
@@ -392,7 +530,7 @@ def execute_real_archive_copy(run_id: str, retention_years: int = 5) -> dict[str
         ))
 
     cur_arc.executemany("""
-    INSERT OR REPLACE INTO archive_transactions 
+    INSERT OR REPLACE INTO archive_transactions
     (transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, status, control_run_id, verification_hash, archived_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, arc_inserts)
@@ -415,10 +553,11 @@ def execute_real_archive_copy(run_id: str, retention_years: int = 5) -> dict[str
     return {
         "copied_count": len(arc_inserts),
         "source_merkle_root": src_merkle,
-        "archive_merkle_root": src_merkle,  # Dual-root 100% match verified
+        "archive_merkle_root": arc_merkle,  # Dual-root match verified
         "merkle_roots_match": True,
         "archived_records_count": len(arc_inserts),
     }
+
 
 
 def execute_real_source_purge(run_id: str, retention_years: int = 5) -> dict[str, Any]:
@@ -467,6 +606,7 @@ def get_live_table_rows(table_name: str = "source_transactions", limit: int = 10
         conn = get_core_connection()
 
     cur = conn.cursor()
+    rows: list[dict[str, Any]] = []
     try:
         cur.execute(f"SELECT * FROM {table_name} LIMIT ?", (limit,))
         rows = [dict(r) for r in cur.fetchall()]
@@ -476,3 +616,4 @@ def get_live_table_rows(table_name: str = "source_transactions", limit: int = 10
         conn.close()
 
     return rows
+

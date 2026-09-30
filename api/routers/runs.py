@@ -16,6 +16,14 @@ class RunItem(BaseModel):
     started_at: str
     completed_at: str | None = None
     targets: list[str] = []
+    records_scanned: int | None = None
+    passed: int | None = None
+    failed: int | None = None
+    critical_failures: int | None = None
+    high_failures: int | None = None
+    medium_failures: int | None = None
+    evidence_id: str | None = None
+    table: str | None = None
 
 
 _RUNS_STORE: dict[str, RunItem] = {

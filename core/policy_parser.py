@@ -383,6 +383,126 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
     dev_match = re.search(r"(\d+)\s*%", text_clean)
     max_dev = f"{dev_match.group(1)}%" if dev_match else "15%"
 
+    # Vulnerability Remediation SLA Standard
+    is_vuln_sla = (
+        "remediat" in text_clean.lower()
+        or "vulnerability management standard" in text_clean.lower()
+        or ("critical" in text_clean.lower() and "days" in text_clean.lower())
+    )
+    if is_vuln_sla:
+        crit_m = re.search(r"critical[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        crit_days = int(crit_m.group(1)) if crit_m else 7
+        high_m = re.search(r"high[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        high_days = int(high_m.group(1)) if high_m else 30
+        med_m = re.search(r"medium[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        med_days = int(med_m.group(1)) if med_m else 60
+        low_m = re.search(r"low[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        low_days = int(low_m.group(1)) if low_m else 90
+
+        structured_rules = [
+            {
+                "rule_id": "VULN-RULE-001",
+                "severity": "CRITICAL",
+                "max_age_days": crit_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            },
+            {
+                "rule_id": "VULN-RULE-002",
+                "severity": "HIGH",
+                "max_age_days": high_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            },
+            {
+                "rule_id": "VULN-RULE-003",
+                "severity": "MEDIUM",
+                "max_age_days": med_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            },
+        ]
+        if low_m:
+            structured_rules.append({
+                "rule_id": "VULN-RULE-004",
+                "severity": "LOW",
+                "max_age_days": low_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            })
+
+        rules_list = [
+            {
+                "rule_id": "VULN-RULE-001",
+                "description": f"Critical vulnerabilities must be remediated within {crit_days} days of identification.",
+                "rule_type": "REMEDIATION_SLA",
+                "severity": "CRITICAL",
+                "max_age_days": crit_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            },
+            {
+                "rule_id": "VULN-RULE-002",
+                "description": f"High vulnerabilities must be remediated within {high_days} days of identification.",
+                "rule_type": "REMEDIATION_SLA",
+                "severity": "HIGH",
+                "max_age_days": high_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            },
+            {
+                "rule_id": "VULN-RULE-003",
+                "description": f"Medium vulnerabilities must be remediated within {med_days} days of identification.",
+                "rule_type": "REMEDIATION_SLA",
+                "severity": "MEDIUM",
+                "max_age_days": med_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            },
+        ]
+        if low_m:
+            rules_list.append({
+                "rule_id": "VULN-RULE-004",
+                "description": f"Low vulnerabilities must be remediated within {low_days} days of identification.",
+                "rule_type": "REMEDIATION_SLA",
+                "severity": "LOW",
+                "max_age_days": low_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            })
+
+        requirements_list = [
+            {"requirement_id": "REQ-001", "description": f"Critical vulnerabilities must be remediated within {crit_days} days."},
+            {"requirement_id": "REQ-002", "description": f"High vulnerabilities must be remediated within {high_days} days."},
+            {"requirement_id": "REQ-003", "description": f"Medium vulnerabilities must be remediated within {med_days} days."},
+            {"requirement_id": "REQ-004", "description": "Vulnerabilities with status OPEN or IN_PROGRESS are considered unresolved."},
+            {"requirement_id": "REQ-005", "description": "PATCHED or CLOSED vulnerabilities are considered remediated."},
+        ]
+
+        citation = sentences[0] if sentences else text_clean[:120]
+        summary = f"Vulnerability remediation SLA: Critical ({crit_days}d), High ({high_days}d), Medium ({med_days}d)."
+        extracted_rules = {
+            "policy_type": "Vulnerability Remediation SLA",
+            "critical_sla_days": crit_days,
+            "high_sla_days": high_days,
+            "medium_sla_days": med_days,
+            "low_sla_days": low_days,
+            "allowed_remediated_statuses": ["PATCHED", "CLOSED"],
+            "unresolved_statuses": ["OPEN", "IN_PROGRESS"],
+            "rules": structured_rules,
+            "rules_count": len(structured_rules),
+            "exceptions_count": 0,
+            "ambiguities_count": 0,
+        }
+
+        return {
+            "policy_name": "Vulnerability Management Standard v1.0" if "standard" in text_clean.lower() else (sentences[0] if sentences else "Vulnerability Management Standard"),
+            "scope": "Core Banking & Subsidiary Database Systems",
+            "description": summary,
+            "rule_summary": summary,
+            "requirements": requirements_list,
+            "rules": rules_list,
+            "structured_rules": structured_rules,
+            "exceptions": [],
+            "ambiguities": [],
+            "source_references": [citation],
+            "citation": citation,
+            "retention_years": 0,
+            "extracted_rules": extracted_rules,
+        }
+
     if "vulnerability" in text_clean.lower() or "cve" in text_clean.lower() or "hardening" in text_clean.lower():
         rules_list = [
             {

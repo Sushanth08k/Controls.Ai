@@ -14,6 +14,12 @@ class FindingSummary(BaseModel):
     severity: str
     status: str
     evidence_ids: list[str]
+    target: str | None = None
+    cve_id: str | None = None
+    age_days: int | None = None
+    allowed_sla_days: int | None = None
+    result: str | None = "FAIL"
+    reason: str | None = None
 
 
 _FINDINGS_STORE: list[FindingSummary] = [

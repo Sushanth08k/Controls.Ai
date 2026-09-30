@@ -4,6 +4,7 @@ import { ArchetypeBadge } from '../../components/ArchetypeBadge';
 import { SeverityTag } from '../../components/SeverityTag';
 import { HashDisplay } from '../../components/HashDisplay';
 import { ControlExecutionModal } from './ControlExecutionModal';
+import { VulnerabilityExecutionModal } from './VulnerabilityExecutionModal';
 import { Search, Play, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
 
 interface ControlLibraryPageProps {
@@ -187,17 +188,25 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
       )}
 
       {/* Interactive Execution & Compliance Studio Modal */}
-      {modalControl && (
+      {modalControl && (modalControl.control_id.toLowerCase().includes('vuln') || modalControl.archetype === 'A') ? (
+        <VulnerabilityExecutionModal
+          control={modalControl}
+          currentUser={currentUser}
+          onClose={() => setModalControl(null)}
+          onRunCompleted={() => {
+            if (onTriggerRun) onTriggerRun(modalControl.control_id);
+          }}
+        />
+      ) : modalControl ? (
         <ControlExecutionModal
           control={modalControl}
           currentUser={currentUser}
           onClose={() => setModalControl(null)}
           onRunCompleted={() => {
-            // Trigger refresh
             if (onTriggerRun) onTriggerRun(modalControl.control_id);
           }}
         />
-      )}
+      ) : null}
     </div>
   );
 };

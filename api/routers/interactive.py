@@ -102,19 +102,20 @@ AND legal_hold = 0;""",
         }
     elif "vuln" in cid_lower:
         return {
-            "selection_sql": """-- 1. ACTIVE SELECTION SQL (SELECT) - CIS BENCHMARK SCAN
--- Scan superusers and password hash algorithms
-SELECT rolname, rolsuper, rolreplication, password_encryption
-FROM database_users
-WHERE rolsuper = 1;""",
-            "archival_sql": """-- 2. SYSTEM CONFIG & WIRE ENCRYPTION AUDIT
--- Target: system_config, public_grants
-SELECT key, value FROM system_config WHERE key IN ('server_version', 'ssl');
-SELECT table_name, grantee, privilege_type FROM public_grants WHERE grantee = 'PUBLIC';""",
-            "cleanup_sql": """-- 3. REMEDIATION & SCHEMA HARDENING (AFTER HUMAN APPROVAL)
--- Revoke rogue superuser privileges and lock down public schemas
-ALTER ROLE unauthorized_root NOSUPERUSER;
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;""",
+            "selection_sql": """-- 1. VULNERABILITY INVENTORY QUERY (SELECT)
+-- Target: db_vulnerabilities
+SELECT vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description
+FROM db_vulnerabilities
+ORDER BY cvss_score DESC, discovered_at ASC;""",
+            "archival_sql": """-- 2. DETERMINISTIC SLA EVALUATION QUERY
+-- Checks unresolved vulnerabilities against remediation SLA thresholds
+SELECT vulnerability_id, cve_id, severity, discovered_at, status,
+  CAST((julianday('now') - julianday(discovered_at)) AS INTEGER) AS age_days
+FROM db_vulnerabilities
+WHERE status IN ('OPEN', 'IN_PROGRESS');""",
+            "cleanup_sql": """-- 3. AUDIT TRAIL LOGGING (EVIDENCE GENERATION)
+-- Non-destructive: Captures query result snapshot into immutable evidence ledger
+-- Zero DELETE or UPDATE operations executed.""",
         }
     elif "priv" in cid_lower:
         return {
@@ -178,19 +179,21 @@ def get_control_defaults(control_id: str) -> dict[str, Any]:
             "step5": "Authorized Source Cleanup",
         }
     elif "vuln" in cid_lower:
-        filename = "cis_database_vulnerability_hardening_policy_v3.2.txt"
+        filename = "vulnerability_management_policy_v1.0.txt"
         policy_text = (
-            "BANK CYBERSECURITY DIRECTIVE - DATABASE HARDENING & PATCHING POLICY v3.2\n\n"
-            "Section 2.1: Production database instances must run supported versions with zero critical CVEs (minimum PostgreSQL 16.0).\n"
-            "Section 2.2: SSL/TLS encryption in transit must be enforced (ssl = 'on') with scram-sha-256 password hashing.\n"
-            "Section 2.3: Superuser roles must be strictly limited to approved administrative accounts. Public access to application schemas is prohibited."
+            "VULNERABILITY MANAGEMENT STANDARD v1.0\n\n"
+            "1. Critical vulnerabilities must be remediated within 7 days of identification.\n"
+            "2. High vulnerabilities must be remediated within 30 days.\n"
+            "3. Medium vulnerabilities must be remediated within 60 days.\n"
+            "4. Vulnerabilities with status OPEN or IN_PROGRESS are considered unresolved.\n"
+            "5. PATCHED or CLOSED vulnerabilities are considered remediated."
         )
         step_labels = {
-            "step1": "Security Standard Ingestion",
-            "step2": "Baseline Parameters & Tolerances",
-            "step3": "Target DB Scope & Config Audit",
-            "step4": "Query Execution & Rule Evaluation",
-            "step5": "Findings Review & Workpaper Sign-off",
+            "step1": "Vulnerability Remediation Policy",
+            "step2": "SLA Rules & Remediation Boundaries",
+            "step3": "Target DB Scope & Inventory Discovery",
+            "step4": "Query Execution & Deterministic Evaluation",
+            "step5": "Audit Evidence & Ledger Seal",
         }
     elif "priv" in cid_lower:
         filename = "privileged_identity_access_governance_policy_v1.8.txt"
