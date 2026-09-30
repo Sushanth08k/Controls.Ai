@@ -1,0 +1,38 @@
+# ==============================================================================
+# Agentic Control Automation Platform - Python Dependencies
+# Generated from pyproject.toml
+# ==============================================================================
+
+# Core Framework & Validation
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+pyyaml>=6.0.1
+cryptography>=42.0.0
+
+# API & Networking
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+httpx>=0.27.0
+python-multipart>=0.0.9
+sse-starlette>=2.1.0
+
+# Database & ORM
+sqlalchemy>=2.0.30
+psycopg[binary,pool]>=3.1.18
+
+# Orchestration & Workflow Engine
+temporalio>=1.6.0
+
+# LLM Gateway & Multi-Agent Graphs
+litellm>=1.40.0
+langgraph>=0.1.0
+langchain-core>=0.2.0
+
+# Development & Testing (Optional)
+pytest>=8.2.0
+pytest-asyncio>=0.23.0
+ruff>=0.4.0
+mypy>=1.10.0
+import-linter>=2.0
+pip-licenses>=4.4.0
+types-pyyaml>=6.0.12
