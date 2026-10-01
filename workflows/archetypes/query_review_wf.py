@@ -51,7 +51,10 @@ class QueryReviewWorkflow:
                         try:
                             from sim.database import query_vulnerabilities_table
                             rows = query_vulnerabilities_table()
-                            auto_evidence.setdefault(target.ref, {})[ev_spec.id] = {"rows": rows}
+                            target_rows = [r for r in rows if r.get("database_name") == target.ref]
+                            auto_evidence.setdefault(target.ref, {})[ev_spec.id] = {
+                                "rows": target_rows if target_rows else rows
+                            }
                         except Exception:
                             auto_evidence.setdefault(target.ref, {})[ev_spec.id] = {"rows": []}
                     else:

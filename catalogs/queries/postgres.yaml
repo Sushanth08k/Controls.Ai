@@ -86,6 +86,6 @@ queries:
   - id: VQ-013
     version: 1
     title: Database vulnerability findings
-    sql: "SELECT vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description FROM db_vulnerabilities ORDER BY cvss_score DESC, discovered_at ASC;"
-    expected_columns: [vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description]
+    sql: "SELECT vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description, asset_criticality, is_kev, epss_score, exception_status, exception_id, exception_reason, exception_approved_by, exception_expires_at, compensating_control, remediation_verified, verification_evidence FROM db_vulnerabilities ORDER BY cvss_score DESC, discovered_at ASC;"
+    expected_columns: [vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description, asset_criticality, is_kev, epss_score, exception_status, exception_id, exception_reason, exception_approved_by, exception_expires_at, compensating_control, remediation_verified, verification_evidence]
     notes: Database vulnerabilities for remediation SLA review

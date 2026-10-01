@@ -91,34 +91,34 @@ def generate_vulnerability_seed(ref_date: datetime.date | None = None) -> list[t
 
     return [
         # 1. Critical within SLA (7d): age 3d, OPEN -> PASS
-        ("VULN-001", "payments-db", "CVE-2026-1101", "CRITICAL", d(3), "OPEN", None, 9.8, "Remote code execution in SQL parser"),
+        ("VULN-001", "core_banking_sim", "CVE-2026-1101", "CRITICAL", d(3), "OPEN", None, 9.8, "Remote code execution in SQL parser", "Tier 1 (Core Banking / Payments)", 1, 0.45, "NONE", None, None, None, None, None, 1, None),
         # 2. Critical beyond SLA (7d): age 14d, OPEN -> FAIL
-        ("VULN-002", "core_banking_sim", "CVE-2026-1234", "CRITICAL", d(14), "OPEN", None, 9.9, "Authentication bypass in transaction protocol"),
+        ("VULN-002", "vuln_target", "CVE-2026-1234", "CRITICAL", d(14), "OPEN", None, 9.9, "Authentication bypass in transaction protocol", "Tier 1 (Core Banking / Payments)", 1, 0.65, "NONE", None, None, None, None, None, 1, None),
         # 3. High within SLA (30d): age 12d, OPEN -> PASS
-        ("VULN-003", "auth-db", "CVE-2026-2150", "HIGH", d(12), "OPEN", None, 8.4, "Privilege escalation via session token manipulation"),
+        ("VULN-003", "payments-db", "CVE-2026-2150", "HIGH", d(12), "OPEN", None, 8.4, "Privilege escalation via session token manipulation", "Tier 1 (Core Banking / Payments)", 0, 0.15, "NONE", None, None, None, None, None, 1, None),
         # 4. High beyond SLA (30d): age 42d, OPEN -> FAIL
-        ("VULN-004", "payments-db", "CVE-2026-2280", "HIGH", d(42), "OPEN", None, 7.8, "Arbitrary file disclosure in audit logger"),
-        # 5. Patched vulnerability: age 25d, PATCHED -> PASS
-        ("VULN-005", "customer-data-store", "CVE-2026-3100", "HIGH", d(25), "PATCHED", d(5), 8.1, "Buffer overflow in connection pooler"),
-        # 6. Medium within SLA (60d): age 18d, OPEN -> PASS
-        ("VULN-006", "core_banking_sim", "CVE-2026-4015", "MEDIUM", d(18), "OPEN", None, 5.5, "Information disclosure in verbose query error"),
-        # 7. Medium beyond SLA (60d): age 75d, OPEN -> FAIL
-        ("VULN-007", "auth-db", "CVE-2026-4420", "MEDIUM", d(75), "OPEN", None, 6.2, "Weak cryptographic salt derivation"),
-        # 8. Closed vulnerability: age 40d, CLOSED -> PASS
-        ("VULN-008", "customer-data-store", "CVE-2026-1980", "CRITICAL", d(40), "CLOSED", d(38), 9.6, "Memory corruption in replication stream"),
+        ("VULN-004", "vuln_target", "CVE-2026-2280", "HIGH", d(42), "OPEN", None, 7.8, "Arbitrary file disclosure in audit logger", "Tier 2 (Operational DB)", 0, 0.08, "NONE", None, None, None, None, None, 1, None),
+        # 5. Patched within SLA: age 25d, patched 18d after discovery (d(7)), 18d <= 30d -> PASS
+        ("VULN-005", "customer-data-store", "CVE-2026-3100", "HIGH", d(25), "PATCHED", d(7), 8.1, "Buffer overflow in connection pooler", "Tier 2 (Operational DB)", 0, 0.05, "NONE", None, None, None, None, None, 1, "SCAN-VERIFY-3100: Rescan confirmed patched in v15.4"),
+        # 6. Patched after SLA: age 50d, patched 38d after discovery (d(12)), 38d > 30d -> FAIL
+        ("VULN-006", "core_banking_sim", "CVE-2026-4015", "HIGH", d(50), "PATCHED", d(12), 7.5, "SQL injection in reporting extension", "Tier 1 (Core Banking / Payments)", 1, 0.28, "NONE", None, None, None, None, None, 1, "SCAN-VERIFY-4015: Remediated via vendor hotfix"),
+        # 7. Critical overdue (20d > 7d SLA) with valid active approved exception -> EXCEPTION / REVIEW
+        ("VULN-007", "auth-db", "CVE-2026-4420", "CRITICAL", d(20), "OPEN", None, 9.2, "Weak cryptographic salt derivation in credential store", "Tier 1 (Core Banking / Payments)", 1, 0.72, "APPROVED", "EXC-2026-0042", "Vendor patch causes settlement regression; v2 hotfix scheduled", "ciso_approval_board", (ref_date + datetime.timedelta(days=30)).isoformat(), "WAF virtual patching + isolated auth subnet", 1, None),
+        # 8. Closed vulnerability but unverified remediation evidence -> FAIL
+        ("VULN-008", "customer-data-store", "CVE-2026-1980", "CRITICAL", d(40), "CLOSED", d(38), 9.6, "Memory corruption in replication stream", "Tier 2 (Operational DB)", 0, 0.12, "NONE", None, None, None, None, None, 0, None),
         # 9. Low within SLA (90d): age 45d, OPEN -> PASS
-        ("VULN-009", "core_banking_sim", "CVE-2026-5120", "LOW", d(45), "OPEN", None, 3.1, "Timing attack on status ping endpoint"),
+        ("VULN-009", "core_banking_sim", "CVE-2026-5120", "LOW", d(45), "OPEN", None, 3.1, "Timing attack on status ping endpoint", "Tier 3 (Reporting Replica)", 0, 0.01, "NONE", None, None, None, None, None, 1, None),
         # 10. Medium within SLA (60d): age 35d, IN_PROGRESS -> PASS
-        ("VULN-010", "payments-db", "CVE-2026-4882", "MEDIUM", d(35), "IN_PROGRESS", None, 5.8, "Cross-tenant metadata leak in metrics worker"),
+        ("VULN-010", "payments-db", "CVE-2026-4882", "MEDIUM", d(35), "IN_PROGRESS", None, 5.8, "Cross-tenant metadata leak in metrics worker", "Tier 2 (Operational DB)", 0, 0.04, "NONE", None, None, None, None, None, 1, None),
         # 11. High beyond SLA (30d): age 55d, IN_PROGRESS -> FAIL
-        ("VULN-011", "core_banking_sim", "CVE-2026-2591", "HIGH", d(55), "IN_PROGRESS", None, 7.5, "Race condition during multi-region failover"),
+        ("VULN-011", "vuln_target", "CVE-2026-2591", "HIGH", d(55), "IN_PROGRESS", None, 7.5, "Race condition during multi-region failover", "Tier 1 (Core Banking / Payments)", 0, 0.18, "NONE", None, None, None, None, None, 1, None),
         # 12. Critical within SLA (7d): age 2d, OPEN -> PASS
-        ("VULN-012", "auth-db", "CVE-2026-1055", "CRITICAL", d(2), "OPEN", None, 9.1, "Deserialization flaw in token cache"),
+        ("VULN-012", "auth-db", "CVE-2026-1055", "CRITICAL", d(2), "OPEN", None, 9.1, "Deserialization flaw in token cache", "Tier 1 (Core Banking / Payments)", 1, 0.50, "NONE", None, None, None, None, None, 1, None),
     ]
 
 
 def ensure_vulnerabilities_table(conn: sqlite3.Connection | None = None) -> None:
-    """Ensure db_vulnerabilities table exists and is populated."""
+    """Ensure db_vulnerabilities table exists with full schema and is populated."""
     close_when_done = False
     if conn is None:
         conn = get_core_connection()
@@ -126,6 +126,12 @@ def ensure_vulnerabilities_table(conn: sqlite3.Connection | None = None) -> None
 
     try:
         cur = conn.cursor()
+        # Check if table already exists and has the new columns
+        cur.execute("PRAGMA table_info(db_vulnerabilities)")
+        cols = {r[1] for r in cur.fetchall()}
+        if cols and "asset_criticality" not in cols:
+            cur.execute("DROP TABLE IF EXISTS db_vulnerabilities")
+
         cur.execute("""
         CREATE TABLE IF NOT EXISTS db_vulnerabilities (
             vulnerability_id TEXT PRIMARY KEY,
@@ -136,13 +142,24 @@ def ensure_vulnerabilities_table(conn: sqlite3.Connection | None = None) -> None
             status TEXT NOT NULL,
             patched_at TEXT,
             cvss_score REAL NOT NULL,
-            description TEXT
+            description TEXT,
+            asset_criticality TEXT DEFAULT 'Tier 2 (Operational DB)',
+            is_kev INTEGER DEFAULT 0,
+            epss_score REAL DEFAULT 0.01,
+            exception_status TEXT DEFAULT 'NONE',
+            exception_id TEXT,
+            exception_reason TEXT,
+            exception_approved_by TEXT,
+            exception_expires_at TEXT,
+            compensating_control TEXT,
+            remediation_verified INTEGER DEFAULT 1,
+            verification_evidence TEXT
         );
         """)
         cur.execute("SELECT COUNT(*) FROM db_vulnerabilities")
         if cur.fetchone()[0] == 0:
             cur.executemany(
-                "INSERT OR REPLACE INTO db_vulnerabilities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO db_vulnerabilities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 generate_vulnerability_seed(),
             )
             conn.commit()
@@ -394,7 +411,7 @@ def reseed_compliance_databases() -> dict[str, Any]:
 
         cur_core.execute("DELETE FROM db_vulnerabilities")
         cur_core.executemany(
-            "INSERT OR REPLACE INTO db_vulnerabilities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO db_vulnerabilities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             generate_vulnerability_seed(),
         )
         conn_core.commit()
@@ -414,8 +431,12 @@ def query_vulnerabilities_table(query_sql: str | None = None) -> list[dict[str, 
         cur = conn.cursor()
         sql = query_sql or (
             "SELECT vulnerability_id, database_name, cve_id, severity, "
-            "discovered_at, status, patched_at, cvss_score, description "
-            "FROM db_vulnerabilities ORDER BY cvss_score DESC;"
+            "discovered_at, status, patched_at, cvss_score, description, "
+            "asset_criticality, is_kev, epss_score, exception_status, "
+            "exception_id, exception_reason, exception_approved_by, "
+            "exception_expires_at, compensating_control, remediation_verified, "
+            "verification_evidence "
+            "FROM db_vulnerabilities ORDER BY cvss_score DESC, discovered_at ASC;"
         )
         cur.execute(sql)
         rows = [dict(r) for r in cur.fetchall()]
@@ -424,8 +445,8 @@ def query_vulnerabilities_table(query_sql: str | None = None) -> list[dict[str, 
         conn.close()
 
 
-def get_vulnerability_target_discovery() -> dict[str, Any]:
-    """Inspect environment scope, discovered database, table, and total vulnerabilities."""
+def get_vulnerability_target_discovery(expected_targets: list[str] | None = None) -> dict[str, Any]:
+    """Inspect environment scope, discovered database, table, scan coverage, and total vulnerabilities."""
     init_real_databases()
     ensure_vulnerabilities_table()
     conn = get_core_connection()
@@ -435,12 +456,18 @@ def get_vulnerability_target_discovery() -> dict[str, Any]:
         count = cur.fetchone()[0]
         cur.execute("SELECT DISTINCT database_name FROM db_vulnerabilities")
         databases = [r[0] for r in cur.fetchall()]
+        expected = expected_targets or ["core_banking_sim", "vuln_target"]
+        scanned_in_scope = [d for d in expected if d in databases]
+        coverage_pct = round((len(scanned_in_scope) / len(expected)) * 100, 1) if expected else 100.0
         return {
             "target_environment": "core_banking_sim",
             "database": "bank_core.db",
             "table": "db_vulnerabilities",
             "records_count": count,
             "scanned_databases": databases,
+            "expected_databases": expected,
+            "coverage_percentage": coverage_pct,
+            "vulnerabilities_discovered": count,
         }
     finally:
         conn.close()

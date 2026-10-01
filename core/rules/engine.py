@@ -50,21 +50,27 @@ def evaluate_vulnerability_sla_rule(
 
     evaluations: list[dict[str, Any]] = []
     violations: list[dict[str, Any]] = []
+    exceptions: list[dict[str, Any]] = []
 
     for r in rows:
         ev = evaluate_single_vulnerability(r, active_rules_by_sev)
         evaluations.append(ev)
         if ev.get("result") == "FAIL":
             violations.append(ev)
+        elif ev.get("result") == "EXCEPTION":
+            exceptions.append(ev)
 
     passed = len(violations) == 0
+    compliant_count = sum(1 for e in evaluations if e.get("result") == "PASS")
     details = RuleResultDetails(
         context={
             "evaluations": evaluations,
             "violations": violations,
+            "exceptions": exceptions,
             "total_scanned": len(evaluations),
-            "compliant": len(evaluations) - len(violations),
+            "compliant": compliant_count,
             "violations_count": len(violations),
+            "exceptions_count": len(exceptions),
             "severity_policy": severity_policy or {},
         }
     )
