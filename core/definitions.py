@@ -64,6 +64,11 @@ class DefinitionRegistry:
             loaded[defn.control_id] = defn
         return loaded
 
+    def list_all(self, approve_existing: bool = True) -> list[ControlDefinition]:
+        """Return a list of all loaded definitions."""
+        return list(self.load_all(approve_existing=approve_existing).values())
+
+
     def validate_referential_integrity(self, defn: ControlDefinition) -> None:
         """Enforce Section 6.1 fail-closed referential integrity rules."""
         evidence_ids = {ev.id for ev in defn.evidence}
