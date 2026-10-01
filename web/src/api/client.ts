@@ -1,6 +1,11 @@
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO } from '../types';
 
-const API_BASE = '/api';
+export const API_BASE =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    ? 'http://localhost:8000'
+    : '/api';
+
 
 export async function fetchControls(): Promise<ControlDefinitionDTO[]> {
   const res = await fetch(`${API_BASE}/controls`);

@@ -7,7 +7,7 @@ import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { FindingsPage } from './features/findings/FindingsPage';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from './types';
-import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, triggerRun } from './api/client';
+import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, triggerRun, API_BASE } from './api/client';
 import { AlertCircle, RefreshCw, Radio } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -186,7 +186,7 @@ export const App: React.FC = () => {
 
   // Realtime Server-Sent Events listener
   useEffect(() => {
-    const sse = new EventSource('/api/events');
+    const sse = new EventSource(`${API_BASE}/events`);
 
     sse.onopen = () => {
       setSseConnected(true);

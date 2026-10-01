@@ -27,11 +27,20 @@ app.include_router(findings.router)
 app.include_router(evidence.router)
 app.include_router(interactive.router)
 app.include_router(vulnerability.router)
+
+# Also expose under /api prefix for proxy resilience
+app.include_router(health.router, prefix="/api")
+app.include_router(controls.router, prefix="/api")
+app.include_router(runs.router, prefix="/api")
+app.include_router(gates.router, prefix="/api")
+app.include_router(findings.router, prefix="/api")
+app.include_router(evidence.router, prefix="/api")
+app.include_router(interactive.router, prefix="/api")
 app.include_router(vulnerability.router, prefix="/api")
 
 
-
 @app.get("/events")
+@app.get("/api/events")
 async def events_stream() -> StreamingResponse:
     """Server-Sent Events endpoint streaming realtime platform updates."""
     return StreamingResponse(
