@@ -70,6 +70,65 @@ export async function fetchControlDefaults(controlId: string): Promise<any> {
   return res.json();
 }
 
+export interface UploadedPolicyDTO {
+  policy_id: string;
+  filename: string;
+  title: string;
+  control_id: string;
+  archetype: string;
+  risk_rating: string;
+  frequency: string;
+  uploaded_at: string;
+  uploaded_by: string;
+  file_size: string;
+  format: string;
+  rules_summary: string;
+  policy_text: string;
+  status: string;
+}
+
+export async function fetchUploadedPolicies(): Promise<UploadedPolicyDTO[]> {
+  const res = await fetch(`${API_BASE}/interactive/uploaded_policies`);
+  if (!res.ok) throw new Error(`Failed to fetch uploaded policies: ${res.statusText}`);
+  return res.json();
+}
+
+export async function deleteUploadedPolicy(policyId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/interactive/uploaded_policies/${policyId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error(`Failed to delete uploaded policy: ${res.statusText}`);
+  return res.json();
+}
+
+export async function uploadPolicyDocument(
+  file: File,
+  controlId?: string
+): Promise<{
+  filename: string;
+  format: string;
+  text: string;
+  pages: number;
+  size_bytes: number;
+  policy_id?: string;
+}> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (controlId) {
+    formData.append('control_id', controlId);
+  }
+
+  const res = await fetch(`${API_BASE}/interactive/upload_policy_file`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(errorData.detail || `Upload failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
 
 export async function interpretPolicy(controlId: string, documentText?: string, filename?: string): Promise<any> {
   const res = await fetch(`${API_BASE}/interactive/interpret`, {

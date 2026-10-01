@@ -31,6 +31,127 @@ def parse_numeric_value(val_str: str) -> str:
     return cleaned
 
 
+def deduplicate_rules(rules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Deduplicate extracted rules based on semantic criteria
+    (table, field, operator, value, unit, action) and normalized text descriptions.
+    Re-indexes rule IDs to ensure continuous numbering (RULE-001, RULE-002, ...).
+    """
+    unique_rules: list[dict[str, Any]] = []
+    seen_sigs: set[str] = set()
+
+    for rule in rules:
+        cond = rule.get("condition") or {}
+        field = str(cond.get("field", "")).strip().lower()
+        operator = str(cond.get("operator", "")).strip().upper()
+        val = str(cond.get("value", "")).strip().lower()
+        unit = str(cond.get("unit", "")).strip().lower()
+        action = str(rule.get("action", "")).strip().upper()
+
+        desc = str(rule.get("description", "")).strip()
+        table_prefix = ""
+        if desc.startswith("[") and "]" in desc:
+            table_prefix = desc[1:desc.index("]")].strip().lower()
+
+        # Semantic condition signature
+        semantic_sig = f"{table_prefix}:{field}:{operator}:{val}:{unit}:{action}" if field else ""
+
+        # Normalized textual description signature
+        norm_desc = re.sub(r"^\[.*?\]\s*", "", desc)
+        norm_desc = re.sub(r"^(?:rule\s*\d+\s*:\s*|operation\s*:\s*\w+\s*)", "", norm_desc, flags=re.I).strip().lower()
+        norm_desc = " ".join(norm_desc.split())
+        text_sig = f"{table_prefix}:{norm_desc}" if norm_desc else ""
+
+        # If either signature has already been registered, skip this duplicate
+        if (semantic_sig and semantic_sig in seen_sigs) or (text_sig and text_sig in seen_sigs):
+            continue
+
+        if semantic_sig:
+            seen_sigs.add(semantic_sig)
+        if text_sig:
+            seen_sigs.add(text_sig)
+
+        unique_rules.append(rule)
+
+    # Re-number cleanly
+    for idx, r in enumerate(unique_rules):
+        r["rule_id"] = f"RULE-{idx + 1:03d}"
+
+    return unique_rules
+
+
+def deduplicate_exceptions(exceptions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Deduplicate extracted exceptions based on exclusion criteria
+    (field, operator, value, action) and normalized reasons.
+    Re-indexes exception IDs (EXC-001, EXC-002, ...).
+    """
+    unique_exceptions: list[dict[str, Any]] = []
+    seen_sigs: set[str] = set()
+
+    for exc in exceptions:
+        field = str(exc.get("field", "")).strip().lower()
+        op = str(exc.get("operator", "")).strip().upper()
+        val = str(exc.get("value", "")).strip().lower()
+        act = str(exc.get("action", "")).strip().upper()
+        reason = str(exc.get("reason", "") or exc.get("description", "")).strip().lower()
+        norm_reason = " ".join(reason.split())
+
+        sig = f"{field}:{op}:{val}:{act}" if field else ""
+        reason_sig = f"{field}:{norm_reason}" if norm_reason else ""
+
+        if (sig and sig in seen_sigs) or (reason_sig and reason_sig in seen_sigs):
+            continue
+
+        if sig:
+            seen_sigs.add(sig)
+        if reason_sig:
+            seen_sigs.add(reason_sig)
+
+        unique_exceptions.append(exc)
+
+    for idx, e in enumerate(unique_exceptions):
+        e["exception_id"] = f"EXC-{idx + 1:03d}"
+
+    return unique_exceptions
+
+
+def deduplicate_requirements(requirements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate extracted requirements by normalized text description."""
+    unique_reqs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for req in requirements:
+        desc = str(req.get("description", "")).strip().lower()
+        norm = " ".join(desc.split())
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        unique_reqs.append(req)
+
+    for idx, r in enumerate(unique_reqs):
+        r["requirement_id"] = f"REQ-{idx + 1:03d}"
+
+    return unique_reqs
+
+
+def deduplicate_ambiguities(ambiguities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate ambiguity flags by type and normalized description."""
+    unique_ambs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for amb in ambiguities:
+        atype = str(amb.get("type", "")).strip().upper()
+        desc = str(amb.get("description", "")).strip().lower()
+        sig = f"{atype}:{desc}"
+        if sig in seen:
+            continue
+        seen.add(sig)
+        unique_ambs.append(amb)
+
+    return unique_ambs
+
+
 def extract_policy_with_regex(text: str) -> dict[str, Any]:
     """
     Extract structured rules, exceptions, and metadata from policy text
@@ -141,6 +262,8 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
                             ex_field, ex_val = "excluded", "true"
 
                     exceptions.append({
+                        "exception_id": f"EXC-{len(exceptions) + 1:03d}",
+                        "title": f"Exclusion ({ex_field})",
                         "field": ex_field,
                         "operator": "EQUALS",
                         "value": ex_val,
@@ -202,6 +325,8 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
         # Search for exclusion / legal hold statements
         if re.search(r"legal\s+hold", text, re.I):
             exceptions.append({
+                "exception_id": f"EXC-{len(exceptions) + 1:03d}",
+                "title": "Active Legal Hold Exclusion",
                 "field": "legal_hold",
                 "operator": "EQUALS",
                 "value": "true",
@@ -211,6 +336,8 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
 
         if re.search(r"investigation", text, re.I):
             exceptions.append({
+                "exception_id": f"EXC-{len(exceptions) + 1:03d}",
+                "title": "Regulatory Investigation Hold",
                 "field": "investigation_status",
                 "operator": "EQUALS",
                 "value": "ACTIVE",
@@ -285,17 +412,23 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
             "requires_human_review": True,
         })
 
-    scope_desc = ", ".join(scopes_found) if scopes_found else "All organizational transaction, account, and audit records"
+    unique_scopes = list(dict.fromkeys(scopes_found))
+    scope_desc = ", ".join(unique_scopes) if unique_scopes else "All organizational transaction, account, and audit records"
     summary_desc = f"Policy '{title}' defines compliance retention and archival thresholds for {scope_desc}."
+
+    deduped_rules = deduplicate_rules(rules)
+    deduped_exceptions = deduplicate_exceptions(exceptions)
+    deduped_requirements = deduplicate_requirements(requirements)
+    deduped_ambiguities = deduplicate_ambiguities(ambiguities)
 
     return {
         "policy_name": title,
         "scope": scope_desc,
         "description": summary_desc,
-        "requirements": requirements,
-        "rules": rules,
-        "exceptions": exceptions,
-        "ambiguities": ambiguities,
+        "requirements": deduped_requirements,
+        "rules": deduped_rules,
+        "exceptions": deduped_exceptions,
+        "ambiguities": deduped_ambiguities,
         "source_references": sources[:10] if sources else [text[:200]],
     }
 
@@ -646,9 +779,9 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
         "scope": "Production Banking Environment",
         "description": summary,
         "rule_summary": summary,
-        "requirements": requirements_list,
-        "rules": rules_list,
-        "exceptions": exceptions_list,
+        "requirements": deduplicate_requirements(requirements_list),
+        "rules": deduplicate_rules(rules_list),
+        "exceptions": deduplicate_exceptions(exceptions_list),
         "ambiguities": [],
         "source_references": [citation],
         "citation": citation,

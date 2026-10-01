@@ -3,12 +3,13 @@ import hashlib
 import json
 import uuid
 from typing import Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, File, UploadFile
 from pydantic import BaseModel, ConfigDict
 from core.definitions import default_registry
 from core.merkle import build_merkle_root
 from core.ledger import Ledger
 from core.policy_parser import parse_policy_specification
+from core.document_extractor import extract_document_content
 from sim.database import (
     init_real_databases,
     query_eligible_archival_records,
@@ -19,6 +20,7 @@ from sim.database import (
     CORE_DB_PATH,
     ARCHIVE_DB_PATH,
 )
+from core.sql_generator import generate_sql_with_gemini
 from api.sse import sse_broker
 
 router = APIRouter(prefix="/interactive", tags=["interactive"])
@@ -62,86 +64,27 @@ class CleanupRequest(BaseModel):
 _INTERACTIVE_SESSIONS: dict[str, dict[str, Any]] = {}
 
 
-def build_generated_sql_scripts(defn: Any, run_id: str, retention_years: int = 5) -> dict[str, str]:
-    cid_lower = defn.control_id.lower()
-    if defn.archetype == "D":
-        return {
-            "selection_sql": f"""-- 1. ACTIVE SELECTION SQL (SELECT)
--- Target: source_transactions
--- Dialect: SQLITE
-SELECT transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold
-FROM source_transactions
-WHERE transaction_date < DATE('now', '-{retention_years} years')
-  AND legal_hold = 0;""",
-            "archival_sql": f"""-- 2. ARCHIVE FIRST - INSERT INTO APPROVED ARCHIVE DATABASE
--- Destination: archive_transactions
--- Run ID: {run_id}
--- Dialect: SQLITE
-INSERT OR REPLACE INTO archive_transactions (
-  transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, status, control_run_id, verification_hash, archived_at
-)
-SELECT 
-  transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, 'ARCHIVED',
-  '{run_id}',
-  'SHA256-' || substr(hex(randomblob(16)), 1, 16),
-  CURRENT_TIMESTAMP
-FROM source_transactions
-WHERE transaction_date < DATE('now', '-{retention_years} years')
-  AND legal_hold = 0;""",
-            "cleanup_sql": f"""-- 3. SOURCE CLEANUP SQL (DELETE) - PURGE VERIFIED RECORDS (AFTER HUMAN APPROVAL)
--- Target: source_transactions
--- Run ID: {run_id}
--- Dialect: SQLITE
-DELETE FROM source_transactions
-WHERE transaction_id IN (
-  SELECT transaction_id 
-  FROM archive_transactions 
-  WHERE control_run_id = '{run_id}'
-)
-AND legal_hold = 0;""",
-        }
-    elif "vuln" in cid_lower:
-        return {
-            "selection_sql": """-- 1. VULNERABILITY INVENTORY QUERY (SELECT)
--- Target: db_vulnerabilities
-SELECT vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description
-FROM db_vulnerabilities
-ORDER BY cvss_score DESC, discovered_at ASC;""",
-            "archival_sql": """-- 2. DETERMINISTIC SLA EVALUATION QUERY
--- Checks unresolved vulnerabilities against remediation SLA thresholds
-SELECT vulnerability_id, cve_id, severity, discovered_at, status,
-  CAST((julianday('now') - julianday(discovered_at)) AS INTEGER) AS age_days
-FROM db_vulnerabilities
-WHERE status IN ('OPEN', 'IN_PROGRESS');""",
-            "cleanup_sql": """-- 3. AUDIT TRAIL LOGGING (EVIDENCE GENERATION)
--- Non-destructive: Captures query result snapshot into immutable evidence ledger
--- Zero DELETE or UPDATE operations executed.""",
-        }
-    elif "priv" in cid_lower:
-        return {
-            "selection_sql": """-- 1. ACTIVE DIRECTORY SCAN (pg_roles)
-SELECT rolname, rolsuper, rolreplication FROM pg_roles;""",
-            "archival_sql": """-- 2. IAM WHITELIST DRIFT COMPARISON
-SELECT rolname FROM pg_roles WHERE rolname NOT IN ('postgres', 'replicator') AND rolsuper = 1;""",
-            "cleanup_sql": """-- 3. ATTESTATION & ROGUE ROLE REVOCATION (AFTER HUMAN APPROVAL)
-ALTER ROLE unauthorized_root NOSUPERUSER;""",
-        }
-    else:
-        return {
-            "selection_sql": """-- 1. AUTH LOGIN & CONTRACT SUITE (GET)
--- Endpoint: /auth/login (SLA: 250ms)
-GET http://bank_api/auth/login
-Expected Status: [200, 201]
-Max Allowed Latency: 250ms""",
-            "archival_sql": """-- 2. CORE ACCOUNTS & BALANCE VERIFICATION (GET)
--- Endpoint: /accounts/{id}/balance (SLA: 150ms)
-GET http://bank_api/accounts/acc-01/balance
-EWMA Baseline: 50ms (3-sigma tolerance: 80ms)""",
-            "cleanup_sql": """-- 3. TRANSFERS & AUTOMATED ROLLBACK GATE (POST)
--- Endpoint: /transfers (SLA: 300ms)
-POST http://bank_api/transfers
-Trigger Condition: ANY(regression) == TRUE -> Halt traffic & auto-rollback""",
-        }
+def build_generated_sql_scripts(
+    defn: Any,
+    run_id: str,
+    retention_years: int = 5,
+    rules: list[dict[str, Any]] | None = None,
+    exceptions: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    res = generate_sql_with_gemini(
+        rules=rules or [],
+        exceptions=exceptions or [],
+        run_id=run_id,
+        retention_years=retention_years,
+        dialect="SQLITE",
+        control_id=defn.control_id,
+        archetype=defn.archetype,
+    )
+    return {
+        "selection_sql": res["selection_sql"],
+        "archival_sql": res["archival_sql"],
+        "cleanup_sql": res["cleanup_sql"],
+    }
 
 
 @router.get("/defaults/{control_id}")
@@ -179,21 +122,19 @@ def get_control_defaults(control_id: str) -> dict[str, Any]:
             "step5": "Authorized Source Cleanup",
         }
     elif "vuln" in cid_lower:
-        filename = "vulnerability_management_policy_v1.0.txt"
+        filename = "cis_database_vulnerability_hardening_policy_v3.2.txt"
         policy_text = (
-            "VULNERABILITY MANAGEMENT STANDARD v1.0\n\n"
-            "1. Critical vulnerabilities must be remediated within 7 days of identification.\n"
-            "2. High vulnerabilities must be remediated within 30 days.\n"
-            "3. Medium vulnerabilities must be remediated within 60 days.\n"
-            "4. Vulnerabilities with status OPEN or IN_PROGRESS are considered unresolved.\n"
-            "5. PATCHED or CLOSED vulnerabilities are considered remediated."
+            "BANK CYBERSECURITY DIRECTIVE - DATABASE HARDENING & PATCHING POLICY v3.2\n\n"
+            "Section 2.1: Production database instances must run supported versions with zero critical CVEs (minimum PostgreSQL 16.0).\n"
+            "Section 2.2: SSL/TLS encryption in transit must be enforced (ssl = 'on') with scram-sha-256 password hashing.\n"
+            "Section 2.3: Superuser roles must be strictly limited to approved administrative accounts. Public access to application schemas is prohibited."
         )
         step_labels = {
-            "step1": "Vulnerability Remediation Policy",
-            "step2": "SLA Rules & Remediation Boundaries",
-            "step3": "Target DB Scope & Inventory Discovery",
-            "step4": "Query Execution & Deterministic Evaluation",
-            "step5": "Audit Evidence & Ledger Seal",
+            "step1": "Security Standard Ingestion",
+            "step2": "Baseline Parameters & Tolerances",
+            "step3": "Target DB Scope & Config Audit",
+            "step4": "Query Execution & Rule Evaluation",
+            "step5": "Findings Review & Workpaper Sign-off",
         }
     elif "priv" in cid_lower:
         filename = "privileged_identity_access_governance_policy_v1.8.txt"
@@ -251,6 +192,126 @@ def get_control_defaults(control_id: str) -> dict[str, Any]:
     }
 
 
+_STORED_POLICIES: list[dict[str, Any]] = []
+
+
+def _init_default_policies() -> list[dict[str, Any]]:
+    policies = []
+    for defn in default_registry.list_all():
+        defaults = get_control_defaults(defn.control_id)
+        fmt = "TXT"
+        fname = defaults.get("filename", "policy.txt")
+        if fname.lower().endswith(".pdf") or defn.archetype == "D":
+            fmt = "PDF"
+            if not fname.lower().endswith(".pdf"):
+                fname = "Transaction_Data_Archival_Policy.pdf"
+
+        first_lines = [l.strip() for l in defaults.get("policy_text", "").splitlines() if l.strip()]
+        rule_peek = first_lines[2] if len(first_lines) > 2 else "Policy specification ingested and ready for analysis."
+
+        policies.append({
+            "policy_id": f"POL-{uuid.uuid4().hex[:6].upper()}",
+            "filename": fname,
+            "title": defn.title,
+            "control_id": defn.control_id,
+            "archetype": defn.archetype,
+            "risk_rating": defn.risk_rating,
+            "frequency": defn.frequency,
+            "uploaded_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            "uploaded_by": "Sushanth (Compliance Analyst)",
+            "file_size": f"{max(12, len(defaults.get('policy_text', '')) // 50)} KB",
+            "format": fmt,
+            "rules_summary": rule_peek,
+            "policy_text": defaults.get("policy_text", ""),
+            "status": "Ready",
+        })
+    return policies
+
+
+@router.get("/uploaded_policies")
+def get_uploaded_policies() -> list[dict[str, Any]]:
+    """Retrieve all uploaded compliance policy documents."""
+    global _STORED_POLICIES
+    if not _STORED_POLICIES:
+        _STORED_POLICIES = _init_default_policies()
+    return _STORED_POLICIES
+
+
+@router.delete("/uploaded_policies/{policy_id}")
+def delete_uploaded_policy(policy_id: str) -> dict[str, str]:
+    """Delete an uploaded compliance policy document."""
+    global _STORED_POLICIES
+    _STORED_POLICIES = [p for p in _STORED_POLICIES if p.get("policy_id") != policy_id]
+    return {"status": "deleted", "policy_id": policy_id}
+
+
+@router.post("/upload_policy_file")
+async def upload_policy_file(
+    file: UploadFile = File(...),
+    control_id: str | None = None,
+) -> dict[str, Any]:
+    """
+    Ingest uploaded compliance policy files (PDF, DOCX, TXT, MD)
+    and return cleanly extracted plain text, document metadata, and register to policy store.
+    """
+    global _STORED_POLICIES
+    content_bytes = await file.read()
+    if not content_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    extracted = extract_document_content(file.filename or "policy_spec.txt", content_bytes)
+
+    # Match associated control
+    matched_control = None
+    if control_id:
+        matched_control = default_registry.get_definition(control_id)
+    if not matched_control:
+        for defn in default_registry.list_all():
+            if defn.archetype == "D":
+                matched_control = defn
+                break
+        if not matched_control:
+            all_defs = default_registry.list_all()
+            if all_defs:
+                matched_control = all_defs[0]
+
+    fmt = "TXT"
+    fn_lower = (file.filename or "").lower()
+    if fn_lower.endswith(".pdf"):
+        fmt = "PDF"
+    elif fn_lower.endswith((".docx", ".doc")):
+        fmt = "DOCX"
+
+    if not _STORED_POLICIES:
+        _STORED_POLICIES = _init_default_policies()
+
+    clean_title = (
+        file.filename.rsplit(".", 1)[0].replace("_", " ").replace("-", " ")
+        if file.filename
+        else "Uploaded Policy"
+    )
+
+    new_policy = {
+        "policy_id": f"POL-{uuid.uuid4().hex[:6].upper()}",
+        "filename": file.filename or "uploaded_policy.txt",
+        "title": clean_title,
+        "control_id": matched_control.control_id if matched_control else "",
+        "archetype": matched_control.archetype if matched_control else "D",
+        "risk_rating": matched_control.risk_rating if matched_control else "critical",
+        "frequency": matched_control.frequency if matched_control else "on_event",
+        "uploaded_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "uploaded_by": "Sushanth (Compliance Analyst)",
+        "file_size": f"{max(1, len(content_bytes) // 1024)} KB",
+        "format": fmt,
+        "rules_summary": f"Ingested {len(extracted.get('text', '').splitlines())} lines. Ready for automated parsing and execution.",
+        "policy_text": extracted.get("text", ""),
+        "status": "Ready",
+    }
+    _STORED_POLICIES.insert(0, new_policy)
+    extracted["policy_id"] = new_policy["policy_id"]
+    return extracted
+
+
 @router.post("/interpret")
 async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
     """Step 1: Dynamically extract policy rules and citations from user input or uploaded text."""
@@ -261,12 +322,37 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
     text = req.document_text or ""
     filename = req.filename or "policy_document.txt"
 
+    # Auto-decode if raw PDF or Word binary string was passed
+    clean_strip = text.strip()
+    if clean_strip.startswith("%PDF-"):
+        from core.document_extractor import extract_text_from_pdf
+        try:
+            decoded_text, _ = extract_text_from_pdf(clean_strip.encode("latin-1"))
+            if decoded_text.strip():
+                text = decoded_text
+        except Exception:
+            pass
+    elif clean_strip.startswith("PK\x03\x04"):
+        from core.document_extractor import extract_text_from_docx
+        try:
+            decoded_text = extract_text_from_docx(clean_strip.encode("latin-1"))
+            if decoded_text.strip():
+                text = decoded_text
+        except Exception:
+            pass
+
     parsed = parse_policy_specification(text, default_archetype=defn.archetype)
 
     run_id = f"RUN-{uuid.uuid4().hex[:8]}"
 
     ret_years = parsed.get("retention_years", 5)
-    sql_scripts = build_generated_sql_scripts(defn, run_id, ret_years)
+    sql_scripts = build_generated_sql_scripts(
+        defn,
+        run_id,
+        retention_years=ret_years,
+        rules=parsed.get("rules", []),
+        exceptions=parsed.get("exceptions", []),
+    )
 
     session = {
         "run_id": run_id,
