@@ -1,9 +1,79 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
 import yaml
+
 from contracts.models import RuleResult, RuleResultDetails, RuleSpec
 
 CATALOGS_DIR = Path(__file__).resolve().parent.parent.parent / "catalogs"
+
+# Optional domain evaluator registry: maps primitive/evaluator names to deterministic evaluators
+# Signature: (rows, rule, baseline, severity_policy) -> tuple[bool, RuleResultDetails]
+_DOMAIN_EVALUATORS: dict[str, Callable[[list[dict[str, Any]], RuleSpec, dict[str, Any], dict[str, int] | None], tuple[bool, RuleResultDetails]]] = {}
+
+
+def register_domain_evaluator(
+    name: str,
+    fn: Callable[[list[dict[str, Any]], RuleSpec, dict[str, Any], dict[str, int] | None], tuple[bool, RuleResultDetails]],
+) -> None:
+    """Register a deterministic domain evaluator for a declarative rule primitive."""
+    _DOMAIN_EVALUATORS[name] = fn
+
+
+def get_domain_evaluator(name: str) -> Any | None:
+    """Retrieve registered domain evaluator by name."""
+    return _DOMAIN_EVALUATORS.get(name)
+
+
+def evaluate_vulnerability_sla_rule(
+    rows: list[dict[str, Any]],
+    rule: RuleSpec,
+    baseline: dict[str, Any],
+    severity_policy: dict[str, int] | None = None,
+) -> tuple[bool, RuleResultDetails]:
+    """Deterministic domain evaluation for vulnerability remediation SLAs."""
+    from core.vulnerability_engine import DEFAULT_VULNERABILITY_RULES, evaluate_single_vulnerability
+
+    if severity_policy:
+        active_rules_by_sev = {
+            sev.upper(): {
+                "rule_id": f"VULN-SLA-{sev.upper()}",
+                "severity": sev.upper(),
+                "max_age_days": days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            }
+            for sev, days in severity_policy.items()
+        }
+    else:
+        active_rules_by_sev = {str(r.get("severity", "")).upper(): r for r in DEFAULT_VULNERABILITY_RULES}
+
+    evaluations: list[dict[str, Any]] = []
+    violations: list[dict[str, Any]] = []
+
+    for r in rows:
+        ev = evaluate_single_vulnerability(r, active_rules_by_sev)
+        evaluations.append(ev)
+        if ev.get("result") == "FAIL":
+            violations.append(ev)
+
+    passed = len(violations) == 0
+    details = RuleResultDetails(
+        context={
+            "evaluations": evaluations,
+            "violations": violations,
+            "total_scanned": len(evaluations),
+            "compliant": len(evaluations) - len(violations),
+            "violations_count": len(violations),
+            "severity_policy": severity_policy or {},
+        }
+    )
+    return passed, details
+
+
+# Register standard domain evaluators
+register_domain_evaluator("vulnerability_sla", evaluate_vulnerability_sla_rule)
+register_domain_evaluator("sla_remediation", evaluate_vulnerability_sla_rule)
 
 
 def load_baseline(baseline_ref: str | None) -> dict[str, Any]:
@@ -26,6 +96,7 @@ class RuleEngine:
         evidence_data: dict[str, Any],
         baseline_data: dict[str, Any] | None = None,
         previous_period_data: dict[str, Any] | None = None,
+        severity_policy: dict[str, int] | None = None,
     ) -> RuleResult:
         primitive = rule.primitive
         baseline = baseline_data or {}
@@ -143,7 +214,7 @@ class RuleEngine:
                 prev_rows = previous_period_data.get("rows", [])
                 key_fields = rule.key_fields or ([field] if field else ["id"])
 
-                def make_key(r: dict[str, Any]) -> tuple:
+                def make_key(r: dict[str, Any]) -> tuple[Any, ...]:
                     return tuple(r.get(k) for k in key_fields)
 
                 curr_keys = {make_key(r) for r in rows}
@@ -172,6 +243,10 @@ class RuleEngine:
                         context={"vulnerable_version": ver, "product": product}
                     )
                     break
+
+        elif primitive in _DOMAIN_EVALUATORS:
+            eval_fn = _DOMAIN_EVALUATORS[primitive]
+            passed, details = eval_fn(rows, rule, baseline, severity_policy)
 
         else:
             raise NotImplementedError(f"Unsupported rule primitive: '{primitive}'")

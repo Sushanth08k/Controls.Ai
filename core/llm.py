@@ -2,16 +2,16 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
 os.environ["LITELLM_TELEMETRY"] = "False"
 os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 import litellm
-litellm.telemetry = False
 
-T = TypeVar("T", bound=BaseModel)
+litellm.telemetry = False
+litellm.suppress_debug_info = True
 
 # Default template root relative to project root
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "agents" / "templates"
@@ -38,7 +38,7 @@ def render_template(template_text: str, inputs: dict[str, Any]) -> str:
     return rendered
 
 
-def structured_call(
+def structured_call[T: BaseModel](
     role: str,
     template_id: str,
     template_version: str | int,
@@ -58,7 +58,7 @@ def structured_call(
     prompt = render_template(template_content, inputs)
 
     # Compute prompt hash for observability/ledger
-    prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    _prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
     schema = output_model.model_json_schema()
     system_instruction = (
@@ -97,7 +97,7 @@ def structured_call(
             })
 
         try:
-            response = litellm.completion(
+            response: Any = litellm.completion(
                 model=model_name,
                 messages=messages,
                 temperature=temperature,

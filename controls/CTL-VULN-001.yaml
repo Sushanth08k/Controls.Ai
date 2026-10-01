@@ -17,6 +17,7 @@ evidence:
   - {id: hba,           connector: postgres, operation: catalog_query, catalog_ref: VQ-007}
   - {id: extensions,    connector: postgres, operation: catalog_query, catalog_ref: VQ-008}
   - {id: version,       connector: postgres, operation: catalog_query, catalog_ref: VQ-009}
+  - {id: vulnerabilities, connector: postgres, operation: catalog_query, catalog_ref: VQ-013}
 rules:
   - {id: R1, primitive: subset_of, evidence_ref: superusers, field: rolname, baseline_key: approved_superusers, severity: high, on_fail: finding}
   - {id: R2, primitive: row_count, evidence_ref: public_grants, op: "==", n: 0, severity: medium, on_fail: finding}
@@ -27,6 +28,7 @@ rules:
   - {id: R7, primitive: version_not_vulnerable, evidence_ref: version, field: version, product: postgresql, severity: high, on_fail: finding,
      evaluator_task: {agent: evaluator, template_id: cve_applicability, template_version: 1}}
   - {id: R8, primitive: no_drift, evidence_ref: superusers, key_fields: [rolname], severity: medium, on_fail: finding}
+  - {id: R9, primitive: vulnerability_sla, evidence_ref: vulnerabilities, severity: high, on_fail: finding}
 baseline_ref: baselines/postgres_cis_min.yaml
 agent_tasks:
   - {agent: challenger, template_id: finding_challenge, template_version: 1, when: per_finding}

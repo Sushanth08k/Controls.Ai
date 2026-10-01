@@ -82,3 +82,10 @@ queries:
     sql: "SELECT p.proname, p.prosecdef, r.rolname FROM pg_proc p JOIN pg_roles r ON p.proowner = r.oid WHERE p.prosecdef = true AND r.rolsuper = true ORDER BY p.proname;"
     expected_columns: [proname, prosecdef, rolname]
     notes: High privilege escalation risk functions
+
+  - id: VQ-013
+    version: 1
+    title: Database vulnerability findings
+    sql: "SELECT vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description FROM db_vulnerabilities ORDER BY cvss_score DESC, discovered_at ASC;"
+    expected_columns: [vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description]
+    notes: Database vulnerabilities for remediation SLA review
