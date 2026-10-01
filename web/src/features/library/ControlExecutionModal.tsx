@@ -10,6 +10,7 @@ import {
   approveGate,
   commitCleanup,
   reseedDatabase,
+  uploadPolicyDocument,
 } from '../../api/client';
 import {
   X,
@@ -26,6 +27,7 @@ import {
   ArrowRight,
   Terminal,
   PlayCircle,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface ControlExecutionModalProps {
@@ -33,6 +35,8 @@ interface ControlExecutionModalProps {
   currentUser: UserSessionDTO;
   onClose: () => void;
   onRunCompleted?: () => void;
+  initialPolicyText?: string;
+  initialFileName?: string;
 }
 
 export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
@@ -40,11 +44,13 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   currentUser,
   onClose,
   onRunCompleted,
+  initialPolicyText,
+  initialFileName,
 }) => {
   // Mode: 1 = Upload / Ingestion, 2 = Policy Analysis, 3 = Control Runs Console
   const [viewMode, setViewMode] = useState<number>(1);
-  const [policyText, setPolicyText] = useState<string>('');
-  const [fileName, setFileName] = useState<string>('policy_spec.txt');
+  const [policyText, setPolicyText] = useState<string>(initialPolicyText || '');
+  const [fileName, setFileName] = useState<string>(initialFileName || 'policy_spec.txt');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,24 +91,48 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
 
   // Load defaults on mount
   useEffect(() => {
+    if (initialPolicyText) {
+      setPolicyText(initialPolicyText);
+      if (initialFileName) setFileName(initialFileName);
+      return;
+    }
     fetchControlDefaults(control.control_id)
       .then((data) => {
         if (data.policy_text) setPolicyText(data.policy_text);
         if (data.filename) setFileName(data.filename);
       })
       .catch((err) => console.error('Failed to load defaults:', err));
-  }, [control.control_id]);
+  }, [control.control_id, initialPolicyText, initialFileName]);
 
-  // Handle file upload
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle file upload (Supports PDF, DOCX, TXT, MD)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setFileName(file.name);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setPolicyText((event.target?.result as string) || '');
-      };
-      reader.readAsText(file);
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await uploadPolicyDocument(file);
+        if (res.text && res.text.trim()) {
+          setPolicyText(res.text);
+        } else {
+          setError(`No text content could be extracted from ${file.name}`);
+        }
+      } catch (err: any) {
+        console.warn('Backend file extraction failed, attempting fallback:', err);
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const raw = (event.target?.result as string) || '';
+          if (!raw.startsWith('%PDF-') && !raw.startsWith('PK\x03\x04')) {
+            setPolicyText(raw);
+          } else {
+            setError(`Could not extract binary document ${file.name}. Please ensure file is valid or paste text directly.`);
+          }
+        };
+        reader.readAsText(file);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -387,8 +417,8 @@ AND legal_hold = 0;`,
                 <label className="border-2 border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors bg-white">
                   <Upload className="w-7 h-7 text-emerald-600 mb-2" />
                   <span className="text-xs font-semibold text-slate-800">Upload Specification File</span>
-                  <span className="text-[11px] text-slate-500 mt-0.5">TXT, Markdown, or PDF Document</span>
-                  <input type="file" onChange={handleFileUpload} className="hidden" />
+                  <span className="text-[11px] text-slate-500 mt-0.5">PDF, Word (DOCX), Markdown, or TXT</span>
+                  <input type="file" onChange={handleFileUpload} className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.rtf,.csv" />
                 </label>
                 <div className="p-5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between shadow-xs">
                   <div>
@@ -532,6 +562,95 @@ AND legal_hold = 0;`,
                   </div>
                 )}
               </div>
+
+              {/* Extracted Exceptions & Legal Exclusions Section */}
+              {extractedData.exceptions && extractedData.exceptions.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShieldAlert className="w-4 h-4 text-amber-600" />
+                      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                        Extracted Exceptions & Legal Exclusions ({extractedData.exceptions.length})
+                      </h4>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      Active Exclusions from Source Purge
+                    </span>
+                  </div>
+
+                  {extractedData.exceptions.map((exc: any, idx: number) => {
+                    const excId = exc.exception_id || `EXC-${String(idx + 1).padStart(3, '0')}`;
+                    return (
+                      <div
+                        key={excId}
+                        className="bg-white p-5 rounded-xl border border-amber-200 shadow-xs space-y-3 bg-gradient-to-r from-amber-50/20 to-transparent"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-amber-900">{excId}</span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            EXCLUSION
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-800 font-medium">
+                          {exc.reason || exc.description || exc.title || 'Record subject to active legal hold or regulatory exclusion.'}
+                        </p>
+
+                        <div className="bg-amber-50/60 p-3 rounded-lg border border-amber-200 font-mono text-xs space-y-1">
+                          <span className="text-[10px] text-amber-700 uppercase block font-semibold">
+                            exclusion criteria
+                          </span>
+                          <div className="text-slate-800 font-bold">
+                            {exc.field || 'legal_hold'}
+                          </div>
+                          <div className="text-slate-600 text-[11px]">
+                            {exc.operator || 'EQUALS'}
+                          </div>
+                          <div className="text-slate-600 text-[11px]">
+                            {String(exc.value ?? 'true')}
+                          </div>
+                        </div>
+
+                        <div className="text-xs font-mono text-slate-700 flex items-center justify-between">
+                          <span>
+                            Operation: <strong className="text-amber-700 font-bold">{exc.action || 'EXCLUDE FROM PURGE & ARCHIVE'}</strong>
+                          </span>
+                          <span className="text-[11px] text-amber-600 font-sans font-medium">
+                            Protected from deletion
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Extracted Ambiguities Section (if any detected) */}
+              {extractedData.ambiguities && extractedData.ambiguities.length > 0 && (
+                <div className="space-y-3 pt-3 border-t border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600" />
+                    <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                      Ambiguous Items Requiring Human Review ({extractedData.ambiguities.length})
+                    </h4>
+                  </div>
+                  {extractedData.ambiguities.map((amb: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs space-y-2 bg-gradient-to-r from-rose-50/20 to-transparent"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-bold text-rose-800">
+                          {amb.type || `AMB-${String(idx + 1).padStart(3, '0')}`}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                          {amb.severity || 'NEEDS REVIEW'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-700">{amb.description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Bottom Buttons: Back & Continue to Execution */}
               <div className="flex items-center justify-between pt-4 border-t border-slate-200">

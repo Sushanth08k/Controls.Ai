@@ -66,7 +66,7 @@ This document details the current implementation progress across backend engines
   - **Forest Green Compliance Header:** *"Archive first. Verify. Then obtain human approval before source cleanup. Source records are never removed without an approval on record."*
   - **Breadcrumb Lifecycle Stepper:** 10-pill visual progression (`Upload` $\to$ `AI analysis` $\to$ `Structured rules` $\to$ `Execution` $\to$ `Archival` $\to$ `Verification` $\to$ `Human approval` $\to$ `Source cleanup` $\to$ `Final verification` $\to$ `Audit evidence`).
   - **Screen 1 (Ingestion):** Interactive policy editor, document selector, file upload, and rule extractor trigger.
-  - **Screen 2 (Policy Analysis):** Green status banner, 3 summary metrics (`RULES DETECTED: 2`, `EXCEPTIONS DETECTED: 0`, `AMBIGUOUS ITEMS: 0`), policy scope card, and structured rule cards (`RULE-001`, `RULE-002`) with conditions and `[VALID]` tags.
+  - **Screen 2 (Policy Analysis):** Green status banner, 3 summary metrics (`RULES DETECTED`, `EXCEPTIONS DETECTED`, `AMBIGUOUS ITEMS`), policy scope card, structured rule cards (`RULE-001`, `RULE-002`, etc.) with conditions and `[VALID]` tags, dedicated **Extracted Exceptions & Legal Exclusions cards** (`EXC-001`, `EXC-002`, etc.) with exclusion criteria (`legal_hold`, `investigation_status`, active hold filters) and protected action badges, plus ambiguous items review cards.
   - **Screen 3 (Control Runs Console):**
     - Quick actions: `[Reseed Active DB]` and `[+ Start New Control Run]`.
     - Active Run Pill: `RUN-062b4c91: Transaction Data Archival Policy (SQLITE | Total: 50 | Eligible: 33 | Archived: [N])`.
@@ -75,6 +75,13 @@ This document details the current implementation progress across backend engines
     - Dynamic Context Action Buttons: Step 2 Archival INSERT $\to$ Step 3 Merkle Verification $\to$ Step 4 Human Approval $\to$ Step 5 Source Purge DELETE.
     - Generated SQL Compliance Script terminal with tabs: `1. Active Selection SQL (SELECT)`, `2. Archival SQL (INSERT)`, `3. Source Cleanup SQL (DELETE)` with copy-to-clipboard.
     - Tabbed Live Database Inspector: `Control Run Evaluation (50)`, `Active DB (source_transactions) (50→17)`, and `Archive DB (archive_transactions) (0→33)` with live status indicators.
+
+### 2.6 Dynamic Schema-Aware SQL Generator & Gemini API (`core/sql_generator.py`)
+- **Status:** **Completed & Operational**
+- **Capabilities:**
+  - **Live Database Schema Inspection:** Automatically queries the database catalog (`sqlite_master`) to extract exact relational DDL schemas (`source_transactions`, `archive_transactions`, `database_users`, etc.).
+  - **Gemini API Integration:** When configured with `GEMINI_API_KEY`, issues a zero-shot structured JSON completion prompt (`gemini-1.5-flash`) grounded strictly in the live database schema, extracted rules, and hold exceptions.
+  - **Resilient Fallback to Previous Approach:** If `GEMINI_API_KEY` is not provided, is invalid, or if the API call experiences a timeout or network failure, the system automatically falls back to our previous deterministic, tested SQL compilation approach without breaking the workflow or raising runtime errors.
 
 ---
 
