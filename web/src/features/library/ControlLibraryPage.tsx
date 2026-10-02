@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { ControlDefinitionDTO, UserSessionDTO } from '../../types';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
 import { ControlExecutionModal } from './ControlExecutionModal';
+import { VulnerabilityExecutionModal } from './VulnerabilityExecutionModal';
 import {
   fetchUploadedPolicies,
   uploadPolicyDocument,
@@ -383,21 +384,39 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
 
       {/* Interactive Compliance Execution Studio Modal */}
       {modalControl && (
-        <ControlExecutionModal
-          control={modalControl}
-          currentUser={currentUser}
-          initialPolicyText={activePolicy?.policy_text}
-          initialFileName={activePolicy?.filename}
-          onClose={() => {
-            setModalControl(null);
-            setActivePolicy(null);
-          }}
-          onRunCompleted={() => {
-            if (onTriggerRun && modalControl) {
-              onTriggerRun(modalControl.control_id);
-            }
-          }}
-        />
+        modalControl.control_id.toLowerCase().includes('vuln') ? (
+          <VulnerabilityExecutionModal
+            control={modalControl}
+            currentUser={currentUser}
+            initialPolicyText={activePolicy?.policy_text}
+            initialFileName={activePolicy?.filename}
+            onClose={() => {
+              setModalControl(null);
+              setActivePolicy(null);
+            }}
+            onRunCompleted={() => {
+              if (onTriggerRun && modalControl) {
+                onTriggerRun(modalControl.control_id);
+              }
+            }}
+          />
+        ) : (
+          <ControlExecutionModal
+            control={modalControl}
+            currentUser={currentUser}
+            initialPolicyText={activePolicy?.policy_text}
+            initialFileName={activePolicy?.filename}
+            onClose={() => {
+              setModalControl(null);
+              setActivePolicy(null);
+            }}
+            onRunCompleted={() => {
+              if (onTriggerRun && modalControl) {
+                onTriggerRun(modalControl.control_id);
+              }
+            }}
+          />
+        )
       )}
     </div>
   );

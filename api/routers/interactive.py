@@ -122,18 +122,20 @@ def get_control_defaults(control_id: str) -> dict[str, Any]:
             "step5": "Authorized Source Cleanup",
         }
     elif "vuln" in cid_lower:
-        filename = "cis_database_vulnerability_hardening_policy_v3.2.txt"
+        filename = "vulnerability_management_policy_v1.0.txt"
         policy_text = (
-            "BANK CYBERSECURITY DIRECTIVE - DATABASE HARDENING & PATCHING POLICY v3.2\n\n"
-            "Section 2.1: Production database instances must run supported versions with zero critical CVEs (minimum PostgreSQL 16.0).\n"
-            "Section 2.2: SSL/TLS encryption in transit must be enforced (ssl = 'on') with scram-sha-256 password hashing.\n"
-            "Section 2.3: Superuser roles must be strictly limited to approved administrative accounts. Public access to application schemas is prohibited."
+            "VULNERABILITY MANAGEMENT STANDARD v1.0\n\n"
+            "1. Critical vulnerabilities must be remediated within 7 days of identification.\n"
+            "2. High vulnerabilities must be remediated within 30 days.\n"
+            "3. Medium vulnerabilities must be remediated within 60 days.\n"
+            "4. Vulnerabilities with status OPEN or IN_PROGRESS are considered unresolved.\n"
+            "5. PATCHED or CLOSED vulnerabilities are considered remediated."
         )
         step_labels = {
-            "step1": "Security Standard Ingestion",
-            "step2": "Baseline Parameters & Tolerances",
-            "step3": "Target DB Scope & Config Audit",
-            "step4": "Query Execution & Rule Evaluation",
+            "step1": "Control / Policy",
+            "step2": "AI Policy Analysis",
+            "step3": "Target Discovery",
+            "step4": "Query Generation",
             "step5": "Findings Review & Workpaper Sign-off",
         }
     elif "priv" in cid_lower:

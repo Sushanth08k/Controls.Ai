@@ -5,6 +5,7 @@ import { StatusPill } from '../../components/StatusPill';
 import { SeverityTag } from '../../components/SeverityTag';
 import { EvidenceChip } from '../../components/EvidenceChip';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
+import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
 import { Plus, ArrowUpRight, ShieldCheck, Database, Server, Cpu, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -418,14 +419,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       {/* Interactive Compliance Execution Modal */}
       {modalControl && (
-        <ControlExecutionModal
-          control={modalControl}
-          currentUser={currentUser}
-          onClose={() => setModalControl(null)}
-          onRunCompleted={() => {
-            if (onTriggerRun) onTriggerRun(modalControl.control_id);
-          }}
-        />
+        modalControl.control_id.toLowerCase().includes('vuln') ? (
+          <VulnerabilityExecutionModal
+            control={modalControl}
+            currentUser={currentUser}
+            onClose={() => setModalControl(null)}
+            onRunCompleted={() => {
+              if (onTriggerRun) onTriggerRun(modalControl.control_id);
+            }}
+          />
+        ) : (
+          <ControlExecutionModal
+            control={modalControl}
+            currentUser={currentUser}
+            onClose={() => setModalControl(null)}
+            onRunCompleted={() => {
+              if (onTriggerRun) onTriggerRun(modalControl.control_id);
+            }}
+          />
+        )
       )}
     </div>
   );
