@@ -6,8 +6,9 @@ import { SeverityTag } from '../../components/SeverityTag';
 import { EvidenceChip } from '../../components/EvidenceChip';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
-import { Plus, ArrowUpRight, ShieldCheck, Database, Server, Cpu, Play } from 'lucide-react';
+import { Plus, ArrowUpRight, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { formatFrequency } from '../../utils/formatFrequency';
 
 interface DashboardPageProps {
   controls: ControlDefinitionDTO[];
@@ -44,45 +45,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
-  const workflowSteps = [
-    'Upload',
-    'AI analysis',
-    'Structured rules',
-    'Execution',
-    'Archival',
-    'Verification',
-    'Human approval',
-    'Source cleanup',
-    'Final verification',
-    'Audit evidence',
-  ];
-
   return (
     <div className="space-y-6">
-      {/* Top Compliance Guardrail Banner */}
-      <div className="bg-[#0e3526] text-white -mx-6 md:-mx-8 -mt-6 md:-mt-8 px-6 md:px-8 py-4 border-b border-[#184633] shadow-xs">
-        <div className="max-w-7xl">
-          <h2 className="text-sm md:text-base font-bold text-white tracking-tight">
-            Archive first. Verify. Then obtain human approval before source cleanup.
-          </h2>
-          <p className="text-xs text-[#a2c4b5] mt-1 font-normal">
-            Source records are never removed without an approval on record.
-          </p>
-        </div>
-      </div>
-
-      {/* Workflow Step Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 scrollbar-none">
-        {workflowSteps.map((step) => (
-          <span
-            key={step}
-            className="px-3.5 py-1 bg-white border border-slate-200 rounded-full text-xs font-medium text-slate-700 whitespace-nowrap shadow-2xs hover:border-slate-300 hover:text-slate-900 transition-colors cursor-default"
-          >
-            {step}
-          </span>
-        ))}
-      </div>
-
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h1>
@@ -222,7 +186,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <div className="grid grid-cols-2 gap-2 text-xs py-2 px-3 rounded-lg bg-slate-50 border border-slate-200 mb-4">
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase font-medium">Frequency</span>
-                    <span className="font-mono text-slate-800 font-semibold">{c.frequency}</span>
+                    <span className="text-slate-800 font-medium">{formatFrequency(c.frequency)}</span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[10px] uppercase font-medium">Risk Rating</span>
@@ -254,69 +218,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* Control Lifecycle Card */}
-      <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs">
-        <h3 className="text-base font-bold text-slate-900 tracking-tight">Control lifecycle</h3>
-        <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-          Upload policy <span className="text-slate-400">→</span> AI policy analysis{' '}
-          <span className="text-slate-400">→</span> structured rules{' '}
-          <span className="text-slate-400">→</span> control execution{' '}
-          <span className="text-slate-400">→</span> archival{' '}
-          <span className="text-slate-400">→</span> independent verification{' '}
-          <span className="text-slate-400">→</span> human approval{' '}
-          <span className="text-slate-400">→</span> controlled source cleanup{' '}
-          <span className="text-slate-400">→</span> final verification{' '}
-          <span className="text-slate-400">→</span> audit evidence.
-        </p>
-      </div>
 
-      {/* System Status Section */}
-      <div className="bg-white rounded-xl border border-slate-200/90 p-5 shadow-xs space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-bold text-slate-900 tracking-tight">System Status</h3>
-          <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 tracking-wider">
-            OPERATIONAL
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
-              <Database className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Spark Database</span>
-            </div>
-            <div className="text-xs font-semibold text-slate-900">Local Spark Simulator</div>
-            <span className="text-[11px] text-emerald-600 font-medium">Ready for SQL execution</span>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
-              <Cpu className="w-3.5 h-3.5 text-blue-600" />
-              <span>OPA Policy Engine</span>
-            </div>
-            <div className="text-xs font-semibold text-slate-900">Rego v0.68.0</div>
-            <span className="text-[11px] text-blue-600 font-medium">Zero-trust gates active</span>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
-              <Server className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Realtime SSE</span>
-            </div>
-            <div className="text-xs font-semibold text-slate-900">Live Event Stream</div>
-            <span className="text-[11px] text-indigo-600 font-medium">Realtime connected</span>
-          </div>
-
-          <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2 text-xs font-medium text-slate-500 mb-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-              <span>Audit Ledger</span>
-            </div>
-            <div className="text-xs font-semibold text-slate-900">SHA-256 Merkle Tree</div>
-            <span className="text-[11px] text-amber-700 font-medium">Tamper-evident log</span>
-          </div>
-        </div>
-      </div>
 
       {/* Active & Recent Executions Table */}
       <div className="bg-white rounded-xl p-5 border border-slate-200/90 shadow-xs">
