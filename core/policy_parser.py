@@ -221,7 +221,7 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
                 if op in ("ARCHIVE", "RETAIN", "DELETE"):
                     # Find age condition
                     age_m = re.search(
-                        r"(?:older than|retained for (?:at least )?|more than|exceeding)\s+(\w+)\s+(years?|months?|days?)",
+                        r"(?:older than|retained for(?:\s+at least)?|more than|exceeding)\s+(\w+)\s+(years?|months?|days?)",
                         r_body,
                         re.I,
                     )

@@ -27,57 +27,57 @@ def get_archive_connection() -> sqlite3.Connection:
 
 # Canonical seed matching user's compliance screenshots (50 total, 33 eligible > 5yr, 17 recent)
 COMPLIANCE_TRANSACTIONS_SEED = [
-    ("TXN-171786", "ACC-001001", "Orion BioTech", "2020-03-28", 15427.95, "WIRE", 0, "ACTIVE"),
-    ("TXN-171788", "ACC-001002", "GlobalTech Inc", "2019-02-15", 43762.20, "ACH", 0, "ACTIVE"),
-    ("TXN-171790", "ACC-001003", "Pinnacle Retail", "2018-09-12", 88910.29, "CHECK", 0, "ACTIVE"),
-    ("TXN-171791", "ACC-001001", "Delta Aviation", "2020-12-20", 43043.15, "WIRE", 0, "ACTIVE"),
-    ("TXN-171793", "ACC-001002", "Eagle Industrial", "2018-04-09", 11908.12, "ACH", 0, "ACTIVE"),
-    ("TXN-171794", "ACC-001003", "Cascade Robotics", "2020-10-19", 50419.50, "WIRE", 0, "ACTIVE"),
-    ("TXN-171795", "ACC-001004", "Sterling Capital", "2018-08-02", 51526.63, "WIRE", 0, "ACTIVE"),
-    ("TXN-171796", "ACC-001005", "Pioneer Energy", "2021-08-18", 82287.03, "CHECK", 0, "ACTIVE"),
-    ("TXN-171797", "ACC-001001", "Nexus Financial", "2021-07-07", 87917.77, "WIRE", 0, "ACTIVE"),
-    ("TXN-171798", "ACC-001002", "Orion BioTech", "2018-08-08", 91193.63, "ACH", 0, "ACTIVE"),
-    ("TXN-171801", "ACC-001003", "Apex Logistics", "2019-05-14", 34210.50, "WIRE", 0, "ACTIVE"),
-    ("TXN-171802", "ACC-001004", "Summit Healthcare", "2020-01-22", 67890.10, "ACH", 0, "ACTIVE"),
-    ("TXN-171803", "ACC-001005", "Atlas Security", "2018-11-30", 12450.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171804", "ACC-001001", "Beacon Media Corp", "2019-07-19", 98320.75, "CHECK", 0, "ACTIVE"),
-    ("TXN-171805", "ACC-001002", "Vanguard Dynamics", "2021-03-11", 45670.20, "WIRE", 0, "ACTIVE"),
-    ("TXN-171806", "ACC-001003", "Quantum Holdings", "2018-06-25", 81200.00, "ACH", 0, "ACTIVE"),
-    ("TXN-171807", "ACC-001004", "Horizon Solar LLC", "2020-04-18", 29800.45, "WIRE", 0, "ACTIVE"),
-    ("TXN-171808", "ACC-001005", "Titan Manufacturing", "2019-10-05", 73400.90, "WIRE", 0, "ACTIVE"),
-    ("TXN-171809", "ACC-001001", "Crestline Maritime", "2018-12-14", 62150.30, "ACH", 0, "ACTIVE"),
-    ("TXN-171810", "ACC-001002", "Zenith Telecom", "2021-01-29", 39900.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171811", "ACC-001003", "Aura Pharmaceuticals", "2019-08-23", 84500.15, "CHECK", 0, "ACTIVE"),
-    ("TXN-171812", "ACC-001004", "Solaria Energy", "2020-09-17", 52300.80, "WIRE", 0, "ACTIVE"),
-    ("TXN-171813", "ACC-001005", "Prime Freight LLC", "2018-03-31", 17600.25, "ACH", 0, "ACTIVE"),
-    ("TXN-171814", "ACC-001001", "Echelon Financial", "2021-04-06", 96780.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171815", "ACC-001002", "Cobalt Mining Corp", "2019-11-12", 41250.60, "WIRE", 0, "ACTIVE"),
-    ("TXN-171816", "ACC-001003", "Vertex Software", "2020-07-04", 63900.00, "ACH", 0, "ACTIVE"),
-    ("TXN-171817", "ACC-001004", "Omni Distribution", "2018-10-27", 30500.40, "CHECK", 0, "ACTIVE"),
-    ("TXN-171818", "ACC-001005", "Synergy Consulting", "2021-05-19", 78400.95, "WIRE", 0, "ACTIVE"),
-    ("TXN-171819", "ACC-001001", "Borealis Aerospace", "2019-01-16", 55200.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171820", "ACC-001002", "Nova Petrochemicals", "2020-08-30", 88100.50, "ACH", 0, "ACTIVE"),
-    ("TXN-171821", "ACC-001003", "Kestrel Analytics", "2018-05-21", 23400.10, "WIRE", 0, "ACTIVE"),
-    ("TXN-171822", "ACC-001004", "Silverline Rail", "2021-02-14", 69700.75, "CHECK", 0, "ACTIVE"),
-    ("TXN-171823", "ACC-001005", "Aegis Defense Systems", "2019-09-08", 94100.00, "WIRE", 0, "ACTIVE"),
+    ("TXN-171786", "ACC-001001", "Orion BioTech", "2020-03-28", 15427.95, "WIRE", 0, "TKT-2020-8841", "NONE", "DOC-KYC-7712", "ACTIVE"),
+    ("TXN-171788", "ACC-001002", "GlobalTech Inc", "2019-02-15", 43762.20, "ACH", 0, None, "NONE", "DOC-TAX-8910", "ACTIVE"),
+    ("TXN-171790", "ACC-001003", "Pinnacle Retail", "2018-09-12", 88910.29, "CHECK", 0, "TKT-2018-4421", "RESOLVED", "DOC-INV-3041", "ACTIVE"),
+    ("TXN-171791", "ACC-001001", "Delta Aviation", "2020-12-20", 43043.15, "WIRE", 0, None, "NONE", "DOC-WIRE-5521", "ACTIVE"),
+    ("TXN-171793", "ACC-001002", "Eagle Industrial", "2018-04-09", 11908.12, "ACH", 0, "TKT-2018-1902", "NONE", "DOC-CORR-1982", "ACTIVE"),
+    ("TXN-171794", "ACC-001003", "Cascade Robotics", "2020-10-19", 50419.50, "WIRE", 0, None, "NONE", "DOC-KYC-8831", "ACTIVE"),
+    ("TXN-171795", "ACC-001004", "Sterling Capital", "2018-08-02", 51526.63, "WIRE", 0, "TKT-2018-9014", "RESOLVED", "DOC-INV-9921", "ACTIVE"),
+    ("TXN-171796", "ACC-001005", "Pioneer Energy", "2021-08-18", 82287.03, "CHECK", 0, None, "NONE", "DOC-TAX-4412", "ACTIVE"),
+    ("TXN-171797", "ACC-001001", "Nexus Financial", "2021-07-07", 87917.77, "WIRE", 0, "TKT-2021-3312", "NONE", "DOC-WIRE-7741", "ACTIVE"),
+    ("TXN-171798", "ACC-001002", "Orion BioTech", "2018-08-08", 91193.63, "ACH", 0, None, "NONE", "DOC-KYC-9011", "ACTIVE"),
+    ("TXN-171801", "ACC-001003", "Apex Logistics", "2019-05-14", 34210.50, "WIRE", 0, "TKT-2019-5512", "NONE", "DOC-INV-1120", "ACTIVE"),
+    ("TXN-171802", "ACC-001004", "Summit Healthcare", "2020-01-22", 67890.10, "ACH", 0, None, "NONE", "DOC-CORR-3321", "ACTIVE"),
+    ("TXN-171803", "ACC-001005", "Atlas Security", "2018-11-30", 12450.00, "WIRE", 0, "TKT-2018-7731", "NONE", "DOC-TAX-6601", "ACTIVE"),
+    ("TXN-171804", "ACC-001001", "Beacon Media Corp", "2019-07-19", 98320.75, "CHECK", 0, None, "NONE", "DOC-KYC-2291", "ACTIVE"),
+    ("TXN-171805", "ACC-001002", "Vanguard Dynamics", "2021-03-11", 45670.20, "WIRE", 0, "TKT-2021-6623", "NONE", "DOC-WIRE-8890", "ACTIVE"),
+    ("TXN-171806", "ACC-001003", "Quantum Holdings", "2018-06-25", 81200.00, "ACH", 0, None, "RESOLVED", "DOC-INV-4451", "ACTIVE"),
+    ("TXN-171807", "ACC-001004", "Horizon Solar LLC", "2020-04-18", 29800.45, "WIRE", 0, "TKT-2020-1194", "NONE", "DOC-CORR-5512", "ACTIVE"),
+    ("TXN-171808", "ACC-001005", "Titan Manufacturing", "2019-10-05", 73400.90, "WIRE", 0, None, "NONE", "DOC-TAX-7721", "ACTIVE"),
+    ("TXN-171809", "ACC-001001", "Crestline Maritime", "2018-12-14", 62150.30, "ACH", 0, "TKT-2018-8812", "NONE", "DOC-KYC-3381", "ACTIVE"),
+    ("TXN-171810", "ACC-001002", "Zenith Telecom", "2021-01-29", 39900.00, "WIRE", 0, None, "NONE", "DOC-WIRE-9912", "ACTIVE"),
+    ("TXN-171811", "ACC-001003", "Aura Pharmaceuticals", "2019-08-23", 84500.15, "CHECK", 0, "TKT-2019-4419", "NONE", "DOC-INV-6632", "ACTIVE"),
+    ("TXN-171812", "ACC-001004", "Solaria Energy", "2020-09-17", 52300.80, "WIRE", 0, None, "NONE", "DOC-CORR-7741", "ACTIVE"),
+    ("TXN-171813", "ACC-001005", "Prime Freight LLC", "2018-03-31", 17600.25, "ACH", 0, "TKT-2018-3329", "RESOLVED", "DOC-TAX-9910", "ACTIVE"),
+    ("TXN-171814", "ACC-001001", "Echelon Financial", "2021-04-06", 96780.00, "WIRE", 0, None, "NONE", "DOC-KYC-5521", "ACTIVE"),
+    ("TXN-171815", "ACC-001002", "Cobalt Mining Corp", "2019-11-12", 41250.60, "WIRE", 0, "TKT-2019-7718", "NONE", "DOC-WIRE-3321", "ACTIVE"),
+    ("TXN-171816", "ACC-001003", "Vertex Software", "2020-07-04", 63900.00, "ACH", 0, None, "NONE", "DOC-INV-8891", "ACTIVE"),
+    ("TXN-171817", "ACC-001004", "Omni Distribution", "2018-10-27", 30500.40, "CHECK", 0, "TKT-2018-6612", "NONE", "DOC-CORR-9901", "ACTIVE"),
+    ("TXN-171818", "ACC-001005", "Synergy Consulting", "2021-05-19", 78400.95, "WIRE", 0, None, "NONE", "DOC-TAX-1123", "ACTIVE"),
+    ("TXN-171819", "ACC-001001", "Borealis Aerospace", "2019-01-16", 55200.00, "WIRE", 0, "TKT-2019-2245", "NONE", "DOC-KYC-6632", "ACTIVE"),
+    ("TXN-171820", "ACC-001002", "Nova Petrochemicals", "2020-08-30", 88100.50, "ACH", 0, None, "NONE", "DOC-WIRE-4412", "ACTIVE"),
+    ("TXN-171821", "ACC-001003", "Kestrel Analytics", "2018-05-21", 23400.10, "WIRE", 0, "TKT-2018-9904", "NONE", "DOC-INV-2210", "ACTIVE"),
+    ("TXN-171822", "ACC-001004", "Silverline Rail", "2021-02-14", 69700.75, "CHECK", 0, None, "NONE", "DOC-CORR-1145", "ACTIVE"),
+    ("TXN-171823", "ACC-001005", "Aegis Defense Systems", "2019-09-08", 94100.00, "WIRE", 0, "TKT-2019-8832", "NONE", "DOC-TAX-3390", "ACTIVE"),
     # 17 Recent Transactions (2024 - 2026, retained in source)
-    ("TXN-171824", "ACC-001001", "Orion BioTech", "2025-01-10", 18200.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171825", "ACC-001002", "GlobalTech Inc", "2024-11-22", 33400.50, "ACH", 0, "ACTIVE"),
-    ("TXN-171826", "ACC-001003", "Pinnacle Retail", "2025-03-15", 41200.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171827", "ACC-001004", "Delta Aviation", "2024-08-19", 59000.25, "CHECK", 0, "ACTIVE"),
-    ("TXN-171828", "ACC-001005", "Eagle Industrial", "2025-05-12", 27800.00, "ACH", 0, "ACTIVE"),
-    ("TXN-171829", "ACC-001001", "Cascade Robotics", "2024-12-01", 64500.80, "WIRE", 0, "ACTIVE"),
-    ("TXN-171830", "ACC-001002", "Sterling Capital", "2025-02-18", 83100.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171831", "ACC-001003", "Pioneer Energy", "2024-09-29", 37600.40, "ACH", 0, "ACTIVE"),
-    ("TXN-171832", "ACC-001004", "Nexus Financial", "2025-04-05", 92400.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171833", "ACC-001005", "Apex Logistics", "2024-10-14", 48900.60, "CHECK", 0, "ACTIVE"),
-    ("TXN-171834", "ACC-001001", "Summit Healthcare", "2025-06-20", 71200.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171835", "ACC-001002", "Atlas Security", "2024-07-08", 29400.15, "ACH", 0, "ACTIVE"),
-    ("TXN-171836", "ACC-001003", "Beacon Media Corp", "2025-01-25", 56800.00, "WIRE", 0, "ACTIVE"),
-    ("TXN-171837", "ACC-001004", "Vanguard Dynamics", "2024-11-05", 85300.90, "WIRE", 0, "ACTIVE"),
-    ("TXN-171838", "ACC-001005", "Quantum Holdings", "2025-03-30", 39100.00, "ACH", 0, "ACTIVE"),
-    ("TXN-171839", "ACC-001001", "Horizon Solar LLC", "2024-08-12", 67400.50, "CHECK", 0, "ACTIVE"),
-    ("TXN-171840", "ACC-001002", "Titan Manufacturing", "2025-05-28", 91500.00, "WIRE", 0, "ACTIVE"),
+    ("TXN-171824", "ACC-001001", "Orion BioTech", "2025-01-10", 18200.00, "WIRE", 0, "TKT-2025-1102", "NONE", "DOC-KYC-8812", "ACTIVE"),
+    ("TXN-171825", "ACC-001002", "GlobalTech Inc", "2024-11-22", 33400.50, "ACH", 0, None, "NONE", "DOC-TAX-4451", "ACTIVE"),
+    ("TXN-171826", "ACC-001003", "Pinnacle Retail", "2025-03-15", 41200.00, "WIRE", 0, "TKT-2025-4491", "NONE", "DOC-INV-7721", "ACTIVE"),
+    ("TXN-171827", "ACC-001004", "Delta Aviation", "2024-08-19", 59000.25, "CHECK", 0, None, "NONE", "DOC-WIRE-1190", "ACTIVE"),
+    ("TXN-171828", "ACC-001005", "Eagle Industrial", "2025-05-12", 27800.00, "ACH", 0, "TKT-2025-8823", "NONE", "DOC-CORR-2281", "ACTIVE"),
+    ("TXN-171829", "ACC-001001", "Cascade Robotics", "2024-12-01", 64500.80, "WIRE", 0, None, "NONE", "DOC-KYC-9914", "ACTIVE"),
+    ("TXN-171830", "ACC-001002", "Sterling Capital", "2025-02-18", 83100.00, "WIRE", 0, "TKT-2025-3310", "NONE", "DOC-INV-5542", "ACTIVE"),
+    ("TXN-171831", "ACC-001003", "Pioneer Energy", "2024-09-29", 37600.40, "ACH", 0, None, "NONE", "DOC-TAX-6612", "ACTIVE"),
+    ("TXN-171832", "ACC-001004", "Nexus Financial", "2025-04-05", 92400.00, "WIRE", 0, "TKT-2025-9941", "NONE", "DOC-WIRE-3382", "ACTIVE"),
+    ("TXN-171833", "ACC-001005", "Apex Logistics", "2024-10-14", 48900.60, "CHECK", 0, None, "NONE", "DOC-CORR-4491", "ACTIVE"),
+    ("TXN-171834", "ACC-001001", "Summit Healthcare", "2025-06-20", 71200.00, "WIRE", 0, "TKT-2025-5521", "NONE", "DOC-KYC-1109", "ACTIVE"),
+    ("TXN-171835", "ACC-001002", "Atlas Security", "2024-07-08", 29400.15, "ACH", 0, None, "NONE", "DOC-TAX-8834", "ACTIVE"),
+    ("TXN-171836", "ACC-001003", "Beacon Media Corp", "2025-01-25", 56800.00, "WIRE", 0, "TKT-2025-7714", "NONE", "DOC-INV-9941", "ACTIVE"),
+    ("TXN-171837", "ACC-001004", "Vanguard Dynamics", "2024-11-05", 85300.90, "WIRE", 0, None, "NONE", "DOC-WIRE-2219", "ACTIVE"),
+    ("TXN-171838", "ACC-001005", "Quantum Holdings", "2025-03-30", 39100.00, "ACH", 0, "TKT-2025-2289", "NONE", "DOC-CORR-6632", "ACTIVE"),
+    ("TXN-171839", "ACC-001001", "Horizon Solar LLC", "2024-08-12", 67400.50, "CHECK", 0, None, "NONE", "DOC-KYC-4421", "ACTIVE"),
+    ("TXN-171840", "ACC-001002", "Titan Manufacturing", "2025-05-28", 91500.00, "WIRE", 0, None, "NONE", "DOC-TAX-5590", "ACTIVE"),
 ]
 
 
@@ -172,12 +172,28 @@ def ensure_vulnerabilities_table(conn: sqlite3.Connection | None = None) -> None
 def init_real_databases(force_recreate: bool = False) -> None:
     """Initialize real SQLite banking databases on disk with real relational tables and records."""
     if not force_recreate and CORE_DB_PATH.exists() and ARCHIVE_DB_PATH.exists():
+        conn_check = get_core_connection()
+        try:
+            cur = conn_check.cursor()
+            cur.execute("PRAGMA table_info(source_transactions)")
+            cols = {r[1] for r in cur.fetchall()}
+            if "support_ticket_id" not in cols or "investigation_status" not in cols or "document_ref" not in cols:
+                force_recreate = True
+        except Exception:
+            force_recreate = True
+        finally:
+            conn_check.close()
+
+    if not force_recreate and CORE_DB_PATH.exists() and ARCHIVE_DB_PATH.exists():
         ensure_vulnerabilities_table()
         return
 
     # 1. Initialize Core Database (Source)
     conn_core = get_core_connection()
     cur_core = conn_core.cursor()
+
+    if force_recreate:
+        cur_core.execute("DROP TABLE IF EXISTS source_transactions")
 
     cur_core.executescript("""
     CREATE TABLE IF NOT EXISTS customers (
@@ -223,6 +239,9 @@ def init_real_databases(force_recreate: bool = False) -> None:
         amount REAL NOT NULL,
         transaction_type TEXT NOT NULL,
         legal_hold INTEGER NOT NULL DEFAULT 0,
+        support_ticket_id TEXT,
+        investigation_status TEXT NOT NULL DEFAULT 'NONE',
+        document_ref TEXT,
         status TEXT NOT NULL DEFAULT 'ACTIVE'
     );
 
@@ -287,7 +306,7 @@ def init_real_databases(force_recreate: bool = False) -> None:
 
     # Populate canonical 50 records in source_transactions
     cur_core.executemany(
-        "INSERT OR REPLACE INTO source_transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO source_transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         COMPLIANCE_TRANSACTIONS_SEED,
     )
 
@@ -360,6 +379,9 @@ def init_real_databases(force_recreate: bool = False) -> None:
     # 2. Initialize Archive Database (Target)
     conn_arc = get_archive_connection()
     cur_arc = conn_arc.cursor()
+    if force_recreate:
+        cur_arc.execute("DROP TABLE IF EXISTS archive_transactions")
+
     cur_arc.executescript("""
     CREATE TABLE IF NOT EXISTS transactions_archive (
         txn_id INTEGER PRIMARY KEY,
@@ -382,6 +404,9 @@ def init_real_databases(force_recreate: bool = False) -> None:
         amount REAL NOT NULL,
         transaction_type TEXT NOT NULL,
         legal_hold INTEGER NOT NULL DEFAULT 0,
+        support_ticket_id TEXT,
+        investigation_status TEXT NOT NULL DEFAULT 'NONE',
+        document_ref TEXT,
         status TEXT NOT NULL DEFAULT 'ARCHIVED',
         control_run_id TEXT NOT NULL,
         verification_hash TEXT NOT NULL,
@@ -407,7 +432,7 @@ def reseed_compliance_databases() -> dict[str, Any]:
 
         cur_core.execute("DELETE FROM source_transactions")
         cur_core.executemany(
-            "INSERT OR REPLACE INTO source_transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO source_transactions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             COMPLIANCE_TRANSACTIONS_SEED,
         )
 
@@ -505,10 +530,14 @@ def query_eligible_archival_records(retention_years: int = 5) -> dict[str, Any]:
     for r in eligible_rows[:8]:
         sample_records.append({
             "transaction_id": r["transaction_id"],
+            "account_id": r.get("account_id"),
             "customer_name": r["customer_name"],
             "transaction_date": r["transaction_date"],
             "amount": f"${r['amount']:,.2f}",
-            "legal_hold": False,
+            "legal_hold": bool(r["legal_hold"]),
+            "support_ticket_id": r.get("support_ticket_id") or "—",
+            "investigation_status": r.get("investigation_status") or "NONE",
+            "document_ref": r.get("document_ref") or "—",
             "eligible": True,
             "archived": False,
             "verified": False,
@@ -554,14 +583,16 @@ def execute_real_archive_copy(run_id: str, retention_years: int = 5) -> dict[str
         source_leafs.append((r["transaction_id"], h))
         arc_inserts.append((
             r["transaction_id"], r["account_id"], r["customer_name"], r["transaction_date"],
-            r["amount"], r["transaction_type"], r["legal_hold"], "ARCHIVED",
+            r["amount"], r["transaction_type"], r["legal_hold"],
+            r.get("support_ticket_id"), r.get("investigation_status") or "NONE", r.get("document_ref"),
+            "ARCHIVED",
             run_id, f"SHA256-{h[:16]}", now_iso
         ))
 
     cur_arc.executemany("""
     INSERT OR REPLACE INTO archive_transactions
-    (transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, status, control_run_id, verification_hash, archived_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, support_ticket_id, investigation_status, document_ref, status, control_run_id, verification_hash, archived_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, arc_inserts)
     conn_arc.commit()
 

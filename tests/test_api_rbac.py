@@ -20,8 +20,7 @@ def test_api_list_gates() -> None:
     res = client.get("/gates")
     assert res.status_code == 200
     gates = res.json()
-    assert len(gates) >= 1
-    assert gates[0]["gate_id"] == "gate-dummy-001"
+    assert any(g["gate_id"] == "gate-dummy-001" for g in gates)
 
 
 def test_maker_cannot_approve_own_gate() -> None:

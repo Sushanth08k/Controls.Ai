@@ -164,8 +164,8 @@ async def trigger_run(req: TriggerRunRequest) -> RunItem:
         targets=targets,
     )
 
-    # For Archetype B (CTL-SAN-001), execute the automated API sanity test workflow
-    if req.control_id == "CTL-SAN-001" or archetype == "B":
+    # For Archetype B, execute the automated API sanity test workflow
+    if archetype == "B":
         from workflows.archetypes.test_exec_wf import TestExecWorkflow
         from core.ledger import Ledger
 

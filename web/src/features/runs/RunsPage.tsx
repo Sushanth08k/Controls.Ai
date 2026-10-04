@@ -161,7 +161,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({ runs }) => {
                                 </div>
                               </div>
 
-                              {/* Merkle Verification Card (if available for CTL-ARCH-001) */}
+                              {/* Merkle Verification Card (if available for Archival control) */}
                               {auditData.merkle_verification?.source_merkle_root && (
                                 <div className="bg-white rounded-lg p-4 border border-emerald-200 shadow-2xs space-y-2">
                                   <div className="flex items-center justify-between">
