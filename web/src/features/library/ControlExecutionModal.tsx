@@ -88,6 +88,15 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   const [activeSqlTab, setActiveSqlTab] = useState<number>(2);
   const [copiedSql, setCopiedSql] = useState<boolean>(false);
 
+  // Synchronize active SQL tab with the active lifecycle step (Step 5 -> Source Cleanup SQL)
+  useEffect(() => {
+    if (runStage === 'APPROVED' || runStage === 'CLEANED') {
+      setActiveSqlTab(3);
+    } else if (runStage === 'ARCHIVED' || runStage === 'VERIFIED') {
+      setActiveSqlTab(2);
+    }
+  }, [runStage]);
+
   // Live Database Table Tabs: 'evaluation' | 'source' | 'archive'
   const [liveDbTab, setLiveDbTab] = useState<'evaluation' | 'source' | 'archive'>('evaluation');
   const [liveRows, setLiveRows] = useState<any[]>([]);
@@ -343,6 +352,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       );
       setApprovalCert(res.approval_certificate || `APPR-GATE-${runId.slice(4)}`);
       setRunStage('APPROVED');
+      setActiveSqlTab(3);
     } catch (err: any) {
       setError(err.message || 'Human approval recording failed');
     } finally {
@@ -367,6 +377,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       setLedgerSeq(res.ledger_seq || 2);
       setLedgerHash(res.ledger_entry_hash || 'SHA256-42b5e6e7871981a5');
       setRunStage('CLEANED');
+      setActiveSqlTab(3);
       // Update rows to show cleaned = true
       setLiveRows((prev) =>
         prev.map((r) => (r.verified ? { ...r, cleaned: true, status: 'PURGED_FROM_SOURCE' } : r))
@@ -1138,9 +1149,33 @@ AND legal_hold = 0;`,
                         </button>
                       </div>
 
-                      {runStage !== 'EVALUATED' && (
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                          ✓ ARCHIVAL EXECUTED ({archivedCount} IN ARCHIVE DB)
+                      {activeSqlTab === 3 ? (
+                        runStage === 'CLEANED' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                            ✓ SOURCE CLEANUP EXECUTED ({cleanedCount} PURGED)
+                          </span>
+                        ) : runStage === 'APPROVED' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            ✓ PURGE AUTHORIZED — READY FOR EXECUTION
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                            AWAITING APPROVAL GATE
+                          </span>
+                        )
+                      ) : activeSqlTab === 2 ? (
+                        runStage !== 'EVALUATED' ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            ✓ ARCHIVAL EXECUTED ({archivedCount} IN ARCHIVE DB)
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                            READY FOR ARCHIVAL
+                          </span>
+                        )
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                          {eligibleCount} ELIGIBLE IDENTIFIED
                         </span>
                       )}
 
