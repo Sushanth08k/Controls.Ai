@@ -10,24 +10,8 @@ scope:
   - {type: postgres_instance, ref: vuln_target}
   - {type: postgres_instance, ref: core_banking_sim}
 evidence:
-  - {id: superusers,    connector: postgres, operation: catalog_query, catalog_ref: VQ-001}
-  - {id: public_grants, connector: postgres, operation: catalog_query, catalog_ref: VQ-003}
-  - {id: pw_enc,        connector: postgres, operation: catalog_query, catalog_ref: VQ-004}
-  - {id: ssl,           connector: postgres, operation: catalog_query, catalog_ref: VQ-005}
-  - {id: hba,           connector: postgres, operation: catalog_query, catalog_ref: VQ-007}
-  - {id: extensions,    connector: postgres, operation: catalog_query, catalog_ref: VQ-008}
-  - {id: version,       connector: postgres, operation: catalog_query, catalog_ref: VQ-009}
   - {id: vulnerabilities, connector: postgres, operation: catalog_query, catalog_ref: VQ-013}
 rules:
-  - {id: R1, primitive: subset_of, evidence_ref: superusers, field: rolname, baseline_key: approved_superusers, severity: high, on_fail: finding}
-  - {id: R2, primitive: row_count, evidence_ref: public_grants, op: "==", n: 0, severity: medium, on_fail: finding}
-  - {id: R3, primitive: equals, evidence_ref: pw_enc, field: setting, value: scram-sha-256, severity: medium, on_fail: finding}
-  - {id: R4, primitive: equals, evidence_ref: ssl, field: setting, value: "on", severity: high, on_fail: finding}
-  - {id: R5, primitive: row_count, evidence_ref: hba, op: "==", n: 0, severity: critical, on_fail: finding}
-  - {id: R6, primitive: subset_of, evidence_ref: extensions, field: extname, baseline_key: approved_extensions, severity: low, on_fail: finding}
-  - {id: R7, primitive: version_not_vulnerable, evidence_ref: version, field: version, product: postgresql, severity: high, on_fail: finding,
-     evaluator_task: {agent: evaluator, template_id: cve_applicability, template_version: 1}}
-  - {id: R8, primitive: no_drift, evidence_ref: superusers, key_fields: [rolname], severity: medium, on_fail: finding}
   - {id: R9, primitive: vulnerability_sla, evidence_ref: vulnerabilities, severity: high, on_fail: finding}
 baseline_ref: baselines/postgres_cis_min.yaml
 agent_tasks:

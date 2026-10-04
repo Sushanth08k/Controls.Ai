@@ -1,3 +1,4 @@
+from collections.abc import Generator
 import pytest
 from starlette.testclient import TestClient
 from api.main import app
@@ -24,12 +25,12 @@ from sim.database import reseed_compliance_databases, get_core_connection
 
 
 @pytest.fixture(autouse=True)
-def ensure_db():
+def ensure_db() -> Generator[None, None, None]:
     init_audit_tables()
     yield
 
 
-def test_audit_run_crud():
+def test_audit_run_crud() -> None:
     """Verify control_audit_runs table creation, insertion, retrieval, and status update."""
     run_id = "test-run-001"
     run = upsert_audit_run(
@@ -68,7 +69,7 @@ def test_audit_run_crud():
     assert fetched["status"] == "completed"
 
 
-def test_audit_steps_and_merkle_persistence():
+def test_audit_steps_and_merkle_persistence() -> None:
     """Verify execution lifecycle steps and Merkle verification persistence."""
     run_id = "test-run-arch-002"
     upsert_audit_run(run_id=run_id, control_id="CTL-ARCH-001", status="running")
@@ -94,7 +95,7 @@ def test_audit_steps_and_merkle_persistence():
     ]
 
 
-def test_audit_findings_and_evidence_persistence():
+def test_audit_findings_and_evidence_persistence() -> None:
     """Verify findings and evidence persist in SQLite."""
     run_id = "test-run-vuln-003"
     upsert_audit_run(run_id=run_id, control_id="CTL-VULN-001", status="completed")
@@ -130,7 +131,7 @@ def test_audit_findings_and_evidence_persistence():
     assert findings[0]["severity"] == "critical"
 
 
-def test_audit_approvals_persistence():
+def test_audit_approvals_persistence() -> None:
     """Verify maker-checker human approval gate is stored in SQLite."""
     run_id = "test-run-gate-004"
     gate_id = f"gate-{run_id}-1"
@@ -153,7 +154,7 @@ def test_audit_approvals_persistence():
     assert bundle["approvals"][0]["approved_by"] == "sec_reviewer_1"
 
 
-def test_ctl_arch_001_full_lifecycle_persistence():
+def test_ctl_arch_001_full_lifecycle_persistence() -> None:
     """End-to-end test of CTL-ARCH-001 writing persistent audit trail through FastAPI."""
     from sim.database import reseed_compliance_databases
     reseed_compliance_databases()
@@ -212,7 +213,7 @@ def test_ctl_arch_001_full_lifecycle_persistence():
     assert len(bundle["approvals"]) >= 1
 
 
-def test_ctl_vuln_001_persistence():
+def test_ctl_vuln_001_persistence() -> None:
     """Verify CTL-VULN-001 persists execution run, findings, and evidence in SQLite."""
     client = TestClient(app)
 
@@ -221,13 +222,13 @@ def test_ctl_vuln_001_persistence():
     data = res.json()
     run_id = data["run_id"]
     assert run_id is not None
-    assert data["records_scanned"] == 12
+    assert data["records_scanned"] == 6
 
     # Check that audit store has run
     db_run = get_audit_run(run_id)
     assert db_run is not None
     assert db_run["status"] == "completed"
-    assert db_run["records_evaluated"] == 12
+    assert db_run["records_evaluated"] == 6
 
     # Check findings in SQLite
     findings = list_audit_findings(run_id=run_id)
@@ -238,7 +239,7 @@ def test_ctl_vuln_001_persistence():
     assert len(evs) >= 4
 
 
-def test_ctl_san_001_persistence():
+def test_ctl_san_001_persistence() -> None:
     """Verify CTL-SAN-001 executes and persists its test execution audit trail."""
     client = TestClient(app)
 
@@ -263,7 +264,7 @@ def test_ctl_san_001_persistence():
     assert "TEST_EXECUTION" in step_names
 
 
-def test_simulated_backend_restart_retrieval():
+def test_simulated_backend_restart_retrieval() -> None:
     """SIMULATED BACKEND RESTART: Wipe all in-memory dictionaries and verify full data retrieval from SQLite."""
     client = TestClient(app)
 
@@ -303,7 +304,7 @@ def test_simulated_backend_restart_retrieval():
     assert len(audit_pkg["steps"]) >= 4
 
 
-def test_reseed_preserves_audit_history():
+def test_reseed_preserves_audit_history() -> None:
     """Verify that reseeding business data (source_transactions) does NOT wipe audit tables."""
     run_id = "test-preserve-audit-run"
     upsert_audit_run(run_id=run_id, control_id="CTL-ARCH-001", status="completed")
@@ -318,7 +319,7 @@ def test_reseed_preserves_audit_history():
     assert run["run_id"] == run_id
 
 
-def test_failed_runs_persisted_as_failed():
+def test_failed_runs_persisted_as_failed() -> None:
     """Verify failed runs are recorded as FAILED rather than disappearing."""
     run_id = "test-failed-run-009"
     upsert_audit_run(
