@@ -114,7 +114,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 />
               }
             />
-            <Route path="/runs" element={<RunsPage runs={runs} />} />
+            <Route
+              path="/runs"
+              element={
+                <RunsPage
+                  runs={runs}
+                  controls={controls}
+                  currentUser={currentUser}
+                  onRefresh={loadData}
+                />
+              }
+            />
             <Route path="/findings" element={<FindingsPage findings={findings} />} />
             <Route path="/evidence" element={<FindingsPage findings={findings} />} />
           </Routes>

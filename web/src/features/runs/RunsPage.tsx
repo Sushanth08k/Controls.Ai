@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { RunItemDTO } from '../../types';
+import { RunItemDTO, ControlDefinitionDTO, UserSessionDTO } from '../../types';
 import { StatusPill } from '../../components/StatusPill';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
-import { fetchRunAudit } from '../../api/client';
+import { fetchRunAudit, resumeInteractiveRun } from '../../api/client';
+import { ControlExecutionModal } from '../library/ControlExecutionModal';
+import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -14,17 +16,121 @@ import {
   UserCheck,
   AlertCircle,
   Loader2,
+  Play,
 } from 'lucide-react';
 
 interface RunsPageProps {
   runs: RunItemDTO[];
+  controls?: ControlDefinitionDTO[];
+  currentUser?: UserSessionDTO;
+  onRefresh?: () => void;
 }
 
-export const RunsPage: React.FC<RunsPageProps> = ({ runs }) => {
+export const RunsPage: React.FC<RunsPageProps> = ({
+  runs,
+  controls,
+  currentUser,
+  onRefresh,
+}) => {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [auditData, setAuditData] = useState<any | null>(null);
   const [loadingAudit, setLoadingAudit] = useState<boolean>(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+
+  // Resume modal state
+  const [resumeModalControl, setResumeModalControl] = useState<ControlDefinitionDTO | null>(null);
+  const [resumeRunId, setResumeRunId] = useState<string | null>(null);
+  const [resumeStage, setResumeStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | undefined>(undefined);
+
+  const getStageFromSteps = (
+    steps: any[] = [],
+    runStatus: string = ''
+  ): 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' => {
+    const hasCleanup = steps.some((s) => s.step_name === 'SOURCE_CLEANUP' && s.status === 'completed');
+    const hasApproval = steps.some((s) => s.step_name === 'APPROVAL' && s.status === 'completed');
+    const hasVerify = steps.some((s) => s.step_name === 'VERIFICATION' && s.status === 'completed');
+    const hasArchive = steps.some((s) => (s.step_name === 'ARCHIVE' || s.step_name === 'EXECUTE_ARCHIVAL') && s.status === 'completed');
+
+    if (hasCleanup || runStatus === 'completed') return 'CLEANED';
+    if (hasApproval) return 'APPROVED';
+    if (hasVerify) return 'VERIFIED';
+    if (hasArchive) return 'ARCHIVED';
+    return 'EVALUATED';
+  };
+
+  const getStageDisplay = (stage: string) => {
+    switch (stage) {
+      case 'CLEANED':
+        return {
+          label: 'Completed & Certified',
+          nextAction: 'View Audit Records',
+          stepNum: 5,
+          badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        };
+      case 'APPROVED':
+        return {
+          label: 'Ready for Step 5: Source Cleanup (DELETE)',
+          nextAction: 'Purge Source Records',
+          stepNum: 5,
+          badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
+        };
+      case 'VERIFIED':
+        return {
+          label: 'Ready for Step 4: Maker-Checker Human Approval',
+          nextAction: 'Record Human Approval',
+          stepNum: 4,
+          badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
+        };
+      case 'ARCHIVED':
+        return {
+          label: 'Ready for Step 3: Cryptographic Merkle Verification',
+          nextAction: 'Verify Records',
+          stepNum: 3,
+          badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
+        };
+      case 'EVALUATED':
+      default:
+        return {
+          label: 'Ready for Step 2: Archival Execution (INSERT)',
+          nextAction: 'Execute Archival SQL',
+          stepNum: 2,
+          badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
+        };
+    }
+  };
+
+  const handleResumeRun = async (
+    r: RunItemDTO,
+    targetStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED'
+  ) => {
+    let stage = targetStage;
+    if (!stage) {
+      try {
+        const resumeData = await resumeInteractiveRun(r.run_id);
+        stage = resumeData.stage;
+      } catch {
+        stage = getStageFromSteps(auditData?.steps || [], r.status);
+      }
+    }
+
+    const matched =
+      (controls || []).find((c) => c.control_id === r.control_id) ||
+      (controls || []).find((c) => c.archetype === r.archetype) ||
+      ({
+        control_id: r.control_id,
+        name: r.control_id,
+        archetype: r.archetype || 'D',
+        version: r.version || '1.0.0',
+        description: 'Attested Control Workflow',
+        lifecycle_type: 'automated',
+        enforcement_level: 'deterministic',
+        criticality: 'HIGH',
+      } as unknown as ControlDefinitionDTO);
+
+    setResumeModalControl(matched);
+    setResumeRunId(r.run_id);
+    setResumeStage(stage);
+  };
 
   const handleToggleRun = async (runId: string) => {
     if (selectedRunId === runId) {
@@ -97,13 +203,31 @@ export const RunsPage: React.FC<RunsPageProps> = ({ runs }) => {
                         {new Date(r.started_at).toLocaleString()}
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800"
-                        >
-                          <span>{isExpanded ? 'Hide Audit' : 'Inspect'}</span>
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        </button>
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResumeRun(r);
+                            }}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-white font-semibold text-[11px] shadow-xs transition-all cursor-pointer ${
+                              r.status === 'running'
+                                ? 'bg-emerald-600 hover:bg-emerald-700 animate-pulse'
+                                : 'bg-blue-600 hover:bg-blue-700'
+                            }`}
+                            title="Navigate directly into the process where it left off"
+                          >
+                            <Play className="w-3 h-3 fill-white" />
+                            <span>{r.status === 'running' ? 'Resume' : 'Open'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
+                          >
+                            <span>{isExpanded ? 'Hide' : 'Inspect'}</span>
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
                       </td>
                     </tr>
 
@@ -127,6 +251,41 @@ export const RunsPage: React.FC<RunsPageProps> = ({ runs }) => {
 
                           {!loadingAudit && auditData && (
                             <div className="space-y-5 text-slate-800">
+                              {/* Resume Action Banner */}
+                              {(() => {
+                                const stage = getStageFromSteps(auditData.steps || [], r.status);
+                                const stageInfo = getStageDisplay(stage);
+                                return (
+                                  <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-emerald-50 border border-blue-200/90 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                                        <Play className="w-4 h-4 fill-white ml-0.5" />
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <h4 className="font-bold text-slate-900 text-xs">
+                                            {r.status === 'running' ? 'Active Execution In-Progress' : 'Control Execution Workflow'}
+                                          </h4>
+                                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${stageInfo.badgeColor}`}>
+                                            {stageInfo.label}
+                                          </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-600 mt-0.5">
+                                          Workflow Run <code className="font-bold text-slate-800 font-mono">{r.run_id}</code> is currently at Step {stageInfo.stepNum}.
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleResumeRun(r, stage)}
+                                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-all hover:shadow-sm cursor-pointer shrink-0"
+                                    >
+                                      <Play className="w-3.5 h-3.5 fill-white" />
+                                      <span>Continue Process ({stageInfo.nextAction}) →</span>
+                                    </button>
+                                  </div>
+                                );
+                              })()}
                               {/* Header metrics card */}
                               <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                                 <div>
@@ -227,6 +386,32 @@ export const RunsPage: React.FC<RunsPageProps> = ({ runs }) => {
                                         </div>
                                       </div>
                                     ))}
+                                    {/* Next Step / Action Step */}
+                                    {(() => {
+                                      const stage = getStageFromSteps(auditData.steps || [], r.status);
+                                      if (stage === 'CLEANED') return null;
+                                      const stageInfo = getStageDisplay(stage);
+                                      return (
+                                        <div
+                                          onClick={() => handleResumeRun(r, stage)}
+                                          className="p-2.5 rounded bg-blue-50/80 border-2 border-dashed border-blue-400 flex items-start gap-2.5 hover:bg-blue-100/70 cursor-pointer transition-all group"
+                                          title="Click to execute this pending step"
+                                        >
+                                          <div className="mt-0.5 shrink-0">
+                                            <Play className="w-4 h-4 fill-blue-600 text-blue-600 group-hover:scale-110 transition-transform" />
+                                          </div>
+                                          <div className="text-xs leading-tight">
+                                            <div className="font-bold text-blue-900 font-mono text-[11px] flex items-center gap-1.5">
+                                              <span>{stageInfo.nextAction}</span>
+                                              <span className="bg-blue-600 text-white text-[9px] px-1.5 py-0.2 rounded font-sans font-bold uppercase">NEXT</span>
+                                            </div>
+                                            <div className="text-[10px] text-blue-700 mt-0.5 font-sans font-medium">
+                                              Click to navigate and execute this step →
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
                                 </div>
                               )}
@@ -304,6 +489,46 @@ export const RunsPage: React.FC<RunsPageProps> = ({ runs }) => {
           </table>
         </div>
       </div>
+
+      {/* Resume Control Execution Modal */}
+      {resumeModalControl && resumeRunId && (
+        resumeModalControl.archetype === 'A' ? (
+          <VulnerabilityExecutionModal
+            control={resumeModalControl}
+            currentUser={currentUser || { user_id: 'sec_reviewer_1', roles: ['control_reviewer'], email: 'reviewer@bank.internal' }}
+            initialRunId={resumeRunId}
+            onClose={() => {
+              setResumeModalControl(null);
+              setResumeRunId(null);
+              setResumeStage(undefined);
+            }}
+            onRunCompleted={() => {
+              setResumeModalControl(null);
+              setResumeRunId(null);
+              setResumeStage(undefined);
+              onRefresh?.();
+            }}
+          />
+        ) : (
+          <ControlExecutionModal
+            control={resumeModalControl}
+            currentUser={currentUser || { user_id: 'sec_reviewer_1', roles: ['control_reviewer'], email: 'reviewer@bank.internal' }}
+            initialRunId={resumeRunId}
+            initialStage={resumeStage}
+            onClose={() => {
+              setResumeModalControl(null);
+              setResumeRunId(null);
+              setResumeStage(undefined);
+            }}
+            onRunCompleted={() => {
+              setResumeModalControl(null);
+              setResumeRunId(null);
+              setResumeStage(undefined);
+              onRefresh?.();
+            }}
+          />
+        )
+      )}
     </div>
   );
 };

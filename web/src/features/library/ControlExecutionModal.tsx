@@ -11,6 +11,8 @@ import {
   commitCleanup,
   reseedDatabase,
   uploadPolicyDocument,
+  resumeInteractiveRun,
+  fetchRunAudit,
 } from '../../api/client';
 import {
   X,
@@ -28,6 +30,7 @@ import {
   Terminal,
   PlayCircle,
   ShieldAlert,
+  Database,
 } from 'lucide-react';
 
 interface ControlExecutionModalProps {
@@ -37,6 +40,8 @@ interface ControlExecutionModalProps {
   onRunCompleted?: () => void;
   initialPolicyText?: string;
   initialFileName?: string;
+  initialRunId?: string;
+  initialStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED';
 }
 
 export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
@@ -46,22 +51,26 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   onRunCompleted,
   initialPolicyText,
   initialFileName,
+  initialRunId,
+  initialStage,
 }) => {
   // Mode: 1 = Upload / Ingestion, 2 = Policy Analysis, 3 = Control Runs Console
-  const [viewMode, setViewMode] = useState<number>(1);
+  const [viewMode, setViewMode] = useState<number>(initialRunId ? 3 : 1);
   const [policyText, setPolicyText] = useState<string>(initialPolicyText || '');
   const [fileName, setFileName] = useState<string>(initialFileName || 'policy_spec.txt');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Run execution state
-  const [runId, setRunId] = useState<string>('RUN-062b4c91');
+  const [runId, setRunId] = useState<string>(initialRunId || 'RUN-062b4c91');
   const [extractedData, setExtractedData] = useState<any>(null);
   const [previewData, setPreviewData] = useState<any>(null);
 
   // Step progression in Control Runs Console:
   // 1 = EVALUATED, 2 = ARCHIVING/ARCHIVED, 3 = VERIFYING/VERIFIED, 4 = APPROVAL, 5 = CLEANUP, 6 = COMPLETED
-  const [runStage, setRunStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED'>('EVALUATED');
+  const [runStage, setRunStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED'>(
+    initialStage || 'EVALUATED'
+  );
 
   // Stats
   const [totalRead, setTotalRead] = useState<number>(50);
@@ -91,6 +100,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
 
   // Load defaults on mount
   useEffect(() => {
+    if (initialRunId) return; // Skip default policy load if resuming an existing run
     if (initialPolicyText) {
       setPolicyText(initialPolicyText);
       if (initialFileName) setFileName(initialFileName);
@@ -102,7 +112,92 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
         if (data.filename) setFileName(data.filename);
       })
       .catch((err) => console.error('Failed to load defaults:', err));
-  }, [control.control_id, initialPolicyText, initialFileName]);
+  }, [control.control_id, initialPolicyText, initialFileName, initialRunId]);
+
+  // If initialRunId is provided, resume execution from the exact step where it left off
+  useEffect(() => {
+    if (!initialRunId) return;
+    setRunId(initialRunId);
+    setViewMode(3); // Direct to Control Runs Console
+    setLoading(true);
+
+    Promise.all([
+      resumeInteractiveRun(initialRunId).catch(() => null),
+      previewDatabase(control.control_id, { run_id: initialRunId }).catch(() => null),
+      fetchRunAudit(initialRunId).catch(() => null),
+    ])
+      .then(([resumeRes, prev, audit]) => {
+        if (prev) {
+          setPreviewData(prev);
+          setTotalRead(prev.total_source_records || 50);
+          setEligibleCount(prev.eligible_records_count || 33);
+          setLegalHoldCount(prev.excluded_holds_count || 0);
+          setLiveRows(prev.sample_records || []);
+        }
+
+        const effectiveStage: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' =
+          resumeRes?.stage || initialStage || 'EVALUATED';
+        setRunStage(effectiveStage);
+
+        const targetEligible = prev?.eligible_records_count || 33;
+        if (effectiveStage === 'CLEANED') {
+          setCleanedCount(targetEligible);
+          setVerifiedCount(targetEligible);
+          setArchivedCount(targetEligible);
+          if (prev) {
+            setLiveRows((prevRows) =>
+              prevRows.map((r) =>
+                r.eligible ? { ...r, cleaned: true, verified: true, archived: true, status: 'PURGED' } : r
+              )
+            );
+          }
+        } else if (effectiveStage === 'APPROVED') {
+          setVerifiedCount(targetEligible);
+          setArchivedCount(targetEligible);
+          if (prev) {
+            setLiveRows((prevRows) =>
+              prevRows.map((r) =>
+                r.eligible ? { ...r, verified: true, archived: true, status: 'APPROVED' } : r
+              )
+            );
+          }
+        } else if (effectiveStage === 'VERIFIED') {
+          setVerifiedCount(targetEligible);
+          setArchivedCount(targetEligible);
+          if (prev) {
+            setLiveRows((prevRows) =>
+              prevRows.map((r) =>
+                r.eligible ? { ...r, verified: true, archived: true, status: 'VERIFIED' } : r
+              )
+            );
+          }
+        } else if (effectiveStage === 'ARCHIVED') {
+          setArchivedCount(targetEligible);
+          if (prev) {
+            setLiveRows((prevRows) =>
+              prevRows.map((r) =>
+                r.eligible ? { ...r, archived: true, status: 'ARCHIVED' } : r
+              )
+            );
+          }
+        } else {
+          setArchivedCount(0);
+          setVerifiedCount(0);
+          setCleanedCount(0);
+        }
+
+        if (audit?.merkle_verification?.attestation_token) {
+          setAttestationToken(audit.merkle_verification.attestation_token);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to resume run:', err);
+        setError(`Failed to resume run ${initialRunId}`);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [initialRunId, control.control_id, initialStage]);
 
   // Handle file upload (Supports PDF, DOCX, TXT, MD)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -165,8 +260,11 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       });
       setPreviewData(prev);
       setTotalRead(prev.total_source_records || 50);
-      setEligibleCount(prev.eligible_records_count || 33);
+      setEligibleCount(prev.eligible_records_count || 0);
       setLegalHoldCount(prev.excluded_holds_count || 0);
+      setArchivedCount(0);
+      setVerifiedCount(0);
+      setCleanedCount(0);
       setLiveRows(prev.sample_records || []);
       setRunStage('EVALUATED');
       setViewMode(3); // Show Control Runs Console (Screenshots 3, 4, 5)
@@ -1029,147 +1127,307 @@ AND legal_hold = 0;`,
                 </div>
 
                 {/* Tabbed Live Database Table (Screenshot 4) */}
-                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
-                  <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setLiveDbTab('evaluation')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                          liveDbTab === 'evaluation'
-                            ? 'bg-[#064e3b] text-white shadow-xs'
-                            : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                        }`}
-                      >
-                        Control Run Evaluation ({totalRead})
-                      </button>
-                      <button
-                        onClick={() => setLiveDbTab('source')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                          liveDbTab === 'source'
-                            ? 'bg-[#064e3b] text-white shadow-xs'
-                            : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                        }`}
-                      >
-                        Active DB (source_transactions) ({runStage === 'CLEANED' ? 17 : totalRead})
-                      </button>
-                      <button
-                        onClick={() => setLiveDbTab('archive')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                          liveDbTab === 'archive'
-                            ? 'bg-[#064e3b] text-white shadow-xs'
-                            : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                        }`}
-                      >
-                        Archive DB (archive_transactions) ({archivedCount})
-                      </button>
+                {/* Tabbed Live Database Table (Screenshot 4) */}
+                {(() => {
+                  const sourceRows = liveRows.filter((r) => !r.cleaned);
+                  const archiveRows = liveRows.filter((r) => r.archived);
+
+                  return (
+                    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+                      <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setLiveDbTab('evaluation')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                              liveDbTab === 'evaluation'
+                                ? 'bg-[#064e3b] text-white shadow-xs'
+                                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                          >
+                            Control Run Evaluation ({liveRows.length})
+                          </button>
+                          <button
+                            onClick={() => setLiveDbTab('source')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                              liveDbTab === 'source'
+                                ? 'bg-[#064e3b] text-white shadow-xs'
+                                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                          >
+                            Active DB (source_transactions) ({sourceRows.length})
+                          </button>
+                          <button
+                            onClick={() => setLiveDbTab('archive')}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                              liveDbTab === 'archive'
+                                ? 'bg-[#064e3b] text-white shadow-xs'
+                                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+                            }`}
+                          >
+                            Archive DB (archive_transactions) ({archiveRows.length})
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={handleReseedDb}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-medium shadow-xs"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Refresh Live DB</span>
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto max-h-72">
+                        {liveDbTab === 'source' && (
+                          <table className="w-full text-left text-xs font-mono">
+                            <thead className="sticky top-0 bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                              <tr>
+                                <th className="py-2.5 px-3">Transaction ID</th>
+                                <th className="py-2.5 px-3">Customer Name</th>
+                                <th className="py-2.5 px-3">Txn Date</th>
+                                <th className="py-2.5 px-3">Amount</th>
+                                <th className="py-2.5 px-3">Support Ticket</th>
+                                <th className="py-2.5 px-3">Investigation</th>
+                                <th className="py-2.5 px-3">Document Ref</th>
+                                <th className="py-2.5 px-3">Legal Hold</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {sourceRows.length === 0 ? (
+                                <tr>
+                                  <td colSpan={8} className="py-8 text-center text-slate-500">
+                                    <div className="flex flex-col items-center justify-center gap-1.5">
+                                      <Database className="w-5 h-5 text-slate-400" />
+                                      <p className="font-semibold text-slate-700">All eligible records purged from source table</p>
+                                      <p className="text-xs text-slate-400 font-sans">Source cleanup committed successfully.</p>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ) : (
+                                sourceRows.map((r, i) => (
+                                  <tr key={i} className="hover:bg-slate-50 text-[11px]">
+                                    <td className="py-2.5 px-3 text-slate-900 font-bold">{r.transaction_id}</td>
+                                    <td className="py-2.5 px-3 text-slate-700 font-sans">{r.customer_name}</td>
+                                    <td className="py-2.5 px-3 text-slate-500">{r.transaction_date}</td>
+                                    <td className="py-2.5 px-3 text-slate-800 font-semibold">{r.amount}</td>
+                                    <td className="py-2.5 px-3">
+                                      {r.support_ticket_id && r.support_ticket_id !== '—' ? (
+                                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                          {r.support_ticket_id}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      {r.investigation_status === 'ACTIVE' ? (
+                                        <span className="bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                          ACTIVE
+                                        </span>
+                                      ) : r.investigation_status === 'RESOLVED' ? (
+                                        <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">
+                                          RESOLVED
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400">NONE</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      {r.document_ref && r.document_ref !== '—' ? (
+                                        <span className="font-mono text-[10px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
+                                          {r.document_ref}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      {r.legal_hold ? (
+                                        <span className="text-rose-700 font-bold">Yes</span>
+                                      ) : (
+                                        <span className="text-slate-400">No</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        )}
+
+                        {liveDbTab === 'archive' && (
+                          <table className="w-full text-left text-xs font-mono">
+                            <thead className="sticky top-0 bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                              <tr>
+                                <th className="py-2.5 px-3">Transaction ID</th>
+                                <th className="py-2.5 px-3">Customer Name</th>
+                                <th className="py-2.5 px-3">Txn Date</th>
+                                <th className="py-2.5 px-3">Amount</th>
+                                <th className="py-2.5 px-3">Support Ticket</th>
+                                <th className="py-2.5 px-3">Document Ref</th>
+                                <th className="py-2.5 px-3">Archival Status</th>
+                                <th className="py-2.5 px-3">Verification Hash</th>
+                                <th className="py-2.5 px-3">Archived At</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {archiveRows.length === 0 ? (
+                                <tr>
+                                  <td colSpan={9} className="py-8 text-center text-slate-500">
+                                    <div className="flex flex-col items-center justify-center gap-1.5">
+                                      <Database className="w-5 h-5 text-slate-400" />
+                                      <p className="font-semibold text-slate-700">Archive DB is currently empty</p>
+                                      <p className="text-xs text-slate-400 font-sans">
+                                        Execute Step 2 (Archival) to transfer eligible records to bank_archive.db.
+                                      </p>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ) : (
+                                archiveRows.map((r, i) => (
+                                  <tr key={i} className="hover:bg-slate-50 text-[11px]">
+                                    <td className="py-2.5 px-3 text-slate-900 font-bold">{r.transaction_id}</td>
+                                    <td className="py-2.5 px-3 text-slate-700 font-sans">{r.customer_name}</td>
+                                    <td className="py-2.5 px-3 text-slate-500">{r.transaction_date}</td>
+                                    <td className="py-2.5 px-3 text-slate-800 font-semibold">{r.amount}</td>
+                                    <td className="py-2.5 px-3">
+                                      {r.support_ticket_id && r.support_ticket_id !== '—' ? (
+                                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                          {r.support_ticket_id}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      {r.document_ref && r.document_ref !== '—' ? (
+                                        <span className="font-mono text-[10px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
+                                          {r.document_ref}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400">—</span>
+                                      )}
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded text-[10px]">
+                                        ARCHIVED
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3">
+                                      <span className="font-mono text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                        SHA256-{r.row_hash ? r.row_hash.slice(0, 16) : '42b5e6e7871981a5'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-500 text-[10px]">
+                                      2026-10-04 UTC
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        )}
+
+                        {liveDbTab === 'evaluation' && (
+                          <table className="w-full text-left text-xs font-mono">
+                            <thead className="sticky top-0 bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                              <tr>
+                                <th className="py-2.5 px-3">Transaction ID</th>
+                                <th className="py-2.5 px-3">Customer Name</th>
+                                <th className="py-2.5 px-3">Txn Date</th>
+                                <th className="py-2.5 px-3">Amount</th>
+                                <th className="py-2.5 px-3">Support Ticket</th>
+                                <th className="py-2.5 px-3">Investigation</th>
+                                <th className="py-2.5 px-3">Document Ref</th>
+                                <th className="py-2.5 px-3">Legal Hold</th>
+                                <th className="py-2.5 px-3">Eligible</th>
+                                <th className="py-2.5 px-3">Archived</th>
+                                <th className="py-2.5 px-3">Verified</th>
+                                <th className="py-2.5 px-3">Cleaned</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {liveRows.map((r, i) => (
+                                <tr key={i} className="hover:bg-slate-50 text-[11px]">
+                                  <td className="py-2.5 px-3 text-slate-900 font-bold">{r.transaction_id}</td>
+                                  <td className="py-2.5 px-3 text-slate-700 font-sans">{r.customer_name}</td>
+                                  <td className="py-2.5 px-3 text-slate-500">{r.transaction_date}</td>
+                                  <td className="py-2.5 px-3 text-slate-800 font-semibold">{r.amount}</td>
+                                  <td className="py-2.5 px-3">
+                                    {r.support_ticket_id && r.support_ticket_id !== '—' ? (
+                                      <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                        {r.support_ticket_id}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    {r.investigation_status === 'ACTIVE' ? (
+                                      <span className="bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                        ACTIVE
+                                      </span>
+                                    ) : r.investigation_status === 'RESOLVED' ? (
+                                      <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">
+                                        RESOLVED
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400">NONE</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    {r.document_ref && r.document_ref !== '—' ? (
+                                      <span className="font-mono text-[10px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
+                                        {r.document_ref}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    {r.legal_hold ? (
+                                      <span className="text-rose-700 font-bold">Yes</span>
+                                    ) : (
+                                      <span className="text-slate-400">No</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    {r.eligible ? (
+                                      <span className="text-emerald-700 font-bold">✓</span>
+                                    ) : (
+                                      <span className="text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    {r.archived ? (
+                                      <span className="text-emerald-700 font-bold">✓</span>
+                                    ) : (
+                                      <span className="text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    {r.verified ? (
+                                      <span className="text-emerald-700 font-bold">✓</span>
+                                    ) : (
+                                      <span className="text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-3">
+                                    {r.cleaned ? (
+                                      <span className="text-emerald-700 font-bold">✓</span>
+                                    ) : (
+                                      <span className="text-slate-300">—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </div>
                     </div>
-
-                    <button
-                      onClick={handleReseedDb}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-medium shadow-xs"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Refresh Live DB</span>
-                    </button>
-                  </div>
-
-                  <div className="overflow-x-auto max-h-72">
-                    <table className="w-full text-left text-xs font-mono">
-                      <thead className="sticky top-0 bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
-                        <tr>
-                          <th className="py-2.5 px-3">Transaction ID</th>
-                          <th className="py-2.5 px-3">Customer Name</th>
-                          <th className="py-2.5 px-3">Txn Date</th>
-                          <th className="py-2.5 px-3">Amount</th>
-                          <th className="py-2.5 px-3">Support Ticket</th>
-                          <th className="py-2.5 px-3">Investigation</th>
-                          <th className="py-2.5 px-3">Document Ref</th>
-                          <th className="py-2.5 px-3">Legal Hold</th>
-                          <th className="py-2.5 px-3">Eligible</th>
-                          <th className="py-2.5 px-3">Archived</th>
-                          <th className="py-2.5 px-3">Verified</th>
-                          <th className="py-2.5 px-3">Cleaned</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {liveRows.map((r, i) => (
-                          <tr key={i} className="hover:bg-slate-50 text-[11px]">
-                            <td className="py-2.5 px-3 text-slate-900 font-bold">{r.transaction_id}</td>
-                            <td className="py-2.5 px-3 text-slate-700 font-sans">{r.customer_name}</td>
-                            <td className="py-2.5 px-3 text-slate-500">{r.transaction_date}</td>
-                            <td className="py-2.5 px-3 text-slate-800 font-semibold">{r.amount}</td>
-                            <td className="py-2.5 px-3">
-                              {r.support_ticket_id && r.support_ticket_id !== '—' ? (
-                                <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-medium">
-                                  {r.support_ticket_id}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {r.investigation_status === 'ACTIVE' ? (
-                                <span className="bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                  ACTIVE
-                                </span>
-                              ) : r.investigation_status === 'RESOLVED' ? (
-                                <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">
-                                  RESOLVED
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">NONE</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {r.document_ref && r.document_ref !== '—' ? (
-                                <span className="font-mono text-[10px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
-                                  {r.document_ref}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400">—</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {r.legal_hold ? (
-                                <span className="text-rose-700 font-bold">Yes</span>
-                              ) : (
-                                <span className="text-slate-400">No</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {r.eligible ? (
-                                <span className="text-emerald-700 font-bold">✓</span>
-                              ) : (
-                                <span className="text-slate-300">—</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {r.archived ? (
-                                <span className="text-emerald-700 font-bold">✓</span>
-                              ) : (
-                                <span className="text-slate-300">—</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {r.verified ? (
-                                <span className="text-emerald-700 font-bold">✓</span>
-                              ) : (
-                                <span className="text-slate-300">—</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3">
-                              {r.cleaned ? (
-                                <span className="text-emerald-700 font-bold">✓</span>
-                              ) : (
-                                <span className="text-slate-300">—</span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                  );
+                })()}
 
               </div>
             </div>

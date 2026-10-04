@@ -1,6 +1,8 @@
 import datetime
 import hashlib
 import json
+import logging
+import sqlite3
 import uuid
 from typing import Any
 from fastapi import APIRouter, HTTPException, File, UploadFile
@@ -27,6 +29,9 @@ from sim.audit_store import (
     save_audit_step,
     save_audit_evidence,
     save_audit_approval,
+    get_full_audit_bundle,
+    get_audit_run,
+    list_audit_steps,
 )
 from api.routers.runs import _RUNS_STORE, RunItem
 
@@ -287,7 +292,7 @@ async def upload_policy_file(
         txt_low = (extracted.get("text") or "").lower()
         fn_low = (file.filename or "").lower()
         if "vuln" in fn_low or "vulnerability management standard" in txt_low:
-            matched_control = default_registry.get_definition("CTL-VULN-001")
+            matched_control = next((d for d in default_registry.list_all() if "vuln" in d.control_id.lower()), None)
         if not matched_control:
             for defn in default_registry.list_all():
                 if defn.archetype == "D":
@@ -298,7 +303,7 @@ async def upload_policy_file(
             if all_defs:
                 matched_control = all_defs[0]
 
-    # If associated with CTL-VULN-001, dynamically bind extracted definition patch to registry
+    # If associated with vulnerability control, dynamically bind extracted definition patch to registry
     if matched_control and "vuln" in matched_control.control_id.lower():
         try:
             parsed_vuln = parse_policy_specification(extracted.get("text", ""), default_archetype="A")
@@ -381,7 +386,7 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
 
     parsed = parse_policy_specification(text, default_archetype=defn.archetype)
 
-    # When CTL-VULN-001 policy analysis succeeds, bind definition patch to registry
+    # When vulnerability control policy analysis succeeds, bind definition patch to registry
     if "vuln" in req.control_id.lower() and parsed.get("definition_patch"):
         patch = parsed["definition_patch"]
         current_defn = default_registry.get_definition(req.control_id)
@@ -474,7 +479,6 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
 
     if defn.archetype == "D":
         ret_years = int(req.approved_rules.get("retention_years", 5))
-        db_res = query_eligible_archival_records(retention_years=ret_years)
 
         connected_databases = {
             "source": {
@@ -490,29 +494,6 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
                 "ssl": True,
             },
         }
-
-        # Format sample records from real database query
-        sample_records = []
-        all_rows = get_live_table_rows("source_transactions", limit=50)
-        for r in all_rows:
-            is_eligible = r["transaction_date"] < "2021-09-01"
-            sample_records.append({
-                "transaction_id": r["transaction_id"],
-                "account_id": r["account_id"],
-                "customer_name": r["customer_name"],
-                "transaction_date": r["transaction_date"],
-                "amount": f"${r['amount']:,.2f}",
-                "legal_hold": bool(r["legal_hold"]),
-                "support_ticket_id": r.get("support_ticket_id") or "—",
-                "investigation_status": r.get("investigation_status") or "NONE",
-                "document_ref": r.get("document_ref") or "—",
-                "eligible": is_eligible,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "ELIGIBLE" if is_eligible else "RETAINED (Recent)",
-                "row_hash": hashlib.sha256(f"{r['transaction_id']}:{r['amount']}:{r['transaction_date']}".encode()).hexdigest(),
-            })
 
         # Extract rules, exceptions, and run_id from request or active session
         rules = req.rules or req.approved_rules.get("rules") or []
@@ -538,13 +519,78 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
             exceptions=exceptions,
         )
 
+        # Apply generated selection SQL directly to live bank_core.db to determine truly eligible records
+        eligible_ids: set[str] = set()
+        sel_sql = sql_scripts.get("selection_sql", "")
+        with sqlite3.connect(CORE_DB_PATH) as conn:
+            cur = conn.cursor()
+            for q in sel_sql.split(";"):
+                clean_q = "\n".join(l for l in q.splitlines() if not l.strip().startswith("--")).strip()
+                if clean_q.upper().startswith("SELECT"):
+                    try:
+                        cur.execute(clean_q)
+                        for r_row in cur.fetchall():
+                            eligible_ids.add(str(r_row[0]))
+                    except Exception as e:
+                        pass
+
+        # If selection SQL couldn't be parsed or returned 0, fall back to query_eligible_archival_records
+        if not eligible_ids and not rules:
+            db_res = query_eligible_archival_records(retention_years=ret_years)
+            eligible_ids = set(db_res.get("all_eligible_ids", []))
+
+        # Update session with active eligible_ids so archival execution copies the exact matching records
+        session = _INTERACTIVE_SESSIONS.get(run_id)
+        if session:
+            session["eligible_ids"] = list(eligible_ids)
+            session["rules"] = rules
+            session["exceptions"] = exceptions
+
+        # Format sample records from real database query matching actual eligibility
+        sample_records = []
+        all_rows = get_live_table_rows("source_transactions", limit=100)
+        for r in all_rows:
+            is_hold = bool(r.get("legal_hold"))
+            is_active_inv = (r.get("investigation_status") == "ACTIVE")
+            is_eligible = (r["transaction_id"] in eligible_ids) and not is_hold and not is_active_inv
+
+            if is_hold:
+                status = "EXCLUDED (Legal Hold)"
+            elif is_active_inv:
+                status = "EXCLUDED (Active Investigation)"
+            elif is_eligible:
+                status = "ELIGIBLE"
+            else:
+                status = "RETAINED (Active Lifecycle)"
+
+            sample_records.append({
+                "transaction_id": r["transaction_id"],
+                "account_id": r["account_id"],
+                "customer_name": r["customer_name"],
+                "transaction_date": r["transaction_date"],
+                "amount": f"${r['amount']:,.2f}",
+                "legal_hold": is_hold,
+                "support_ticket_id": r.get("support_ticket_id") or "—",
+                "investigation_status": r.get("investigation_status") or "NONE",
+                "document_ref": r.get("document_ref") or "—",
+                "eligible": is_eligible,
+                "archived": False,
+                "verified": False,
+                "cleaned": False,
+                "status": status,
+                "row_hash": hashlib.sha256(f"{r['transaction_id']}:{r['amount']}:{r['transaction_date']}".encode()).hexdigest(),
+            })
+
+        total_source_count = len(all_rows)
+        eligible_count = len([r for r in sample_records if r["eligible"]])
+        excluded_holds_count = len([r for r in sample_records if r["legal_hold"]])
 
         return {
             "control_id": req.control_id,
             "connected_databases": connected_databases,
-            "total_source_records": db_res["total_source_count"],
-            "eligible_records_count": db_res["eligible_count"],
-            "excluded_holds_count": db_res["exempt_count"],
+            "total_source_records": total_source_count,
+            "eligible_records_count": eligible_count,
+            "excluded_holds_count": excluded_holds_count,
             "archived_count": 0,
             "verified_count": 0,
             "source_cleaned_count": 0,
@@ -804,7 +850,8 @@ async def execute_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
         ret_years = session.get("retention_years", 5)
 
         # Execute real SQL insert into bank_archive.db
-        copy_res = execute_real_archive_copy(run_id=req.run_id, retention_years=ret_years)
+        eligible_ids = session.get("eligible_ids")
+        copy_res = execute_real_archive_copy(run_id=req.run_id, retention_years=ret_years, eligible_ids=eligible_ids)
 
         token_seed = f"{req.run_id}:{copy_res['source_merkle_root']}:{datetime.datetime.now(datetime.timezone.utc).isoformat()}"
         attestation_sig = hashlib.sha256(token_seed.encode("utf-8")).hexdigest()
@@ -1126,3 +1173,60 @@ def get_live_db(table_name: str) -> dict[str, Any]:
     """Retrieve live rows from either source or archive tables."""
     rows = get_live_table_rows(table_name)
     return {"table_name": table_name, "count": len(rows), "rows": rows}
+
+
+@router.get("/resume/{run_id}")
+def get_resume_session(run_id: str) -> dict[str, Any]:
+    """Retrieve session state and current progress stage for resuming an execution where it left off."""
+    session = _INTERACTIVE_SESSIONS.get(run_id)
+    bundle = get_full_audit_bundle(run_id) or {}
+    run = bundle.get("run") or get_audit_run(run_id) or {}
+    steps = bundle.get("steps") or list_audit_steps(run_id)
+
+    control_id = run.get("control_id") or (session.get("control_id") if session else None)
+    if not control_id:
+        all_defs = default_registry.list_all()
+        control_id = all_defs[0].control_id if all_defs else "archival_control"
+    defn = default_registry.get_definition(control_id)
+
+    has_cleanup = any(s.get("step_name") == "SOURCE_CLEANUP" and s.get("status") == "completed" for s in steps)
+    has_approval = any(s.get("step_name") == "APPROVAL" and s.get("status") == "completed" for s in steps)
+    has_verify = any(s.get("step_name") == "VERIFICATION" and s.get("status") == "completed" for s in steps)
+    has_archive = any(s.get("step_name") in ("ARCHIVE", "EXECUTE_ARCHIVAL") and s.get("status") == "completed" for s in steps)
+    has_preview = any(s.get("step_name") == "PREVIEW" and s.get("status") == "completed" for s in steps)
+
+    if has_cleanup or run.get("status") == "completed":
+        stage = "CLEANED"
+    elif has_approval:
+        stage = "APPROVED"
+    elif has_verify:
+        stage = "VERIFIED"
+    elif has_archive:
+        stage = "ARCHIVED"
+    else:
+        stage = "EVALUATED"
+
+    stage_actions = {
+        "EVALUATED": {"next_step": 2, "action_name": "Step 2: Archival Execution (INSERT)", "button_label": "Execute Archival SQL"},
+        "ARCHIVED": {"next_step": 3, "action_name": "Step 3: Cryptographic Merkle Verification", "button_label": "Verify Records"},
+        "VERIFIED": {"next_step": 4, "action_name": "Step 4: Maker-Checker Human Approval", "button_label": "Record Human Approval"},
+        "APPROVED": {"next_step": 5, "action_name": "Step 5: Source Database Cleanup (DELETE)", "button_label": "Purge Source Records"},
+        "CLEANED": {"next_step": 6, "action_name": "Execution Completed", "button_label": "View Audit Package"},
+    }
+
+    action_info = stage_actions.get(stage, stage_actions["EVALUATED"])
+
+    return {
+        "run_id": run_id,
+        "control_id": control_id,
+        "archetype": getattr(defn, "archetype", "D") if defn else "D",
+        "stage": stage,
+        "next_step": action_info["next_step"],
+        "action_name": action_info["action_name"],
+        "button_label": action_info["button_label"],
+        "status": run.get("status", "running"),
+        "steps": steps,
+        "policy_info": run.get("policy_info"),
+        "merkle_verification": bundle.get("merkle_verification"),
+    }
+

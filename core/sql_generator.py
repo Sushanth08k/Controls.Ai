@@ -157,6 +157,16 @@ def compile_schema_driven_sql(
 
     exclusion_sql = ("\n  AND " + "\n  AND ".join(exclusion_clauses)) if exclusion_clauses else ""
 
+    # Extra compliance columns
+    extra_cols = []
+    if "support_ticket_id" in schema_ddl:
+        extra_cols.append("support_ticket_id")
+    if "investigation_status" in schema_ddl:
+        extra_cols.append("investigation_status")
+    if "document_ref" in schema_ddl:
+        extra_cols.append("document_ref")
+    extra_cols_str = (", " + ", ".join(extra_cols)) if extra_cols else ""
+
     # Multi-rule generation: if multiple distinct rules were detected in policy
     if len(rules) > 1:
         sel_blocks = []
@@ -167,52 +177,85 @@ def compile_schema_driven_sql(
             rid = r.get("rule_id", f"RULE-{idx + 1:03d}")
             rdesc = r.get("description", "Archival Rule")
             cond = r.get("condition") or {}
-            df = cond.get("field") or date_field
+            cond_f = cond.get("field")
             val = cond.get("value") or str(retention_years)
             unit = cond.get("unit") or "years"
-            src_tbl = derive_table_name(rdesc, default=source_table)
-            arch_tbl = f"archive_{src_tbl}" if not src_tbl.startswith("source_") else src_tbl.replace("source_", "archive_")
 
-            sel_blocks.append(
-                f"-- [{rid}] {rdesc}\n"
-                f"-- Target: {src_tbl} | Retention: older than {val} {unit}\n"
-                f"SELECT *\n"
-                f"FROM {src_tbl}\n"
-                f"WHERE {df} < DATE('now', '-{val} {unit}'){exclusion_sql};"
-            )
+            derived = derive_table_name(rdesc, default=source_table)
+            # If the derived entity table isn't in the schema DDL, route to the active source_table & archive_table
+            if derived in schema_ddl and derived != source_table:
+                src_tbl = derived
+                df = cond_f if (cond_f and cond_f in schema_ddl) else date_field
+                arch_tbl = f"archive_{src_tbl}" if not src_tbl.startswith("source_") else src_tbl.replace("source_", "archive_")
+                entity_filter = ""
+                sel_blocks.append(
+                    f"-- [{rid}] {rdesc}\n"
+                    f"-- Target: {src_tbl} | Retention: older than {val} {unit}\n"
+                    f"SELECT *\n"
+                    f"FROM {src_tbl}\n"
+                    f"WHERE {df} < DATE('now', '-{val} {unit}'){exclusion_sql};"
+                )
+                arch_blocks.append(
+                    f"-- [{rid}] ARCHIVE FIRST -> {arch_tbl}\n"
+                    f"-- Target: {src_tbl} | Rule: older than {val} {unit} | Run ID: {run_id}\n"
+                    f"INSERT OR REPLACE INTO {arch_tbl}\n"
+                    f"SELECT *, 'ARCHIVED' AS archival_status, '{run_id}' AS control_run_id, 'SHA256-' || substr(hex(randomblob(16)), 1, 16) AS verification_hash, CURRENT_TIMESTAMP AS archived_at\n"
+                    f"FROM {src_tbl}\n"
+                    f"WHERE {df} < DATE('now', '-{val} {unit}'){exclusion_sql};"
+                )
+                clean_blocks.append(
+                    f"-- [{rid}] SOURCE CLEANUP -> {src_tbl} (AFTER RECONCILIATION & HUMAN APPROVAL)\n"
+                    f"DELETE FROM {src_tbl}\n"
+                    f"WHERE rowid IN (\n"
+                    f"  SELECT rowid FROM {arch_tbl} WHERE control_run_id = '{run_id}'\n"
+                    f"){exclusion_sql};"
+                )
+            else:
+                src_tbl = source_table
+                arch_tbl = archive_table
+                df = date_field
+                rdesc_l = rdesc.lower()
+                if ("support ticket" in rdesc_l or "ticket" in rdesc_l) and "support_ticket_id" in schema_ddl:
+                    entity_filter = "\n  AND (support_ticket_id IS NOT NULL AND support_ticket_id != '' AND support_ticket_id != '—' AND support_ticket_id != '-')"
+                elif ("customer doc" in rdesc_l or "document" in rdesc_l) and "document_ref" in schema_ddl:
+                    entity_filter = "\n  AND (document_ref IS NOT NULL AND document_ref != '' AND document_ref != '—' AND document_ref != '-')"
+                else:
+                    entity_filter = ""
 
-            arch_blocks.append(
-                f"-- [{rid}] ARCHIVE FIRST -> {arch_tbl}\n"
-                f"-- Target: {src_tbl} | Rule: older than {val} {unit} | Run ID: {run_id}\n"
-                f"INSERT OR REPLACE INTO {arch_tbl}\n"
-                f"SELECT *, 'ARCHIVED' AS archival_status, '{run_id}' AS control_run_id, 'SHA256-' || substr(hex(randomblob(16)), 1, 16) AS verification_hash, CURRENT_TIMESTAMP AS archived_at\n"
-                f"FROM {src_tbl}\n"
-                f"WHERE {df} < DATE('now', '-{val} {unit}'){exclusion_sql};"
-            )
-
-            clean_blocks.append(
-                f"-- [{rid}] SOURCE CLEANUP -> {src_tbl} (AFTER RECONCILIATION & HUMAN APPROVAL)\n"
-                f"DELETE FROM {src_tbl}\n"
-                f"WHERE rowid IN (\n"
-                f"  SELECT rowid FROM {arch_tbl} WHERE control_run_id = '{run_id}'\n"
-                f"){exclusion_sql};"
-            )
+                sel_blocks.append(
+                    f"-- [{rid}] {rdesc}\n"
+                    f"-- Target: {src_tbl} | Retention: older than {val} {unit}\n"
+                    f"SELECT transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}{extra_cols_str}\n"
+                    f"FROM {src_tbl}\n"
+                    f"WHERE {df} < DATE('now', '-{val} {unit}'){entity_filter}{exclusion_sql};"
+                )
+                arch_blocks.append(
+                    f"-- [{rid}] ARCHIVE FIRST -> {arch_tbl}\n"
+                    f"-- Target: {src_tbl} | Rule: older than {val} {unit} | Run ID: {run_id}\n"
+                    f"INSERT OR REPLACE INTO {arch_tbl} (\n"
+                    f"  transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}{extra_cols_str}, status, control_run_id, verification_hash, archived_at\n"
+                    f")\n"
+                    f"SELECT \n"
+                    f"  transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}{extra_cols_str}, 'ARCHIVED',\n"
+                    f"  '{run_id}',\n"
+                    f"  'SHA256-' || substr(hex(randomblob(16)), 1, 16),\n"
+                    f"  CURRENT_TIMESTAMP\n"
+                    f"FROM {src_tbl}\n"
+                    f"WHERE {df} < DATE('now', '-{val} {unit}'){entity_filter}{exclusion_sql};"
+                )
+                clean_blocks.append(
+                    f"-- [{rid}] SOURCE CLEANUP -> {src_tbl} (AFTER RECONCILIATION & HUMAN APPROVAL)\n"
+                    f"DELETE FROM {src_tbl}\n"
+                    f"WHERE transaction_id IN (\n"
+                    f"  SELECT transaction_id FROM {arch_tbl} WHERE control_run_id = '{run_id}'\n"
+                    f"){entity_filter}{exclusion_sql};"
+                )
 
         return {
             "selection_sql": "\n\n".join(sel_blocks),
             "archival_sql": "\n\n".join(arch_blocks),
             "cleanup_sql": "\n\n".join(clean_blocks),
         }
-
-    # Extra compliance columns
-    extra_cols = []
-    if "support_ticket_id" in schema_ddl:
-        extra_cols.append("support_ticket_id")
-    if "investigation_status" in schema_ddl:
-        extra_cols.append("investigation_status")
-    if "document_ref" in schema_ddl:
-        extra_cols.append("document_ref")
-    extra_cols_str = (", " + ", ".join(extra_cols)) if extra_cols else ""
 
     # Single rule or baseline schema-driven queries
     selection_sql = f"""-- 1. ACTIVE SELECTION SQL (SELECT)
