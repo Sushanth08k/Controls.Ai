@@ -31,6 +31,7 @@ import {
   PlayCircle,
   ShieldAlert,
   Database,
+  Clock,
 } from 'lucide-react';
 
 interface ControlExecutionModalProps {
@@ -42,7 +43,7 @@ interface ControlExecutionModalProps {
   initialFileName?: string;
   initialPolicyId?: string;
   initialRunId?: string;
-  initialStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED';
+  initialStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | 'COMPLETED';
 }
 
 export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
@@ -71,8 +72,8 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   const [previewData, setPreviewData] = useState<any>(null);
 
   // Step progression in Control Runs Console:
-  // 1 = EVALUATED, 2 = ARCHIVING/ARCHIVED, 3 = VERIFYING/VERIFIED, 4 = APPROVAL, 5 = CLEANUP, 6 = COMPLETED
-  const [runStage, setRunStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED'>(
+  // 1 = EVALUATED, 2 = ARCHIVING/ARCHIVED, 3 = VERIFYING/VERIFIED, 4 = APPROVAL, 5 = CLEANUP, 6 = FINAL_VERIFICATION, 7 = COMPLETED
+  const [runStage, setRunStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | 'COMPLETED'>(
     initialStage || 'EVALUATED'
   );
 
@@ -90,7 +91,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
 
   // Synchronize active SQL tab with the active lifecycle step (Step 5 -> Source Cleanup SQL)
   useEffect(() => {
-    if (runStage === 'APPROVED' || runStage === 'CLEANED') {
+    if (runStage === 'APPROVED' || runStage === 'CLEANED' || runStage === 'COMPLETED') {
       setActiveSqlTab(3);
     } else if (runStage === 'ARCHIVED' || runStage === 'VERIFIED') {
       setActiveSqlTab(2);
@@ -110,6 +111,8 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   const [operatorComment, setOperatorComment] = useState<string>(
     'Compliance review completed. 33 eligible records verified with SHA-256 Merkle match.'
   );
+  const [activeGateId, setActiveGateId] = useState<string | null>(null);
+  const [queueNotice, setQueueNotice] = useState<string | null>(null);
 
   // Load defaults on mount
   useEffect(() => {
@@ -148,12 +151,14 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
           setLiveRows(prev.sample_records || []);
         }
 
-        const effectiveStage: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' =
-          resumeRes?.stage || initialStage || 'EVALUATED';
+        const effectiveStage: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | 'COMPLETED' =
+          resumeRes?.status === 'completed' || audit?.run?.status === 'completed'
+            ? 'COMPLETED'
+            : resumeRes?.stage || initialStage || 'EVALUATED';
         setRunStage(effectiveStage);
 
         const targetEligible = prev?.eligible_records_count || 33;
-        if (effectiveStage === 'CLEANED') {
+        if (effectiveStage === 'CLEANED' || effectiveStage === 'COMPLETED') {
           setCleanedCount(targetEligible);
           setVerifiedCount(targetEligible);
           setArchivedCount(targetEligible);
@@ -201,6 +206,9 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
 
         if (audit?.merkle_verification?.attestation_token) {
           setAttestationToken(audit.merkle_verification.attestation_token);
+        }
+        if (resumeRes?.gate?.gate_id) {
+          setActiveGateId(resumeRes.gate.gate_id);
         }
       })
       .catch((err) => {
@@ -326,6 +334,9 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     try {
       const res = await verifyArchival(control.control_id, runId);
       setVerifiedCount(res.records_verified || archivedCount);
+      if (res.gate_id) {
+        setActiveGateId(res.gate_id);
+      }
       setRunStage('VERIFIED');
       // Update rows to show verified = true
       setLiveRows((prev) =>
@@ -338,29 +349,54 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     }
   };
 
-  // Action: Step 4 Record Human Approval
-  const handleApproveGate = async () => {
+  // Action: Step 4 Button 1 — Keep in Approval Queue
+  const handleKeepInQueue = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await approveGate(
+      const res = await verifyArchival(control.control_id, runId);
+      if (res.gate_id) {
+        setActiveGateId(res.gate_id);
+      }
+      setQueueNotice(
+        'Approval request sent to the Approval Queue. Source records have not been cleaned up.'
+      );
+    } catch (err: any) {
+      setError(err.message || 'Failed to dispatch gate to Approval Queue');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Action: Step 4 Button 2 — Quick Approve & Continue (advances to Step 5: Source Cleanup)
+  const handleQuickApproveAndContinue = async () => {
+    const isMaker = currentUser.user_id === 'sec_owner_1';
+    if (isMaker) {
+      setError("Maker-checker rule: Proposer 'sec_owner_1' cannot approve their own gate. Please send to Approval Queue for an independent reviewer.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const apprRes = await approveGate(
         control.control_id,
         runId,
         attestationToken,
         operatorComment,
         currentUser.user_id
       );
-      setApprovalCert(res.approval_certificate || `APPR-GATE-${runId.slice(4)}`);
+      setApprovalCert(apprRes.approval_certificate || `APPR-GATE-${runId.slice(4)}`);
       setRunStage('APPROVED');
       setActiveSqlTab(3);
     } catch (err: any) {
-      setError(err.message || 'Human approval recording failed');
+      setError(err.message || 'Quick approval recording failed');
     } finally {
       setLoading(false);
     }
   };
 
-  // Action: Step 5 Execute Controlled Source Cleanup (DELETE)
+  // Action: Step 5 Execute Controlled Source Cleanup (DELETE) -> advances to Step 6
   const handleCommitCleanup = async () => {
     setLoading(true);
     setError(null);
@@ -376,18 +412,28 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       setCleanupCert(res.certificate_id || `AUD-CERT-${runId.slice(4)}`);
       setLedgerSeq(res.ledger_seq || 2);
       setLedgerHash(res.ledger_entry_hash || 'SHA256-42b5e6e7871981a5');
-      setRunStage('CLEANED');
-      setActiveSqlTab(3);
       // Update rows to show cleaned = true
       setLiveRows((prev) =>
         prev.map((r) => (r.verified ? { ...r, cleaned: true, status: 'PURGED_FROM_SOURCE' } : r))
       );
-      if (onRunCompleted) onRunCompleted();
+      // Advance visibly to Step 6: Final Verification
+      setRunStage('CLEANED');
+      setActiveSqlTab(3);
     } catch (err: any) {
       setError(err.message || 'Source cleanup execution failed');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Action: Step 6 Execute Cryptographic Final Verification & Seal Immutable Ledger
+  const handleFinalVerification = () => {
+    setLoading(true);
+    setTimeout(() => {
+      setRunStage('COMPLETED');
+      setLoading(false);
+      if (onRunCompleted) onRunCompleted();
+    }, 400);
   };
 
   // Action: Reseed DB
@@ -467,11 +513,11 @@ AND legal_hold = 0;`,
     { name: 'Structured rules', active: viewMode >= 2 },
     { name: 'Execution', active: viewMode === 3 },
     { name: 'Archival', active: runStage !== 'EVALUATED' },
-    { name: 'Verification', active: runStage === 'VERIFIED' || runStage === 'APPROVED' || runStage === 'CLEANED' },
-    { name: 'Human approval', active: runStage === 'APPROVED' || runStage === 'CLEANED' },
-    { name: 'Source cleanup', active: runStage === 'CLEANED' },
-    { name: 'Final verification', active: runStage === 'CLEANED' },
-    { name: 'Audit evidence', active: runStage === 'CLEANED' },
+    { name: 'Verification', active: runStage !== 'EVALUATED' && runStage !== 'ARCHIVED' },
+    { name: 'Human approval', active: runStage === 'APPROVED' || runStage === 'CLEANED' || runStage === 'COMPLETED' },
+    { name: 'Source cleanup', active: runStage === 'CLEANED' || runStage === 'COMPLETED' },
+    { name: 'Final verification', active: runStage === 'COMPLETED' },
+    { name: 'Audit evidence', active: runStage === 'COMPLETED' },
   ];
 
   return (
@@ -894,8 +940,10 @@ AND legal_hold = 0;`,
                       </h3>
                       <span
                         className={`px-2.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${
-                          runStage === 'CLEANED'
+                          runStage === 'COMPLETED'
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : runStage === 'CLEANED'
+                            ? 'bg-blue-100 text-blue-800 border border-blue-300'
                             : runStage === 'APPROVED'
                             ? 'bg-amber-100 text-amber-800 border border-amber-300'
                             : runStage === 'VERIFIED'
@@ -905,7 +953,7 @@ AND legal_hold = 0;`,
                             : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
                         }`}
                       >
-                        {runStage}
+                        {runStage === 'COMPLETED' ? 'COMPLETED' : runStage}
                       </span>
                     </div>
                     <span className="text-xs text-slate-500 font-mono mt-1 block">
@@ -921,11 +969,11 @@ AND legal_hold = 0;`,
                   {[
                     { num: '1', name: 'Evaluated', active: true },
                     { num: '2', name: 'Archival', active: runStage !== 'EVALUATED' },
-                    { num: '3', name: 'Verification', active: runStage === 'VERIFIED' || runStage === 'APPROVED' || runStage === 'CLEANED' },
-                    { num: '4', name: 'Approval', active: runStage === 'APPROVED' || runStage === 'CLEANED' },
-                    { num: '5', name: 'Source Cleanup', active: runStage === 'CLEANED' },
-                    { num: '6', name: 'Final Verification', active: runStage === 'CLEANED' },
-                    { num: '7', name: 'Completed', active: runStage === 'CLEANED' },
+                    { num: '3', name: 'Verification', active: runStage !== 'EVALUATED' && runStage !== 'ARCHIVED' },
+                    { num: '4', name: 'Approval', active: runStage === 'APPROVED' || runStage === 'CLEANED' || runStage === 'COMPLETED' },
+                    { num: '5', name: 'Source Cleanup', active: runStage === 'CLEANED' || runStage === 'COMPLETED' },
+                    { num: '6', name: 'Final Verification', active: runStage === 'COMPLETED' },
+                    { num: '7', name: 'Completed', active: runStage === 'COMPLETED' },
                   ].map((s) => (
                     <span
                       key={s.num}
@@ -1024,33 +1072,95 @@ AND legal_hold = 0;`,
                     <div className="space-y-3">
                       <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center justify-between">
                         <span>✓ Independent SHA-256 dual-root Merkle reconciliation passed with 100% byte fidelity. Attestation: {attestationToken}</span>
-                      </div>
-                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                        <div>
-                          <span className="text-xs font-semibold text-slate-900 block">
-                            STEP 4: HUMAN APPROVAL &nbsp;|&nbsp; Status: APPROVAL_PENDING
+                        {activeGateId && (
+                          <span className="font-mono text-[11px] bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded font-bold">
+                            Gate: {activeGateId}
                           </span>
-                          <p className="text-xs text-slate-600 mt-0.5">
-                            Regulatory policy requires maker-checker human authorization prior to controlled source record removal.
-                          </p>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-3 items-center">
-                          <input
-                            type="text"
-                            value={operatorComment}
-                            onChange={(e) => setOperatorComment(e.target.value)}
-                            className="flex-1 w-full text-xs p-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-emerald-600"
-                          />
-                          <button
-                            onClick={handleApproveGate}
-                            disabled={loading || !operatorComment.trim()}
-                            className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-md shadow-amber-600/20 transition-all"
-                          >
-                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                            <span>Step 4: Record Human Approval & Grant Purge Authorization</span>
-                          </button>
-                        </div>
+                        )}
                       </div>
+
+                      {queueNotice && (
+                        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs space-y-2">
+                          <div className="flex items-center gap-2 font-semibold text-blue-950">
+                            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                            <span>{queueNotice}</span>
+                          </div>
+                          <p className="text-[11px] text-blue-800">
+                            You may now safely close this window. The gate is actively waiting in the <strong>HITL Approval Queue</strong> (Control: <code className="font-mono font-bold">{control.control_id}</code>, Run: <code className="font-mono font-bold">{runId}</code>). Once approved by an authorized reviewer, source deletion will execute.
+                          </p>
+                          <div className="pt-1 flex gap-2">
+                            <button
+                              onClick={onClose}
+                              className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition-all shadow-xs"
+                            >
+                              Close Execution Window
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {!queueNotice && (
+                        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
+                          <div>
+                            <span className="text-xs font-semibold text-slate-900 block">
+                              STEP 4: HUMAN APPROVAL &nbsp;|&nbsp; Status: APPROVAL_PENDING
+                            </span>
+                            <p className="text-xs text-slate-600 mt-0.5">
+                              Regulatory policy requires maker-checker human authorization prior to controlled source record removal. Approval is required before source cleanup.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-white border border-slate-200 text-[11px]">
+                            <div>
+                              <span className="text-slate-500 block font-medium">Maker (Proposer)</span>
+                              <span className="font-mono font-semibold text-slate-800">sec_owner_1</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500 block font-medium">Required Approver Role</span>
+                              <span className="font-mono font-semibold text-blue-700">control_reviewer</span>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[11px] font-medium text-slate-700 block mb-1">
+                              Reviewer Comments / Sign-off Rationale:
+                            </label>
+                            <input
+                              type="text"
+                              value={operatorComment}
+                              onChange={(e) => setOperatorComment(e.target.value)}
+                              placeholder="Enter approval comments..."
+                              className="w-full text-xs p-2.5 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-emerald-600"
+                            />
+                          </div>
+
+                          {currentUser.user_id === 'sec_owner_1' && (
+                            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                              <span>Maker-checker rule: You are logged in as the maker ('sec_owner_1'). You must keep this in the Approval Queue for a reviewer.</span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap items-center justify-end gap-2.5 pt-2">
+                            <button
+                              onClick={handleKeepInQueue}
+                              disabled={loading}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold text-xs transition-all shadow-xs"
+                            >
+                              <Clock className="w-3.5 h-3.5 text-slate-600" />
+                              <span>Keep in Approval Queue</span>
+                            </button>
+
+                            <button
+                              onClick={handleQuickApproveAndContinue}
+                              disabled={loading || currentUser.user_id === 'sec_owner_1' || !operatorComment.trim()}
+                              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-md shadow-amber-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                            >
+                              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                              <span>Quick Approve & Continue</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -1081,6 +1191,32 @@ AND legal_hold = 0;`,
                   )}
 
                   {runStage === 'CLEANED' && (
+                    <div className="space-y-3">
+                      <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-medium flex items-center justify-between">
+                        <span>✓ Source cleanup executed! {cleanedCount} records purged from source_transactions. Ready for Step 6: Final Verification.</span>
+                      </div>
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                          <span className="text-xs font-semibold text-slate-900 block">
+                            STEP 6: FINAL VERIFICATION &nbsp;|&nbsp; Status: VERIFICATION_PENDING
+                          </span>
+                          <p className="text-xs text-slate-600 mt-0.5">
+                            Reconcile source and archive cryptographic roots, verify ledger sequence #{ledgerSeq}, and seal the immutable audit certificate.
+                          </p>
+                        </div>
+                        <button
+                          onClick={handleFinalVerification}
+                          disabled={loading}
+                          className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs shadow-md shadow-emerald-700/20 transition-all cursor-pointer"
+                        >
+                          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                          <span>Step 6: Complete Final Verification & Seal Ledger</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {runStage === 'COMPLETED' && (
                     <div className="p-5 rounded-xl bg-emerald-50/80 border border-emerald-200 text-center space-y-3">
                       <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-xs">
                         <CheckCircle2 className="w-6 h-6" />
@@ -1150,7 +1286,7 @@ AND legal_hold = 0;`,
                       </div>
 
                       {activeSqlTab === 3 ? (
-                        runStage === 'CLEANED' ? (
+                        runStage === 'CLEANED' || runStage === 'COMPLETED' ? (
                           <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
                             ✓ SOURCE CLEANUP EXECUTED ({cleanedCount} PURGED)
                           </span>

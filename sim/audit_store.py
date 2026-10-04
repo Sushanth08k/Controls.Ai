@@ -94,6 +94,9 @@ def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:
             approved_by TEXT,
             approved_at TEXT,
             comment TEXT,
+            gate_name TEXT DEFAULT 'operator_signoff',
+            maker_id TEXT DEFAULT 'sec_owner_1',
+            approver_role TEXT DEFAULT 'control_reviewer',
             created_at TEXT NOT NULL
         );
 
@@ -129,6 +132,16 @@ def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:
         col_names = [col[1] for col in cur.fetchall()]
         if "policy_id" not in col_names:
             cur.execute("ALTER TABLE control_audit_runs ADD COLUMN policy_id TEXT")
+
+        # Ensure gate_name, maker_id, approver_role columns exist on existing control_approvals table
+        cur.execute("PRAGMA table_info(control_approvals)")
+        appr_cols = [col[1] for col in cur.fetchall()]
+        if "gate_name" not in appr_cols:
+            cur.execute("ALTER TABLE control_approvals ADD COLUMN gate_name TEXT DEFAULT 'operator_signoff'")
+        if "maker_id" not in appr_cols:
+            cur.execute("ALTER TABLE control_approvals ADD COLUMN maker_id TEXT DEFAULT 'sec_owner_1'")
+        if "approver_role" not in appr_cols:
+            cur.execute("ALTER TABLE control_approvals ADD COLUMN approver_role TEXT DEFAULT 'control_reviewer'")
 
         conn.commit()
     finally:
@@ -534,6 +547,9 @@ def save_audit_approval(
     approved_by: str | None = None,
     approved_at: str | None = None,
     comment: str | None = None,
+    gate_name: str = "operator_signoff",
+    maker_id: str = "sec_owner_1",
+    approver_role: str = "control_reviewer",
 ) -> dict[str, Any]:
     """Persist human approval / gate decision."""
     init_audit_tables()
@@ -545,15 +561,20 @@ def save_audit_approval(
         cur = conn.cursor()
         cur.execute("""
         INSERT INTO control_approvals (
-            gate_id, run_id, control_id, status, approved_by, approved_at, comment, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            gate_id, run_id, control_id, status, approved_by, approved_at, comment,
+            gate_name, maker_id, approver_role, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(gate_id) DO UPDATE SET
             status = excluded.status,
-            approved_by = excluded.approved_by,
-            approved_at = excluded.approved_at,
-            comment = excluded.comment
+            approved_by = COALESCE(excluded.approved_by, control_approvals.approved_by),
+            approved_at = COALESCE(excluded.approved_at, control_approvals.approved_at),
+            comment = COALESCE(excluded.comment, control_approvals.comment),
+            gate_name = COALESCE(excluded.gate_name, control_approvals.gate_name),
+            maker_id = COALESCE(excluded.maker_id, control_approvals.maker_id),
+            approver_role = COALESCE(excluded.approver_role, control_approvals.approver_role)
         """, (
-            gate_id, run_id, control_id, status, approved_by, approved_at, comment, now_iso,
+            gate_id, run_id, control_id, status, approved_by, approved_at, comment,
+            gate_name, maker_id, approver_role, now_iso,
         ))
         conn.commit()
         return {
@@ -564,6 +585,9 @@ def save_audit_approval(
             "approved_by": approved_by,
             "approved_at": approved_at,
             "comment": comment,
+            "gate_name": gate_name,
+            "maker_id": maker_id,
+            "approver_role": approver_role,
         }
     finally:
         conn.close()

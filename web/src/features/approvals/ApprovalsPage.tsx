@@ -1,17 +1,32 @@
-import React from 'react';
-import { GateItemDTO, UserSessionDTO } from '../../types';
+import React, { useState } from 'react';
+import { GateItemDTO, UserSessionDTO, ControlDefinitionDTO } from '../../types';
 import { GateCard } from '../../components/GateCard';
+import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { ShieldCheck, Info } from 'lucide-react';
 
 interface ApprovalsPageProps {
   gates: GateItemDTO[];
   currentUser: UserSessionDTO;
   onDecideGate: (gateId: string, decision: 'approved' | 'rejected', comment: string) => Promise<void>;
+  controls?: ControlDefinitionDTO[];
+  onRefresh?: () => void;
 }
 
-export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({ gates, currentUser, onDecideGate }) => {
+export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
+  gates,
+  currentUser,
+  onDecideGate,
+  controls,
+  onRefresh,
+}) => {
+  const [resumingGate, setResumingGate] = useState<GateItemDTO | null>(null);
+
   const pending = gates.filter((g) => g.status === 'pending');
   const history = gates.filter((g) => g.status !== 'pending');
+
+  const selectedControl = resumingGate
+    ? controls?.find((c) => c.control_id === resumingGate.control_id) ?? null
+    : null;
 
   return (
     <div className="space-y-6">
@@ -28,7 +43,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({ gates, currentUser
         <div>
           <span className="font-semibold block mb-0.5 text-blue-950">Strict Maker-Checker Governance</span>
           <span className="text-blue-800">
-            The proposer (maker) cannot approve their own gate, even if they possess the approver role. All approvals are cryptographically hash-chained into the evidence ledger.
+            The proposer (maker) cannot approve their own gate, even if they possess the approver role. Approving authorizes the exact run to resume at Step 5 (Source Cleanup). All approvals are cryptographically hash-chained into the evidence ledger.
           </span>
         </div>
       </div>
@@ -56,6 +71,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({ gates, currentUser
                 gate={gate}
                 currentUser={currentUser}
                 onDecide={onDecideGate}
+                onResumeRun={(g) => setResumingGate(g)}
               />
             ))}
           </div>
@@ -73,11 +89,31 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({ gates, currentUser
                 gate={gate}
                 currentUser={currentUser}
                 onDecide={onDecideGate}
+                onResumeRun={(g) => setResumingGate(g)}
               />
             ))}
           </div>
         </div>
       )}
+
+      {/* Resume Execution Modal */}
+      {resumingGate && selectedControl && (
+        <ControlExecutionModal
+          control={selectedControl}
+          currentUser={currentUser}
+          initialRunId={resumingGate.run_id}
+          initialStage="APPROVED"
+          onClose={() => {
+            setResumingGate(null);
+            onRefresh?.();
+          }}
+          onRunCompleted={() => {
+            setResumingGate(null);
+            onRefresh?.();
+          }}
+        />
+      )}
     </div>
   );
 };
+
