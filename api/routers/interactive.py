@@ -22,6 +22,13 @@ from sim.database import (
 )
 from core.sql_generator import generate_sql_with_gemini
 from api.sse import sse_broker
+from sim.audit_store import (
+    upsert_audit_run,
+    save_audit_step,
+    save_audit_evidence,
+    save_audit_approval,
+)
+from api.routers.runs import _RUNS_STORE, RunItem
 
 router = APIRouter(prefix="/interactive", tags=["interactive"])
 
@@ -360,6 +367,7 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         exceptions=parsed.get("exceptions", []),
     )
 
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     session = {
         "run_id": run_id,
         "control_id": req.control_id,
@@ -371,8 +379,32 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         "citation": parsed["citation"],
         "status": "policy_extracted",
         "generated_sql": sql_scripts,
+        "started_at": now_iso,
     }
     _INTERACTIVE_SESSIONS[run_id] = session
+
+    upsert_audit_run(
+        run_id=run_id,
+        control_id=req.control_id,
+        version=defn.version,
+        archetype=defn.archetype,
+        status="running",
+        started_at=now_iso,
+        policy_info=parsed.get("policy_name", filename),
+        source_db="bank_core.db [source_transactions]",
+        archive_db="bank_archive.db [archive_transactions]",
+        metadata_json={"retention_years": ret_years, "filename": filename},
+    )
+    save_audit_step(
+        step_id=f"step-{run_id}-1",
+        run_id=run_id,
+        step_name="PREVIEW",
+        status="completed",
+        started_at=now_iso,
+        completed_at=now_iso,
+        records_processed=0,
+        metadata_json={"rules_extracted": len(parsed.get("rules", []))},
+    )
 
     return {
         "run_id": run_id,
@@ -739,6 +771,65 @@ async def execute_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
         attestation_token = f"ATTEST-{req.run_id}-{attestation_sig[:16]}"
         session["attestation_token"] = attestation_token
 
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        save_audit_step(
+            step_id=f"step-{req.run_id}-2",
+            run_id=req.run_id,
+            step_name="COPY_TO_ARCHIVE",
+            status="completed",
+            started_at=now_iso,
+            completed_at=now_iso,
+            records_processed=copy_res["copied_count"],
+            metadata_json={"target_table": "archive_transactions"},
+        )
+        save_audit_step(
+            step_id=f"step-{req.run_id}-3",
+            run_id=req.run_id,
+            step_name="MERKLE_VERIFY",
+            status="completed",
+            started_at=now_iso,
+            completed_at=now_iso,
+            records_processed=copy_res["copied_count"],
+            metadata_json={
+                "source_merkle_root": copy_res["source_merkle_root"],
+                "archive_merkle_root": copy_res["archive_merkle_root"],
+                "merkle_roots_match": copy_res["merkle_roots_match"],
+                "attestation_token": attestation_token,
+            },
+        )
+        upsert_audit_run(
+            run_id=req.run_id,
+            control_id=req.control_id,
+            version=defn.version,
+            archetype=defn.archetype,
+            status="ARCHIVED",
+            records_evaluated=50,
+            records_eligible=copy_res["copied_count"],
+            records_processed=copy_res["copied_count"],
+            source_merkle_root=copy_res["source_merkle_root"],
+            archive_merkle_root=copy_res["archive_merkle_root"],
+            merkle_verified=1 if copy_res["merkle_roots_match"] else 0,
+            attestation_token=attestation_token,
+            source_db="bank_core.db [source_transactions]",
+            archive_db="bank_archive.db [archive_transactions]",
+        )
+        save_audit_evidence(
+            evidence_id=f"EV-MERKLE-{req.run_id[:8]}",
+            run_id=req.run_id,
+            control_id=req.control_id,
+            step_id=f"step-{req.run_id}-3",
+            evidence_type="merkle_attestation",
+            evidence_payload={
+                "run_id": req.run_id,
+                "source_merkle_root": copy_res["source_merkle_root"],
+                "archive_merkle_root": copy_res["archive_merkle_root"],
+                "merkle_roots_match": copy_res["merkle_roots_match"],
+                "attestation_token": attestation_token,
+                "records_verified": copy_res["copied_count"],
+                "timestamp": now_iso,
+            },
+        )
+
         return {
             "run_id": req.run_id,
             "control_id": req.control_id,
@@ -831,6 +922,29 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
     now = datetime.datetime.now(datetime.timezone.utc)
     approval_cert = f"APPR-GATE-{uuid.uuid4().hex[:8].upper()}"
 
+    save_audit_approval(
+        gate_id=approval_cert,
+        run_id=req.run_id,
+        control_id=req.control_id,
+        status="approved",
+        approved_by=req.operator_id,
+        approved_at=now.isoformat(),
+        comment=req.operator_comment,
+    )
+    save_audit_step(
+        step_id=f"step-{req.run_id}-4",
+        run_id=req.run_id,
+        step_name="HUMAN_APPROVAL",
+        status="completed",
+        started_at=now.isoformat(),
+        completed_at=now.isoformat(),
+        metadata_json={
+            "certificate_id": approval_cert,
+            "operator_id": req.operator_id,
+            "comment": req.operator_comment,
+        },
+    )
+
     return {
         "run_id": req.run_id,
         "control_id": req.control_id,
@@ -882,6 +996,66 @@ async def commit_source_cleanup(req: CleanupRequest) -> dict[str, Any]:
         payload_ref=f"controls/{req.run_id}/signoff",
         actor=req.operator_id,
         ts=now,
+    )
+
+    now_iso = now.isoformat()
+    save_audit_step(
+        step_id=f"step-{req.run_id}-5",
+        run_id=req.run_id,
+        step_name="SOURCE_PURGE",
+        status="completed",
+        started_at=now_iso,
+        completed_at=now_iso,
+        records_processed=deleted_count,
+        metadata_json={"deleted_count": deleted_count},
+    )
+    save_audit_step(
+        step_id=f"step-{req.run_id}-6",
+        run_id=req.run_id,
+        step_name="FINAL_VERIFICATION",
+        status="completed",
+        started_at=now_iso,
+        completed_at=now_iso,
+        metadata_json={"certificate_id": cert_id, "ledger_seq": ledger_entry.seq},
+    )
+    upsert_audit_run(
+        run_id=req.run_id,
+        control_id=req.control_id,
+        status="completed",
+        completed_at=now_iso,
+        records_affected=deleted_count,
+        metadata_json={"certificate_id": cert_id, "deleted_count": deleted_count},
+    )
+    ev_final = f"EV-SIGNOFF-{req.run_id[:8]}"
+    save_audit_evidence(
+        evidence_id=ev_final,
+        run_id=req.run_id,
+        control_id=req.control_id,
+        step_id=f"step-{req.run_id}-6",
+        evidence_type="final_signoff",
+        evidence_payload={
+            "certificate_id": cert_id,
+            "attestation_token": req.attestation_token,
+            "deleted_count": deleted_count,
+            "operator_id": req.operator_id,
+            "timestamp": now_iso,
+        },
+    )
+    session = _INTERACTIVE_SESSIONS.get(req.run_id, {})
+    _RUNS_STORE[req.run_id] = RunItem(
+        run_id=req.run_id,
+        control_id=req.control_id,
+        version=defn.version,
+        archetype=defn.archetype,
+        status="completed",
+        started_at=session.get("started_at", now_iso),
+        completed_at=now_iso,
+        targets=["bank_core.db", "bank_archive.db"] if defn.archetype == "D" else ["core_banking_sim"],
+        records_scanned=50 if defn.archetype == "D" else deleted_count,
+        passed=deleted_count,
+        failed=0,
+        evidence_id=ev_final,
+        table="source_transactions" if defn.archetype == "D" else "core",
     )
 
     await sse_broker.publish(

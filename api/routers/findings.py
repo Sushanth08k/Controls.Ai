@@ -22,19 +22,35 @@ class FindingSummary(BaseModel):
     reason: str | None = None
 
 
-_FINDINGS_STORE: list[FindingSummary] = [
-    FindingSummary(
-        finding_id="FIND-001",
-        run_id="run-dummy-001",
-        control_id="PILOT-ACCESS-001",
-        title="Unauthorized superuser role 'bad_admin' detected",
-        severity="high",
-        status="open",
-        evidence_ids=["ev-superusers-001"],
-    )
-]
+from sim.audit_store import list_audit_findings
+
+_FINDINGS_STORE: list[FindingSummary] = []
 
 
 @router.get("", response_model=list[FindingSummary])
 def list_findings() -> list[FindingSummary]:
-    return _FINDINGS_STORE
+    """List all findings across runs, loading from SQLite audit storage."""
+    db_findings = list_audit_findings()
+    db_items: dict[str, FindingSummary] = {}
+    for f in db_findings:
+        details = f.get("details") or {}
+        db_items[f["finding_id"]] = FindingSummary(
+            finding_id=f["finding_id"],
+            run_id=f["run_id"],
+            control_id=f["control_id"],
+            title=f["title"],
+            severity=f["severity"],
+            status=f["status"],
+            evidence_ids=details.get("evidence_ids", [f"ev-{f['run_id']}"]),
+            target=f.get("affected_record"),
+            cve_id=details.get("cve_id"),
+            age_days=details.get("age_days"),
+            allowed_sla_days=details.get("allowed_sla_days"),
+            result=details.get("result", "FAIL"),
+            reason=f.get("description"),
+        )
+    # Merge with in-memory findings
+    for mem_f in _FINDINGS_STORE:
+        db_items[mem_f.finding_id] = mem_f
+
+    return list(db_items.values())

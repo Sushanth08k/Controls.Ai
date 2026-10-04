@@ -258,6 +258,8 @@ def init_real_databases(force_recreate: bool = False) -> None:
     """)
 
     ensure_vulnerabilities_table(conn_core)
+    from sim.audit_store import init_audit_tables
+    init_audit_tables(conn_core)
 
     # Populate customers and accounts
     customers = [

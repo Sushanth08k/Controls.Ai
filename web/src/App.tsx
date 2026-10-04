@@ -7,7 +7,7 @@ import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { FindingsPage } from './features/findings/FindingsPage';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from './types';
-import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, triggerRun, API_BASE } from './api/client';
+import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, API_BASE } from './api/client';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -21,7 +21,6 @@ interface AppLayoutProps {
   loading: boolean;
   error: string | null;
   loadData: () => void;
-  handleTriggerRun: (controlId: string) => Promise<any>;
   handleDecideGate: (gateId: string, decision: 'approved' | 'rejected', comment: string) => Promise<void>;
 }
 
@@ -36,7 +35,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   loading,
   error,
   loadData,
-  handleTriggerRun,
   handleDecideGate,
 }) => {
   const location = useLocation();
@@ -82,7 +80,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                   gates={gates}
                   findings={findings}
                   currentUser={currentUser}
-                  onTriggerRun={handleTriggerRun}
+                  onRefresh={loadData}
                 />
               }
             />
@@ -92,7 +90,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 <ControlLibraryPage
                   controls={controls}
                   currentUser={currentUser}
-                  onTriggerRun={handleTriggerRun}
+                  onRefresh={loadData}
                 />
               }
             />
@@ -102,7 +100,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 <ControlLibraryPage
                   controls={controls}
                   currentUser={currentUser}
-                  onTriggerRun={handleTriggerRun}
+                  onRefresh={loadData}
                 />
               }
             />
@@ -207,17 +205,6 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  const handleTriggerRun = async (controlId: string) => {
-    try {
-      const newRun = await triggerRun(controlId);
-      setRuns((prev) => [newRun, ...prev.filter((r) => r.run_id !== newRun.run_id)]);
-      return newRun;
-    } catch (err: any) {
-      setError(err.message || 'Failed to trigger run');
-      throw err;
-    }
-  };
-
   const handleDecideGate = async (
     gateId: string,
     decision: 'approved' | 'rejected',
@@ -251,7 +238,6 @@ export const App: React.FC = () => {
         loading={loading}
         error={error}
         loadData={loadData}
-        handleTriggerRun={handleTriggerRun}
         handleDecideGate={handleDecideGate}
       />
     </BrowserRouter>

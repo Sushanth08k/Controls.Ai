@@ -318,3 +318,10 @@ export async function fetchVulnerabilityEvidence(runId: string): Promise<any> {
   return res.json();
 }
 
+export async function fetchRunAudit(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/runs/${encodeURIComponent(runId)}/audit`);
+  if (!res.ok) throw new Error(`Failed to fetch run audit: ${res.statusText}`);
+  return res.json();
+}
+
+

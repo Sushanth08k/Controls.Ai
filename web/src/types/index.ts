@@ -45,6 +45,11 @@ export interface RunItemDTO {
   started_at: string;
   completed_at?: string;
   targets: string[];
+  records_scanned?: number;
+  passed?: number;
+  failed?: number;
+  evidence_id?: string;
+  table?: string;
 }
 
 export interface FindingDTO {

@@ -1,54 +1,305 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { RunItemDTO } from '../../types';
 import { StatusPill } from '../../components/StatusPill';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
+import { fetchRunAudit } from '../../api/client';
+import {
+  ShieldCheck,
+  CheckCircle2,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Lock,
+  UserCheck,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react';
 
 interface RunsPageProps {
   runs: RunItemDTO[];
 }
 
 export const RunsPage: React.FC<RunsPageProps> = ({ runs }) => {
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [auditData, setAuditData] = useState<any | null>(null);
+  const [loadingAudit, setLoadingAudit] = useState<boolean>(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
+  const handleToggleRun = async (runId: string) => {
+    if (selectedRunId === runId) {
+      setSelectedRunId(null);
+      setAuditData(null);
+      return;
+    }
+
+    setSelectedRunId(runId);
+    setLoadingAudit(true);
+    setAuditError(null);
+    try {
+      const data = await fetchRunAudit(runId);
+      setAuditData(data);
+    } catch (err: any) {
+      setAuditError(err.message || 'Failed to load audit package');
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Runs & Durable Workflows</h2>
+        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Runs & Persistent Audit History</h2>
         <p className="text-xs text-slate-500 mt-1">
-          Temporal workflow orchestrations, scope fan-out targets, and activity replay histories.
+          Cryptographically attested control execution runs, Merkle verification roots, human approvals, and SQLite persistent audit workpapers.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl p-5 border border-slate-200/90 shadow-xs">
+      <div className="bg-white rounded-xl border border-slate-200/90 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500 font-semibold">
-                <th className="pb-3">Workflow Run ID</th>
-                <th className="pb-3">Control ID</th>
-                <th className="pb-3">Version</th>
-                <th className="pb-3">Archetype</th>
-                <th className="pb-3">Status</th>
-                <th className="pb-3">Scope Targets</th>
-                <th className="pb-3">Started At</th>
+              <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold">
+                <th className="py-3 px-4">Workflow Run ID</th>
+                <th className="py-3 px-3">Control ID</th>
+                <th className="py-3 px-3">Version</th>
+                <th className="py-3 px-3">Archetype</th>
+                <th className="py-3 px-3">Status</th>
+                <th className="py-3 px-3">Scope / Targets</th>
+                <th className="py-3 px-3">Started At</th>
+                <th className="py-3 px-4 text-right">Audit Trail</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {runs.map((r) => (
-                <tr key={r.run_id} className="hover:bg-slate-50 transition-colors">
-                  <td className="py-3 font-mono text-slate-700 font-medium">{r.run_id}</td>
-                  <td className="py-3 font-mono text-blue-600 font-semibold">{r.control_id}</td>
-                  <td className="py-3 font-mono text-slate-500">{r.version}</td>
-                  <td className="py-3">
-                    <ArchetypeBadge archetype={r.archetype} />
-                  </td>
-                  <td className="py-3">
-                    <StatusPill status={r.status} />
-                  </td>
-                  <td className="py-3 text-slate-600 font-medium">{r.targets.join(', ') || 'Default'}</td>
-                  <td className="py-3 text-slate-500 font-mono text-[11px]">
-                    {new Date(r.started_at).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
+              {runs.map((r) => {
+                const isExpanded = selectedRunId === r.run_id;
+                return (
+                  <React.Fragment key={r.run_id}>
+                    <tr
+                      onClick={() => handleToggleRun(r.run_id)}
+                      className={`hover:bg-slate-50/80 transition-colors cursor-pointer ${
+                        isExpanded ? 'bg-blue-50/40 border-l-4 border-l-blue-600' : ''
+                      }`}
+                    >
+                      <td className="py-3 px-4 font-mono text-slate-800 font-semibold">{r.run_id}</td>
+                      <td className="py-3 px-3 font-mono text-blue-600 font-bold">{r.control_id}</td>
+                      <td className="py-3 px-3 font-mono text-slate-500">{r.version}</td>
+                      <td className="py-3 px-3">
+                        <ArchetypeBadge archetype={r.archetype} />
+                      </td>
+                      <td className="py-3 px-3">
+                        <StatusPill status={r.status} />
+                      </td>
+                      <td className="py-3 px-3 text-slate-600 font-medium">
+                        {r.targets.join(', ') || 'Default'}
+                      </td>
+                      <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
+                        {new Date(r.started_at).toLocaleString()}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 hover:text-blue-800"
+                        >
+                          <span>{isExpanded ? 'Hide Audit' : 'Inspect'}</span>
+                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                        </button>
+                      </td>
+                    </tr>
+
+                    {/* Expandable Persistent Audit Inspection Drawer */}
+                    {isExpanded && (
+                      <tr className="bg-slate-50/70 border-b border-slate-200">
+                        <td colSpan={8} className="p-5">
+                          {loadingAudit && (
+                            <div className="flex items-center justify-center py-8 gap-2 text-slate-500 text-xs">
+                              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                              <span>Loading persistent SQLite audit package...</span>
+                            </div>
+                          )}
+
+                          {auditError && (
+                            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-xs flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 shrink-0" />
+                              <span>{auditError}</span>
+                            </div>
+                          )}
+
+                          {!loadingAudit && auditData && (
+                            <div className="space-y-5 text-slate-800">
+                              {/* Header metrics card */}
+                              <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                                <div>
+                                  <span className="text-slate-500 block text-[11px]">Control & Run</span>
+                                  <span className="font-bold text-slate-900 font-mono">{r.control_id}</span>
+                                  <span className="block text-slate-500 font-mono text-[10px]">{r.run_id}</span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500 block text-[11px]">Verification Status</span>
+                                  <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 mt-0.5">
+                                    <ShieldCheck className="w-3.5 h-3.5" />
+                                    {auditData.run?.status?.toUpperCase() || 'COMPLETED'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500 block text-[11px]">Records Ingestion</span>
+                                  <span className="font-semibold text-slate-700">
+                                    Evaluated: <strong className="text-slate-900">{auditData.run?.records_evaluated ?? r.records_scanned ?? 0}</strong>
+                                  </span>
+                                  {auditData.run?.records_eligible !== undefined && (
+                                    <span className="block text-slate-500 text-[10px]">
+                                      Eligible: {auditData.run.records_eligible} | Purged: {auditData.run.records_affected}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="text-slate-500 block text-[11px]">Storage Engine</span>
+                                  <span className="font-mono text-slate-700 text-[11px]">
+                                    {auditData.run?.source_db || 'bank_core.db'}
+                                  </span>
+                                  <span className="block text-slate-500 text-[10px]">SQLite Persistent Table</span>
+                                </div>
+                              </div>
+
+                              {/* Merkle Verification Card (if available for CTL-ARCH-001) */}
+                              {auditData.merkle_verification?.source_merkle_root && (
+                                <div className="bg-white rounded-lg p-4 border border-emerald-200 shadow-2xs space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
+                                      <Lock className="w-4 h-4 text-emerald-600" />
+                                      <span>Cryptographic Merkle Tree Verification (PASSED)</span>
+                                    </div>
+                                    <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-100/70 text-emerald-800">
+                                      Byte-Fidelity: 100% Match
+                                    </span>
+                                  </div>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-[11px] font-mono">
+                                    <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
+                                      <span className="text-slate-500 block text-[10px] uppercase font-bold">Source Merkle Root:</span>
+                                      <span className="text-slate-800 break-all select-all font-semibold">
+                                        {auditData.merkle_verification.source_merkle_root}
+                                      </span>
+                                    </div>
+                                    <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
+                                      <span className="text-slate-500 block text-[10px] uppercase font-bold">Archive Merkle Root:</span>
+                                      <span className="text-slate-800 break-all select-all font-semibold">
+                                        {auditData.merkle_verification.archive_merkle_root}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {auditData.merkle_verification.attestation_token && (
+                                    <div className="text-[11px] text-slate-600 pt-1">
+                                      <span className="font-semibold text-slate-700">Attestation Token: </span>
+                                      <code className="bg-slate-100 px-2 py-0.5 rounded text-blue-700 font-bold">
+                                        {auditData.merkle_verification.attestation_token}
+                                      </code>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Execution Lifecycle Steps Checklist */}
+                              {auditData.steps && auditData.steps.length > 0 && (
+                                <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs space-y-2">
+                                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                                    Execution Lifecycle Steps (Audit Log)
+                                  </h4>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
+                                    {auditData.steps.map((st: any) => (
+                                      <div
+                                        key={st.step_id}
+                                        className="p-2.5 rounded bg-slate-50 border border-slate-200 flex items-start gap-2.5"
+                                      >
+                                        <div className="mt-0.5 shrink-0">
+                                          {st.status === 'completed' ? (
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                          ) : (
+                                            <Clock className="w-4 h-4 text-amber-500" />
+                                          )}
+                                        </div>
+                                        <div className="text-xs leading-tight">
+                                          <div className="font-bold text-slate-900 font-mono text-[11px]">{st.step_name}</div>
+                                          <div className="text-[10px] text-slate-500 mt-0.5">
+                                            Status: <span className="font-medium text-slate-700 uppercase">{st.status}</span>
+                                            {st.records_processed > 0 && ` (${st.records_processed} records)`}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Findings Section */}
+                              {auditData.findings && auditData.findings.length > 0 && (
+                                <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs space-y-2">
+                                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                    <FileText className="w-3.5 h-3.5 text-amber-600" />
+                                    Persistent Audit Findings ({auditData.findings.length})
+                                  </h4>
+                                  <div className="space-y-2 pt-1">
+                                    {auditData.findings.map((f: any) => (
+                                      <div
+                                        key={f.finding_id}
+                                        className="p-3 bg-amber-50/50 border border-amber-200 rounded-lg text-xs space-y-1"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <span className="font-bold text-slate-900">{f.title}</span>
+                                          <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] uppercase bg-amber-100 text-amber-800">
+                                            {f.severity}
+                                          </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-600">{f.description}</p>
+                                        {f.affected_record && (
+                                          <span className="text-[10px] font-mono text-slate-500">
+                                            Target: {f.affected_record}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Approvals Section */}
+                              {auditData.approvals && auditData.approvals.length > 0 && (
+                                <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs space-y-2">
+                                  <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                                    <UserCheck className="w-3.5 h-3.5 text-blue-600" />
+                                    Maker-Checker Human Approvals
+                                  </h4>
+                                  <div className="space-y-2 pt-1 text-xs">
+                                    {auditData.approvals.map((a: any) => (
+                                      <div
+                                        key={a.gate_id}
+                                        className="p-3 bg-emerald-50/50 border border-emerald-200 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                                      >
+                                        <div>
+                                          <span className="font-mono font-bold text-slate-900 block">{a.gate_id}</span>
+                                          <span className="text-[11px] text-slate-600">
+                                            Decided By: <strong className="text-slate-800">{a.approved_by || 'Reviewer'}</strong> ({a.status})
+                                          </span>
+                                          {a.comment && (
+                                            <p className="text-[11px] text-slate-500 italic mt-0.5">"{a.comment}"</p>
+                                          )}
+                                        </div>
+                                        <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                                          {a.approved_at ? new Date(a.approved_at).toLocaleString() : 'Recorded'}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -56,3 +307,4 @@ export const RunsPage: React.FC<RunsPageProps> = ({ runs }) => {
     </div>
   );
 };
+

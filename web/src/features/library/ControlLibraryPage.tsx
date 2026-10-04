@@ -27,13 +27,13 @@ import {
 interface ControlLibraryPageProps {
   controls: ControlDefinitionDTO[];
   currentUser: UserSessionDTO;
-  onTriggerRun?: (controlId: string) => Promise<any>;
+  onRefresh?: () => void;
 }
 
 export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
   controls,
   currentUser,
-  onTriggerRun,
+  onRefresh,
 }) => {
   const [policies, setPolicies] = useState<UploadedPolicyDTO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -395,8 +395,8 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
               setActivePolicy(null);
             }}
             onRunCompleted={() => {
-              if (onTriggerRun && modalControl) {
-                onTriggerRun(modalControl.control_id);
+              if (onRefresh) {
+                onRefresh();
               }
             }}
           />
@@ -411,8 +411,8 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
               setActivePolicy(null);
             }}
             onRunCompleted={() => {
-              if (onTriggerRun && modalControl) {
-                onTriggerRun(modalControl.control_id);
+              if (onRefresh) {
+                onRefresh();
               }
             }}
           />

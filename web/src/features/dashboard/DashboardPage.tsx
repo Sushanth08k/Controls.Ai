@@ -16,7 +16,7 @@ interface DashboardPageProps {
   gates: GateItemDTO[];
   findings: FindingDTO[];
   currentUser: UserSessionDTO;
-  onTriggerRun?: (controlId: string) => Promise<any>;
+  onRefresh?: () => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -25,7 +25,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   gates,
   findings,
   currentUser,
-  onTriggerRun,
+  onRefresh,
 }) => {
   const navigate = useNavigate();
   const [modalControl, setModalControl] = useState<ControlDefinitionDTO | null>(null);
@@ -327,7 +327,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             currentUser={currentUser}
             onClose={() => setModalControl(null)}
             onRunCompleted={() => {
-              if (onTriggerRun) onTriggerRun(modalControl.control_id);
+              if (onRefresh) onRefresh();
             }}
           />
         ) : (
@@ -336,7 +336,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             currentUser={currentUser}
             onClose={() => setModalControl(null)}
             onRunCompleted={() => {
-              if (onTriggerRun) onTriggerRun(modalControl.control_id);
+              if (onRefresh) onRefresh();
             }}
           />
         )

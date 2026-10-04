@@ -4,22 +4,20 @@ from fastapi import APIRouter, HTTPException
 router = APIRouter(prefix="/evidence", tags=["evidence"])
 
 
-_EVIDENCE_STORE: dict[str, dict[str, Any]] = {
-    "ev-superusers-001": {
-        "evidence_id": "ev-superusers-001",
-        "control_id": "PILOT-ACCESS-001",
-        "run_id": "run-dummy-001",
-        "catalog_ref": "VQ-001",
-        "result_sha256": "abcdef1234567890" * 4,
-        "row_count": 2,
-        "rows": [{"rolname": "bad_admin"}, {"rolname": "postgres"}],
-    }
-}
+from sim.audit_store import get_audit_evidence
+
+_EVIDENCE_STORE: dict[str, dict[str, Any]] = {}
 
 
 @router.get("/{evidence_id}")
 def get_evidence(evidence_id: str) -> dict[str, Any]:
     ev = _EVIDENCE_STORE.get(evidence_id)
-    if not ev:
-        raise HTTPException(status_code=404, detail="Evidence not found")
-    return ev
+    if ev:
+        return ev
+    db_ev = get_audit_evidence(evidence_id)
+    if db_ev:
+        payload = db_ev.get("payload")
+        if isinstance(payload, dict):
+            return payload
+        return db_ev
+    raise HTTPException(status_code=404, detail="Evidence not found")
