@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { RunItemDTO, ControlDefinitionDTO, UserSessionDTO } from '../../types';
 import { StatusPill } from '../../components/StatusPill';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
-import { fetchRunAudit, resumeInteractiveRun } from '../../api/client';
+import { fetchRunAudit, resumeInteractiveRun, getPolicyDocumentFileUrl } from '../../api/client';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
 import {
@@ -17,6 +17,9 @@ import {
   AlertCircle,
   Loader2,
   Play,
+  ExternalLink,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface RunsPageProps {
@@ -36,6 +39,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
   const [auditData, setAuditData] = useState<any | null>(null);
   const [loadingAudit, setLoadingAudit] = useState<boolean>(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [expandedPolicyTextRunId, setExpandedPolicyTextRunId] = useState<string | null>(null);
 
   // Resume modal state
   const [resumeModalControl, setResumeModalControl] = useState<ControlDefinitionDTO | null>(null);
@@ -197,7 +201,13 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                         <StatusPill status={r.status} />
                       </td>
                       <td className="py-3 px-3 text-slate-600 font-medium">
-                        {r.targets.join(', ') || 'Default'}
+                        <div>{r.targets.join(', ') || 'Default'}</div>
+                        {r.policy_filename && (
+                          <div className="text-[10px] text-slate-500 font-mono truncate max-w-[160px] flex items-center gap-1 mt-0.5" title={`Policy: ${r.policy_filename}`}>
+                            <FileText className="w-2.5 h-2.5 text-blue-500 shrink-0" />
+                            <span className="truncate">{r.policy_filename}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
                         {new Date(r.started_at).toLocaleString()}
@@ -318,6 +328,76 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                   </span>
                                   <span className="block text-slate-500 text-[10px]">SQLite Persistent Table</span>
                                 </div>
+                              </div>
+
+                              {/* Policy Used Historical Audit Card */}
+                              <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                  <div>
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                                      Policy Used
+                                    </span>
+                                    {auditData.policy_used ? (
+                                      <div className="mt-1">
+                                        <div className="flex items-center gap-1.5 font-bold text-slate-900 font-mono text-xs">
+                                          <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                                          <code className="text-slate-900 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">
+                                            {auditData.policy_used.filename}
+                                          </code>
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 font-mono mt-1">
+                                          Policy ID: <span className="font-semibold text-slate-700">{auditData.policy_used.policy_id}</span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-slate-500 italic mt-1">
+                                        Policy Used: Not recorded
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {auditData.policy_used && (
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <a
+                                        href={auditData.policy_used.cloudinary_url || getPolicyDocumentFileUrl(auditData.policy_used.policy_id)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition-colors shadow-2xs"
+                                        title="Open original policy document from Cloudinary"
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                        <span>View Original</span>
+                                      </a>
+                                      {auditData.policy_used.extracted_text && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setExpandedPolicyTextRunId(expandedPolicyTextRunId === r.run_id ? null : r.run_id)}
+                                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer shadow-2xs"
+                                          title="Toggle viewing extracted policy text"
+                                        >
+                                          {expandedPolicyTextRunId === r.run_id ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                          <span>{expandedPolicyTextRunId === r.run_id ? 'Hide Text' : 'View Text'}</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {expandedPolicyTextRunId === r.run_id && auditData.policy_used?.extracted_text && (
+                                  <div className="mt-3 pt-3 border-t border-slate-100 animate-in fade-in duration-200">
+                                    <div className="flex items-center justify-between mb-1.5">
+                                      <span className="text-[10px] uppercase font-bold text-slate-500 font-mono tracking-wider">
+                                        Extracted Policy Content ({auditData.policy_used.filename})
+                                      </span>
+                                      <span className="text-[10px] text-slate-400 font-mono">
+                                        ID: {auditData.policy_used.policy_id}
+                                      </span>
+                                    </div>
+                                    <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
+                                      {auditData.policy_used.extracted_text}
+                                    </pre>
+                                  </div>
+                                )}
                               </div>
 
                               {/* Merkle Verification Card (if available for Archival control) */}

@@ -90,12 +90,45 @@ export interface UploadedPolicyDTO {
   rules_summary: string;
   policy_text: string;
   status: string;
+  cloudinary_url?: string;
+  file_sha256?: string;
+  mime_type?: string;
+}
+
+export interface UploadPolicyResponse {
+  filename: string;
+  format: string;
+  text: string;
+  pages: number;
+  size_bytes: number;
+  policy_id?: string;
+  cloudinary_url?: string;
+  file_sha256?: string;
+  is_duplicate?: boolean;
+  message?: string;
+  title?: string;
+  control_id?: string;
+  uploaded_at?: string;
 }
 
 export async function fetchUploadedPolicies(): Promise<UploadedPolicyDTO[]> {
   const res = await fetch(`${API_BASE}/interactive/uploaded_policies`);
   if (!res.ok) throw new Error(`Failed to fetch uploaded policies: ${res.statusText}`);
   return res.json();
+}
+
+export async function fetchPolicyDocument(policyId: string): Promise<UploadedPolicyDTO> {
+  const res = await fetch(`${API_BASE}/interactive/uploaded_policies/${policyId}`);
+  if (!res.ok) throw new Error(`Failed to fetch policy: ${res.statusText}`);
+  return res.json();
+}
+
+export function getPolicyDocumentFileUrl(policyId: string): string {
+  return `${API_BASE}/interactive/uploaded_policies/${policyId}/file`;
+}
+
+export function getPolicyDocumentDownloadUrl(policyId: string): string {
+  return `${API_BASE}/interactive/uploaded_policies/${policyId}/download`;
 }
 
 export async function deleteUploadedPolicy(policyId: string): Promise<any> {
@@ -109,14 +142,7 @@ export async function deleteUploadedPolicy(policyId: string): Promise<any> {
 export async function uploadPolicyDocument(
   file: File,
   controlId?: string
-): Promise<{
-  filename: string;
-  format: string;
-  text: string;
-  pages: number;
-  size_bytes: number;
-  policy_id?: string;
-}> {
+): Promise<UploadPolicyResponse> {
   const formData = new FormData();
   formData.append('file', file);
   if (controlId) {
@@ -135,7 +161,12 @@ export async function uploadPolicyDocument(
 }
 
 
-export async function interpretPolicy(controlId: string, documentText?: string, filename?: string): Promise<any> {
+export async function interpretPolicy(
+  controlId: string,
+  documentText?: string,
+  filename?: string,
+  policyId?: string
+): Promise<any> {
   const res = await fetch(`${API_BASE}/interactive/interpret`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -143,6 +174,7 @@ export async function interpretPolicy(controlId: string, documentText?: string, 
       control_id: controlId,
       document_text: documentText || null,
       filename: filename || null,
+      policy_id: policyId || null,
     }),
   });
   if (!res.ok) throw new Error(`Failed to interpret policy: ${res.statusText}`);
@@ -248,7 +280,12 @@ export async function fetchVulnerabilityDefaults(controlId?: string): Promise<an
   return res.json();
 }
 
-export async function interpretVulnerabilityPolicy(controlId: string, documentText?: string, filename?: string): Promise<any> {
+export async function interpretVulnerabilityPolicy(
+  controlId: string,
+  documentText?: string,
+  filename?: string,
+  policyId?: string
+): Promise<any> {
   const res = await fetch(`${API_BASE}/vulnerability/interpret`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -256,6 +293,7 @@ export async function interpretVulnerabilityPolicy(controlId: string, documentTe
       control_id: controlId,
       document_text: documentText || null,
       filename: filename || null,
+      policy_id: policyId || null,
     }),
   });
   if (!res.ok) throw new Error(`Failed to interpret vulnerability policy: ${res.statusText}`);
@@ -280,7 +318,9 @@ export async function executeVulnerabilityControl(
   runId?: string,
   documentText?: string,
   customRules?: any,
-  querySql?: string
+  querySql?: string,
+  policyId?: string,
+  filename?: string
 ): Promise<any> {
   const res = await fetch(`${API_BASE}/vulnerability/execute`, {
     method: 'POST',
@@ -291,6 +331,8 @@ export async function executeVulnerabilityControl(
       document_text: documentText || null,
       custom_rules: customRules || null,
       query_sql: querySql || null,
+      policy_id: policyId || null,
+      filename: filename || null,
     }),
   });
   if (!res.ok) {

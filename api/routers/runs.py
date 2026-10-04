@@ -16,6 +16,7 @@ from sim.audit_store import (
     list_audit_evidence,
     list_audit_approvals,
     get_full_audit_bundle,
+    get_policy_document,
 )
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -39,6 +40,9 @@ class RunItem(BaseModel):
     medium_failures: int | None = None
     evidence_id: str | None = None
     table: str | None = None
+    policy_id: str | None = None
+    policy_filename: str | None = None
+    policy_used: dict[str, Any] | None = None
 
 
 _RUNS_STORE: dict[str, RunItem] = {}
@@ -47,6 +51,43 @@ _RUNS_STORE: dict[str, RunItem] = {}
 def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
     meta = row.get("metadata") or {}
     targets = meta.get("targets", [row.get("source_db") or "core_banking_sim"])
+    pol_id = row.get("policy_id") or meta.get("policy_id")
+    pol_fname = meta.get("filename") or row.get("policy_filename")
+
+    policy_used = None
+    if pol_id:
+        policy_used = get_policy_document(pol_id)
+    if not policy_used and pol_fname:
+        from sim.audit_store import get_connection
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT * FROM compliance_policy_documents WHERE filename = ? ORDER BY uploaded_at DESC LIMIT 1",
+                (pol_fname,),
+            )
+            r = cur.fetchone()
+            if r:
+                policy_used = dict(r)
+        finally:
+            conn.close()
+
+    if policy_used:
+        pol_id = policy_used.get("policy_id", pol_id)
+        pol_fname = policy_used.get("filename", pol_fname)
+        policy_used_summary = {
+            "policy_id": policy_used["policy_id"],
+            "filename": policy_used["filename"],
+            "title": policy_used.get("title") or policy_used["filename"],
+            "format": policy_used.get("format", "PDF"),
+            "file_size": f"{max(1, policy_used.get('file_size_bytes', 0) // 1024)} KB",
+            "cloudinary_url": policy_used.get("cloudinary_url", ""),
+            "extracted_text": policy_used.get("extracted_text", ""),
+            "rules_summary": policy_used.get("rules_summary", ""),
+        }
+    else:
+        policy_used_summary = None
+
     return RunItem(
         run_id=row["run_id"],
         control_id=row["control_id"],
@@ -64,6 +105,9 @@ def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
         medium_failures=meta.get("medium_failures"),
         evidence_id=meta.get("evidence_id") or row.get("attestation_token"),
         table=meta.get("table") or ("source_transactions" if row.get("archetype") == "D" else "db_vulnerabilities"),
+        policy_id=pol_id,
+        policy_filename=pol_fname,
+        policy_used=policy_used_summary,
     )
 
 

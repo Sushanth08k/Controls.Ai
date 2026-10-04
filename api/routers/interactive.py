@@ -6,12 +6,14 @@ import sqlite3
 import uuid
 from typing import Any
 from fastapi import APIRouter, HTTPException, File, UploadFile
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict
 from core.definitions import default_registry
 from core.merkle import build_merkle_root
 from core.ledger import Ledger
 from core.policy_parser import parse_policy_specification
 from core.document_extractor import extract_document_content
+from core.cloudinary_client import upload_to_cloudinary, delete_from_cloudinary
 from sim.database import (
     init_real_databases,
     query_eligible_archival_records,
@@ -32,10 +34,17 @@ from sim.audit_store import (
     get_full_audit_bundle,
     get_audit_run,
     list_audit_steps,
+    save_policy_document,
+    get_policy_document,
+    get_policy_document_by_sha256,
+    list_policy_documents,
+    delete_policy_document,
 )
 from api.routers.runs import _RUNS_STORE, RunItem
 
 router = APIRouter(prefix="/interactive", tags=["interactive"])
+
+logger = logging.getLogger(__name__)
 
 _SHARED_LEDGER = Ledger()
 
@@ -49,6 +58,7 @@ class InterpretRequest(BaseModel):
     control_id: str
     document_text: str | None = None
     filename: str | None = None
+    policy_id: str | None = None
 
 
 class PreviewRequest(BaseModel):
@@ -251,20 +261,111 @@ def _init_default_policies() -> list[dict[str, Any]]:
     return policies
 
 
+MIME_MAP = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "doc": "application/msword",
+    "txt": "text/plain",
+    "md": "text/markdown",
+    "json": "application/json",
+    "csv": "text/csv",
+}
+
+
 @router.get("/uploaded_policies")
 def get_uploaded_policies() -> list[dict[str, Any]]:
-    """Retrieve all uploaded compliance policy documents."""
+    """Retrieve all uploaded compliance policy documents from SQLite."""
+    persisted = list_policy_documents()
+    if persisted:
+        results = []
+        for p in persisted:
+            ctrl = default_registry.get_definition(p["control_id"]) if p.get("control_id") else None
+            results.append({
+                "policy_id": p["policy_id"],
+                "filename": p["filename"],
+                "title": p["title"],
+                "control_id": p.get("control_id") or "",
+                "archetype": p.get("archetype") or (ctrl.archetype if ctrl else "D"),
+                "risk_rating": ctrl.risk_rating if ctrl else "critical",
+                "frequency": ctrl.frequency if ctrl else "on_event",
+                "uploaded_at": p["uploaded_at"],
+                "uploaded_by": p.get("uploaded_by") or "Compliance Analyst",
+                "file_size": f"{max(1, p['file_size_bytes'] // 1024)} KB",
+                "file_size_bytes": p["file_size_bytes"],
+                "file_sha256": p["file_sha256"],
+                "format": p["format"],
+                "mime_type": p["mime_type"],
+                "rules_summary": p.get("rules_summary") or "",
+                "policy_text": p["extracted_text"],
+                "cloudinary_url": p.get("cloudinary_url", ""),
+                "status": p.get("status", "Ready"),
+            })
+        return results
+
     global _STORED_POLICIES
     if not _STORED_POLICIES:
         _STORED_POLICIES = _init_default_policies()
     return _STORED_POLICIES
 
 
+@router.get("/uploaded_policies/{policy_id}")
+def get_uploaded_policy_details(policy_id: str) -> dict[str, Any]:
+    """Retrieve details of a single persistent compliance policy document."""
+    doc = get_policy_document(policy_id)
+    if not doc:
+        defaults = [p for p in (_STORED_POLICIES or []) if p.get("policy_id") == policy_id]
+        if defaults:
+            return defaults[0]
+        raise HTTPException(status_code=404, detail=f"Policy '{policy_id}' not found.")
+
+    ctrl = default_registry.get_definition(doc["control_id"]) if doc.get("control_id") else None
+    return {
+        "policy_id": doc["policy_id"],
+        "filename": doc["filename"],
+        "title": doc["title"],
+        "control_id": doc.get("control_id") or "",
+        "archetype": doc.get("archetype") or (ctrl.archetype if ctrl else "D"),
+        "risk_rating": ctrl.risk_rating if ctrl else "critical",
+        "frequency": ctrl.frequency if ctrl else "on_event",
+        "uploaded_at": doc["uploaded_at"],
+        "uploaded_by": doc.get("uploaded_by") or "Compliance Analyst",
+        "file_size_bytes": doc["file_size_bytes"],
+        "file_size": f"{max(1, doc['file_size_bytes'] // 1024)} KB",
+        "format": doc["format"],
+        "mime_type": doc["mime_type"],
+        "file_sha256": doc["file_sha256"],
+        "cloudinary_url": doc["cloudinary_url"],
+        "rules_summary": doc.get("rules_summary") or "",
+        "extracted_text": doc["extracted_text"],
+        "policy_text": doc["extracted_text"],
+        "status": doc.get("status", "Ready"),
+    }
+
+
+@router.get("/uploaded_policies/{policy_id}/file")
+@router.get("/uploaded_policies/{policy_id}/download")
+def open_or_download_policy_file(policy_id: str) -> RedirectResponse:
+    """Redirect to original document stored securely in Cloudinary."""
+    doc = get_policy_document(policy_id)
+    if not doc or not doc.get("cloudinary_url"):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Original document for policy '{policy_id}' not found in Cloudinary storage."
+        )
+    return RedirectResponse(url=doc["cloudinary_url"], status_code=307)
+
+
 @router.delete("/uploaded_policies/{policy_id}")
 def delete_uploaded_policy(policy_id: str) -> dict[str, str]:
-    """Delete an uploaded compliance policy document."""
+    """Delete an uploaded compliance policy document from SQLite and Cloudinary."""
+    doc = get_policy_document(policy_id)
+    if doc and doc.get("cloudinary_public_id"):
+        delete_from_cloudinary(doc["cloudinary_public_id"], resource_type="raw")
+        delete_from_cloudinary(doc["cloudinary_public_id"], resource_type="image")
+    delete_policy_document(policy_id)
     global _STORED_POLICIES
-    _STORED_POLICIES = [p for p in _STORED_POLICIES if p.get("policy_id") != policy_id]
+    if _STORED_POLICIES:
+        _STORED_POLICIES = [p for p in _STORED_POLICIES if p.get("policy_id") != policy_id]
     return {"status": "deleted", "policy_id": policy_id}
 
 
@@ -274,22 +375,70 @@ async def upload_policy_file(
     control_id: str | None = None,
 ) -> dict[str, Any]:
     """
-    Ingest uploaded compliance policy files (PDF, DOCX, TXT, MD)
-    and return cleanly extracted plain text, document metadata, and register to policy store.
+    Ingest uploaded compliance policy files (PDF, DOCX, TXT, MD),
+    deduplicate against SQLite by SHA-256, persist original to Cloudinary,
+    extract plain text, and register record in SQLite.
     """
-    global _STORED_POLICIES
     content_bytes = await file.read()
     if not content_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
+    # 1. Calculate SHA-256 for exact-content identity
+    file_sha256 = hashlib.sha256(content_bytes).hexdigest()
+
+    # 2. Check SQLite for exact duplicate
+    existing_doc = get_policy_document_by_sha256(file_sha256)
+    if existing_doc:
+        # If associated with vulnerability control, ensure definition patch is applied
+        if existing_doc.get("control_id") and "vuln" in existing_doc["control_id"].lower():
+            try:
+                parsed_vuln = parse_policy_specification(existing_doc.get("extracted_text", ""), default_archetype="A")
+                patch = parsed_vuln.get("definition_patch")
+                if patch:
+                    matched_ctrl = default_registry.get_definition("CTL-VULN-001")
+                    if matched_ctrl:
+                        updated_dict = matched_ctrl.model_dump()
+                        if "severity_policy" in patch:
+                            updated_dict["severity_policy"] = patch["severity_policy"]
+                        if "scope" in patch and patch["scope"]:
+                            updated_dict["scope"] = patch["scope"]
+                        default_registry.load_definition_from_dict(updated_dict, approve_auto=True)
+            except Exception:
+                pass
+
+        return {
+            "status": "duplicate",
+            "is_duplicate": True,
+            "message": f"This policy document already exists as '{existing_doc['filename']}'.",
+            "policy_id": existing_doc["policy_id"],
+            "filename": existing_doc["filename"],
+            "title": existing_doc["title"],
+            "control_id": existing_doc.get("control_id") or control_id or "",
+            "archetype": existing_doc.get("archetype", "D"),
+            "format": existing_doc["format"],
+            "mime_type": existing_doc["mime_type"],
+            "size_bytes": existing_doc["file_size_bytes"],
+            "file_size": f"{max(1, existing_doc['file_size_bytes'] // 1024)} KB",
+            "file_sha256": existing_doc["file_sha256"],
+            "cloudinary_url": existing_doc["cloudinary_url"],
+            "text": existing_doc["extracted_text"],
+            "policy_text": existing_doc["extracted_text"],
+            "rules_summary": existing_doc.get("rules_summary", ""),
+            "uploaded_at": existing_doc["uploaded_at"],
+            "uploaded_by": existing_doc.get("uploaded_by", ""),
+            "pages": 1,
+        }
+
+    # 3. Extract text using existing document_extractor.py
     extracted = extract_document_content(file.filename or "policy_spec.txt", content_bytes)
+    extracted_text = extracted.get("text", "")
 
     # Match associated control
     matched_control = None
     if control_id:
         matched_control = default_registry.get_definition(control_id)
     if not matched_control:
-        txt_low = (extracted.get("text") or "").lower()
+        txt_low = extracted_text.lower()
         fn_low = (file.filename or "").lower()
         if "vuln" in fn_low or "vulnerability management standard" in txt_low:
             matched_control = next((d for d in default_registry.list_all() if "vuln" in d.control_id.lower()), None)
@@ -306,7 +455,7 @@ async def upload_policy_file(
     # If associated with vulnerability control, dynamically bind extracted definition patch to registry
     if matched_control and "vuln" in matched_control.control_id.lower():
         try:
-            parsed_vuln = parse_policy_specification(extracted.get("text", ""), default_archetype="A")
+            parsed_vuln = parse_policy_specification(extracted_text, default_archetype="A")
             patch = parsed_vuln.get("definition_patch")
             if patch:
                 updated_dict = matched_control.model_dump()
@@ -318,40 +467,76 @@ async def upload_policy_file(
         except Exception:
             pass
 
-    fmt = "TXT"
-    fn_lower = (file.filename or "").lower()
-    if fn_lower.endswith(".pdf"):
-        fmt = "PDF"
-    elif fn_lower.endswith((".docx", ".doc")):
-        fmt = "DOCX"
-
-    if not _STORED_POLICIES:
-        _STORED_POLICIES = _init_default_policies()
-
+    clean_filename = file.filename or "uploaded_policy.txt"
+    ext = clean_filename.lower().split(".")[-1] if "." in clean_filename else "txt"
+    mime_type = MIME_MAP.get(ext, "application/octet-stream")
+    fmt = extracted.get("format", ext.upper())
     clean_title = (
-        file.filename.rsplit(".", 1)[0].replace("_", " ").replace("-", " ")
-        if file.filename
-        else "Uploaded Policy"
+        clean_filename.rsplit(".", 1)[0].replace("_", " ").replace("-", " ")
     )
+    policy_id = f"POL-{uuid.uuid4().hex[:6].upper()}"
+    uploaded_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    new_policy = {
-        "policy_id": f"POL-{uuid.uuid4().hex[:6].upper()}",
-        "filename": file.filename or "uploaded_policy.txt",
+    # 4. Upload original bytes to Cloudinary
+    try:
+        cloud_res = upload_to_cloudinary(content_bytes, clean_filename, policy_id)
+    except Exception as e:
+        logger.error(f"Cloudinary upload failed: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Failed to persist original document to Cloudinary: {str(e)}"
+        )
+
+    # 5. Persist to SQLite compliance_policy_documents
+    rules_summary = f"Ingested {len(extracted_text.splitlines())} lines. Ready for automated parsing and execution."
+    doc_record = {
+        "policy_id": policy_id,
+        "filename": clean_filename,
         "title": clean_title,
         "control_id": matched_control.control_id if matched_control else "",
         "archetype": matched_control.archetype if matched_control else "D",
-        "risk_rating": matched_control.risk_rating if matched_control else "critical",
-        "frequency": matched_control.frequency if matched_control else "on_event",
-        "uploaded_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "uploaded_by": "Sushanth (Compliance Analyst)",
-        "file_size": f"{max(1, len(content_bytes) // 1024)} KB",
         "format": fmt,
-        "rules_summary": f"Ingested {len(extracted.get('text', '').splitlines())} lines. Ready for automated parsing and execution.",
-        "policy_text": extracted.get("text", ""),
+        "mime_type": mime_type,
+        "file_size_bytes": len(content_bytes),
+        "file_sha256": file_sha256,
+        "cloudinary_public_id": cloud_res.get("public_id", ""),
+        "cloudinary_url": cloud_res.get("secure_url", ""),
+        "extracted_text": extracted_text,
+        "rules_summary": rules_summary,
+        "uploaded_at": uploaded_at,
+        "uploaded_by": "Sushanth (Compliance Analyst)",
         "status": "Ready",
     }
-    _STORED_POLICIES.insert(0, new_policy)
-    extracted["policy_id"] = new_policy["policy_id"]
+
+    try:
+        save_policy_document(doc_record)
+    except Exception as e:
+        logger.error(f"Failed to persist policy record in SQLite: {e}")
+        # Clean up orphaned Cloudinary object
+        if cloud_res.get("public_id"):
+            delete_from_cloudinary(cloud_res["public_id"])
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error saving policy record: {str(e)}"
+        )
+
+    # Maintain in _STORED_POLICIES for backwards compatibility
+    new_policy = {
+        **doc_record,
+        "risk_rating": matched_control.risk_rating if matched_control else "critical",
+        "frequency": matched_control.frequency if matched_control else "on_event",
+        "file_size": f"{max(1, len(content_bytes) // 1024)} KB",
+        "policy_text": extracted_text,
+    }
+    global _STORED_POLICIES
+    if _STORED_POLICIES is not None:
+        _STORED_POLICIES = [p for p in _STORED_POLICIES if p.get("policy_id") != policy_id]
+        _STORED_POLICIES.insert(0, new_policy)
+
+    extracted["policy_id"] = policy_id
+    extracted["cloudinary_url"] = cloud_res.get("secure_url", "")
+    extracted["file_sha256"] = file_sha256
+    extracted["is_duplicate"] = False
     return extracted
 
 
@@ -410,11 +595,26 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
     )
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    policy_id = req.policy_id
+    if not policy_id and filename:
+        from sim.audit_store import get_connection
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT policy_id FROM compliance_policy_documents WHERE filename = ? ORDER BY uploaded_at DESC LIMIT 1", (filename,))
+            r = cur.fetchone()
+            if r:
+                policy_id = r[0]
+        finally:
+            conn.close()
+
     session = {
         "run_id": run_id,
         "control_id": req.control_id,
         "archetype": defn.archetype,
         "filename": filename,
+        "policy_id": policy_id,
         "raw_text": text,
         "extracted_rules": parsed["extracted_rules"],
         "retention_years": ret_years,
@@ -432,10 +632,11 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         archetype=defn.archetype,
         status="running",
         started_at=now_iso,
+        policy_id=policy_id,
         policy_info=parsed.get("policy_name", filename),
         source_db="bank_core.db [source_transactions]",
         archive_db="bank_archive.db [archive_transactions]",
-        metadata_json={"retention_years": ret_years, "filename": filename},
+        metadata_json={"retention_years": ret_years, "filename": filename, "policy_id": policy_id},
     )
     save_audit_step(
         step_id=f"step-{run_id}-1",
@@ -453,6 +654,7 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         "control_id": req.control_id,
         "archetype": defn.archetype,
         "filename": filename,
+        "policy_id": policy_id,
         "policy_name": parsed.get("policy_name", "Transaction Data Archival Policy"),
         "scope": parsed.get("scope", "All organizational transaction, account, and audit records"),
         "description": parsed.get("description", parsed.get("rule_summary", "")),
