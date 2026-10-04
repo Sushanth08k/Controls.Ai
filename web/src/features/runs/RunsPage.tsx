@@ -359,7 +359,12 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                   {auditData.policy_used && (
                                     <div className="flex items-center gap-2 shrink-0">
                                       <a
-                                        href={auditData.policy_used.cloudinary_url || getPolicyDocumentFileUrl(auditData.policy_used.policy_id)}
+                                        href={
+                                          auditData.policy_used.cloudinary_url &&
+                                          !auditData.policy_used.cloudinary_url.includes('/simulated/')
+                                            ? auditData.policy_used.cloudinary_url
+                                            : getPolicyDocumentFileUrl(auditData.policy_used.policy_id)
+                                        }
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition-colors shadow-2xs"

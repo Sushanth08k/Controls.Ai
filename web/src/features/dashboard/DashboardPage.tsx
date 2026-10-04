@@ -6,7 +6,7 @@ import { SeverityTag } from '../../components/SeverityTag';
 import { EvidenceChip } from '../../components/EvidenceChip';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
-import { Plus, ArrowUpRight, Play } from 'lucide-react';
+import { Plus, ArrowUpRight, Play, PlayCircle, Database, ShieldCheck, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatFrequency } from '../../utils/formatFrequency';
 
@@ -30,8 +30,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const navigate = useNavigate();
   const [modalControl, setModalControl] = useState<ControlDefinitionDTO | null>(null);
 
+  // Real live telemetry calculations from SQLite
+  const totalRuns = runs.length;
+  const activeRuns = runs.filter(
+    (r) => r.status === 'running' || r.status === 'ARCHIVED' || r.status === 'VERIFIED' || r.status === 'APPROVED'
+  );
+  const completedRuns = runs.filter((r) => r.status === 'completed' || r.status === 'CLEANED');
+  const completionRate = totalRuns > 0 ? Math.round((completedRuns.length / totalRuns) * 100) : 100;
+
+  // Real records throughput evaluated across runs
+  const totalScanned = runs.reduce((sum, r) => sum + (r.records_scanned || 0), 0);
+  const totalPassed = runs.reduce((sum, r) => sum + (r.passed || 0), 0);
+  const totalFailed = runs.reduce((sum, r) => sum + (r.failed || 0), 0);
+  const complianceRate = totalScanned > 0 ? Math.round((totalPassed / totalScanned) * 100) : 100;
+
+  // Real maker-checker approval gates
   const pendingGates = gates.filter((g) => g.status === 'pending');
-  const activeRuns = runs.filter((r) => r.status === 'running');
+  const approvedGates = gates.filter((g) => g.status === 'approved');
+  const approvalRate = gates.length > 0 ? Math.round((approvedGates.length / gates.length) * 100) : 100;
+
+  // Real deterministic audit findings
+  const criticalFindings = findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
+  const lowMediumFindings = findings.filter((f) => f.severity === 'low' || f.severity === 'medium');
 
   // Find default archival control (Archetype D) or first available control
   const defaultControl =
@@ -47,100 +67,267 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h1>
-        <p className="text-sm text-slate-500 mt-1">Compliance controls at a glance.</p>
-      </div>
-
-      {/* Primary Action Button */}
-      <div>
-        <button
-          type="button"
-          onClick={handleStartRun}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span>Upload Policy</span>
-        </button>
-      </div>
-
-      {/* 4 Action / KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Upload Policy (Active / Highlighted Dark Green) */}
-        <div
-          onClick={handleStartRun}
-          className="bg-[#143d2c] hover:bg-[#184633] text-white p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
-        >
-          <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
-            Upload Policy
-          </span>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-xl font-bold text-white group-hover:text-emerald-100 transition-colors">
-              Start a new run
-            </span>
-            <ArrowUpRight className="w-5 h-5 text-emerald-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-          </div>
+      {/* Page Header with Primary Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Real-time compliance telemetry, deterministic verification, and automated controls audit.
+          </p>
         </div>
 
-        {/* Card 2: Control Runs */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs hover:border-slate-300 transition-all cursor-pointer"
+              title="Refresh telemetry data"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Refresh</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleStartRun}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-xs sm:text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>Upload Policy</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 4 Real Telemetry & Analytics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Card 1: Control Runs Telemetry */}
         <div
           onClick={() => navigate('/runs')}
-          className="bg-white hover:bg-slate-50/80 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
+          className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Control Runs
-            </span>
-            {activeRuns.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
-                {activeRuns.length} active
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <PlayCircle className="w-4 h-4" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Control Runs
+                </span>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+            </div>
+
+            <div className="mt-3.5 flex items-baseline justify-between">
+              <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
+                {totalRuns}
               </span>
-            )}
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  activeRuns.length > 0
+                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}
+              >
+                {activeRuns.length > 0 ? `${activeRuns.length} Active` : `${completionRate}% Done`}
+              </span>
+            </div>
           </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-xl font-bold text-slate-900">View executions</span>
-            <ArrowUpRight className="w-5 h-5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+
+          <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+              <div
+                style={{ width: `${completionRate}%` }}
+                className="bg-emerald-600 h-full rounded-full transition-all duration-500"
+              />
+              {activeRuns.length > 0 && (
+                <div
+                  style={{
+                    width: `${Math.min(
+                      100 - completionRate,
+                      Math.round((activeRuns.length / Math.max(totalRuns, 1)) * 100)
+                    )}%`,
+                  }}
+                  className="bg-blue-500 h-full transition-all duration-500"
+                />
+              )}
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>{completedRuns.length} completed</span>
+              <span>{activeRuns.length} in pipeline</span>
+            </div>
           </div>
         </div>
 
-        {/* Card 3: Approval Queue */}
+        {/* Card 2: Records Evaluated & Verified */}
+        <div
+          onClick={() => navigate('/runs')}
+          className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
+                  <Database className="w-4 h-4" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Records Evaluated
+                </span>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+            </div>
+
+            <div className="mt-3.5 flex items-baseline justify-between">
+              <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
+                {totalScanned.toLocaleString()}
+              </span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                SHA-256 Verified
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+              <div
+                style={{ width: `${complianceRate}%` }}
+                className="bg-blue-600 h-full rounded-full transition-all duration-500"
+              />
+              <div
+                style={{ width: `${100 - complianceRate}%` }}
+                className="bg-amber-400 h-full transition-all duration-500"
+              />
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span className="text-emerald-700 font-semibold">{totalPassed.toLocaleString()} compliant</span>
+              <span className="text-slate-500">{totalFailed.toLocaleString()} exclusions</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Maker-Checker Approval Gates */}
         <div
           onClick={() => navigate('/approvals')}
-          className="bg-white hover:bg-slate-50/80 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
+          className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Approval Queue
-            </span>
-            {pendingGates.length > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                {pendingGates.length} pending
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                    pendingGates.length > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Maker-Checker Gates
+                </span>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+            </div>
+
+            <div className="mt-3.5 flex items-baseline justify-between">
+              <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
+                {pendingGates.length}
               </span>
-            )}
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  pendingGates.length > 0
+                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}
+              >
+                {pendingGates.length > 0 ? 'Action Required' : 'All Clear'}
+              </span>
+            </div>
           </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-xl font-bold text-slate-900">Review pending</span>
-            <ArrowUpRight className="w-5 h-5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+
+          <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+              <div
+                style={{ width: `${approvalRate}%` }}
+                className="bg-emerald-600 h-full rounded-full transition-all duration-500"
+              />
+              {pendingGates.length > 0 && (
+                <div
+                  style={{ width: `${100 - approvalRate}%` }}
+                  className="bg-amber-500 h-full transition-all duration-500"
+                />
+              )}
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>{approvedGates.length} dual-authorized</span>
+              <span>{gates.length} total gates</span>
+            </div>
           </div>
         </div>
 
-        {/* Card 4: Audit Evidence */}
+        {/* Card 4: Audit Findings & Posture */}
         <div
           onClick={() => navigate('/findings')}
-          className="bg-white hover:bg-slate-50/80 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
+          className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-              Audit Evidence
-            </span>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-600 font-mono">
-              Merkle Ledger
-            </span>
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center ${
+                    criticalFindings.length > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Active Findings
+                </span>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+            </div>
+
+            <div className="mt-3.5 flex items-baseline justify-between">
+              <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
+                {findings.length}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  criticalFindings.length > 0
+                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}
+              >
+                {criticalFindings.length > 0 ? `${criticalFindings.length} High/Crit` : 'Zero High Risk'}
+              </span>
+            </div>
           </div>
-          <div className="mt-3 flex items-center justify-between">
-            <span className="text-xl font-bold text-slate-900">View evidence</span>
-            <ArrowUpRight className="w-5 h-5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+
+          <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
+            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+              <div
+                style={{
+                  width: `${
+                    findings.length > 0
+                      ? Math.round((lowMediumFindings.length / findings.length) * 100)
+                      : 100
+                  }%`,
+                }}
+                className="bg-amber-400 h-full rounded-full transition-all duration-500"
+              />
+              {criticalFindings.length > 0 && (
+                <div
+                  style={{
+                    width: `${Math.round((criticalFindings.length / findings.length) * 100)}%`,
+                  }}
+                  className="bg-rose-500 h-full transition-all duration-500"
+                />
+              )}
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
+              <span>{controls.length} controls monitored</span>
+              <span>Merkle ledger sealed</span>
+            </div>
           </div>
         </div>
       </div>

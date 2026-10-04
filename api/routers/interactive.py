@@ -5,8 +5,10 @@ import logging
 import sqlite3
 import uuid
 from typing import Any
+from pathlib import Path
+import re
 from fastapi import APIRouter, HTTPException, File, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse, Response
 from pydantic import BaseModel, ConfigDict
 from core.definitions import default_registry
 from core.merkle import build_merkle_root
@@ -348,15 +350,41 @@ def get_uploaded_policy_details(policy_id: str) -> dict[str, Any]:
 
 @router.get("/uploaded_policies/{policy_id}/file")
 @router.get("/uploaded_policies/{policy_id}/download")
-def open_or_download_policy_file(policy_id: str) -> RedirectResponse:
-    """Redirect to original document stored securely in Cloudinary."""
+def open_or_download_policy_file(policy_id: str):
+    """Redirect to original document stored securely in Cloudinary or serve content directly."""
     doc = get_policy_document(policy_id)
-    if not doc or not doc.get("cloudinary_url"):
+    if not doc:
         raise HTTPException(
             status_code=404,
-            detail=f"Original document for policy '{policy_id}' not found in Cloudinary storage."
+            detail=f"Original document for policy '{policy_id}' not found."
         )
-    return RedirectResponse(url=doc["cloudinary_url"], status_code=307)
+
+    c_url = doc.get("cloudinary_url", "")
+    # If a real (non-simulated) Cloudinary URL is stored, redirect to it
+    if c_url and "/simulated/" not in c_url:
+        return RedirectResponse(url=c_url, status_code=307)
+
+    # Check if local file exists on disk
+    local_dir = Path(__file__).resolve().parent.parent.parent / "sim" / "uploaded_policies"
+    clean_local_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", doc["filename"])
+    local_file = local_dir / f"{policy_id}_{clean_local_name}"
+    if local_file.exists():
+        media_type = doc.get("mime_type") or "application/octet-stream"
+        return FileResponse(
+            path=str(local_file),
+            media_type=media_type,
+            filename=doc["filename"],
+        )
+
+    # Fallback: serve extracted text directly with inline viewing headers
+    text_content = doc.get("extracted_text") or doc.get("title") or "No content available."
+    return Response(
+        content=text_content.encode("utf-8"),
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "Content-Disposition": f'inline; filename="{doc["filename"]}"'
+        }
+    )
 
 
 @router.delete("/uploaded_policies/{policy_id}")
@@ -481,7 +509,15 @@ async def upload_policy_file(
     policy_id = f"POL-{uuid.uuid4().hex[:6].upper()}"
     uploaded_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    # 4. Upload original bytes to Cloudinary
+    # 4. Save local copy and upload to Cloudinary
+    local_dir = Path(__file__).resolve().parent.parent.parent / "sim" / "uploaded_policies"
+    local_dir.mkdir(parents=True, exist_ok=True)
+    clean_local_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", clean_filename)
+    try:
+        (local_dir / f"{policy_id}_{clean_local_name}").write_bytes(content_bytes)
+    except Exception as e:
+        logger.warning(f"Could not save local file backup: {e}")
+
     try:
         cloud_res = upload_to_cloudinary(content_bytes, clean_filename, policy_id)
     except Exception as e:

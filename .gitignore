@@ -58,6 +58,7 @@ pnpm-debug.log*
 *.sqlite3
 data/
 sim/*.db
+sim/uploaded_policies/
 
 # Environment variables & credentials
 .env

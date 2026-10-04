@@ -1,6 +1,6 @@
 export type Archetype = 'A' | 'B' | 'C' | 'D' | 'E';
 export type RiskRating = 'low' | 'medium' | 'high' | 'critical';
-export type RunStatus = 'running' | 'completed' | 'failed' | 'blocked' | 'verified';
+export type RunStatus = 'running' | 'completed' | 'failed' | 'blocked' | 'verified' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED';
 export type GateStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 
 export interface TargetRef {

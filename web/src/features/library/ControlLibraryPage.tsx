@@ -380,7 +380,11 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
                     {/* View Original in Cloudinary */}
                     {(p.cloudinary_url || p.policy_id) && (
                       <a
-                        href={p.cloudinary_url || getPolicyDocumentFileUrl(p.policy_id)}
+                        href={
+                          p.cloudinary_url && !p.cloudinary_url.includes('/simulated/')
+                            ? p.cloudinary_url
+                            : getPolicyDocumentFileUrl(p.policy_id)
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
