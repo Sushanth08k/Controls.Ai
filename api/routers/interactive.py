@@ -284,14 +284,34 @@ async def upload_policy_file(
     if control_id:
         matched_control = default_registry.get_definition(control_id)
     if not matched_control:
-        for defn in default_registry.list_all():
-            if defn.archetype == "D":
-                matched_control = defn
-                break
+        txt_low = (extracted.get("text") or "").lower()
+        fn_low = (file.filename or "").lower()
+        if "vuln" in fn_low or "vulnerability management standard" in txt_low:
+            matched_control = default_registry.get_definition("CTL-VULN-001")
+        if not matched_control:
+            for defn in default_registry.list_all():
+                if defn.archetype == "D":
+                    matched_control = defn
+                    break
         if not matched_control:
             all_defs = default_registry.list_all()
             if all_defs:
                 matched_control = all_defs[0]
+
+    # If associated with CTL-VULN-001, dynamically bind extracted definition patch to registry
+    if matched_control and "vuln" in matched_control.control_id.lower():
+        try:
+            parsed_vuln = parse_policy_specification(extracted.get("text", ""), default_archetype="A")
+            patch = parsed_vuln.get("definition_patch")
+            if patch:
+                updated_dict = matched_control.model_dump()
+                if "severity_policy" in patch:
+                    updated_dict["severity_policy"] = patch["severity_policy"]
+                if "scope" in patch and patch["scope"]:
+                    updated_dict["scope"] = patch["scope"]
+                default_registry.load_definition_from_dict(updated_dict, approve_auto=True)
+        except Exception:
+            pass
 
     fmt = "TXT"
     fn_lower = (file.filename or "").lower()
@@ -360,6 +380,18 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
             pass
 
     parsed = parse_policy_specification(text, default_archetype=defn.archetype)
+
+    # When CTL-VULN-001 policy analysis succeeds, bind definition patch to registry
+    if "vuln" in req.control_id.lower() and parsed.get("definition_patch"):
+        patch = parsed["definition_patch"]
+        current_defn = default_registry.get_definition(req.control_id)
+        if current_defn:
+            updated_dict = current_defn.model_dump()
+            if "severity_policy" in patch:
+                updated_dict["severity_policy"] = patch["severity_policy"]
+            if "scope" in patch and patch["scope"]:
+                updated_dict["scope"] = patch["scope"]
+            defn, _ = default_registry.load_definition_from_dict(updated_dict, approve_auto=True)
 
     run_id = f"RUN-{uuid.uuid4().hex[:8]}"
 

@@ -536,7 +536,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
     if not text_clean:
         text_clean = "Default Organizational Compliance Policy"
 
-    is_retention = bool(
+    is_retention = (
         "retain" in text_clean.lower()
         or "archival" in text_clean.lower()
         or "archive" in text_clean.lower()
@@ -616,8 +616,8 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
     # Vulnerability Remediation SLA Standard
     is_vuln_sla = (
         "remediat" in text_clean.lower()
-        or "vulnerability management standard" in text_clean.lower()
-        or ("critical" in text_clean.lower() and "days" in text_clean.lower())
+        or "vulnerability" in text_clean.lower()
+        or ("critical" in text_clean.lower() and "day" in text_clean.lower())
     )
     if is_vuln_sla:
         crit_m = re.search(r"critical[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
@@ -703,6 +703,72 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
 
         citation = sentences[0] if sentences else text_clean[:120]
         summary = f"Vulnerability remediation SLA: Critical ({crit_days}d), High ({high_days}d), Medium ({med_days}d)."
+
+        # Target / Scope extraction
+        # Actual vulnerability inventory / database_name values available in db_vulnerabilities
+        inventory_targets = [
+            "core_banking_sim",
+            "vuln_target",
+            "payments-db",
+            "customer-data-store",
+            "auth-db",
+        ]
+
+        # 1. Search for known inventory database identifiers mentioned in the policy
+        # preserving textual order of appearance
+        found_inventory: list[str] = []
+        matches: list[tuple[int, str]] = []
+        for db in inventory_targets:
+            pattern = r"(?<![a-zA-Z0-9_-])" + re.escape(db) + r"(?![a-zA-Z0-9_-])"
+            for m in re.finditer(pattern, text_clean, re.IGNORECASE):
+                matches.append((m.start(), db))
+
+        matches.sort(key=lambda x: x[0])
+        for _, db in matches:
+            if db not in found_inventory:
+                found_inventory.append(db)
+
+        extracted_targets: list[str] = []
+        if found_inventory:
+            extracted_targets = found_inventory
+        else:
+            # 2. Check for explicit scope declarations (e.g., Scope: - non_existent_database_target)
+            scope_m = re.search(
+                r"(?:scope|targets?|in-scope|applicable databases?)\s*:\s*([^\n\r]+(?:\n\s*[-*]\s*[^\n\r]+)*)",
+                text_clean,
+                re.IGNORECASE,
+            )
+            if scope_m:
+                raw_scope = scope_m.group(1).strip()
+                raw_scope = re.sub(r"[\[\]\"'*]", "", raw_scope)
+                raw_scope = re.sub(r"^\s*-\s*", "", raw_scope, flags=re.MULTILINE)
+                parts = [p.strip().rstrip(".,;") for p in re.split(r"[,;|\s]+", raw_scope) if p.strip()]
+                stop_words = {
+                    "this", "policy", "applies", "to", "database", "databases", "system", "systems",
+                    "target", "targets", "in-scope", "scope", "and", "or", "the", "all", "instance",
+                    "instances", "applicable", "is", "are", "for", "a", "an",
+                }
+                for p in parts:
+                    p_clean = re.sub(r"^\d+[\.\)]\s*", "", p).strip(".,;:")
+                    if p_clean and p_clean.lower() not in stop_words and not p_clean.isdigit() and len(p_clean) > 1:
+                        if p_clean not in extracted_targets:
+                            extracted_targets.append(p_clean)
+
+        default_scope = ["vuln_target", "core_banking_sim"]
+        final_scope_refs = extracted_targets if extracted_targets else default_scope
+        scope_objects = [{"type": "postgres_instance", "ref": ref} for ref in final_scope_refs]
+
+        severity_policy = {
+            "critical": crit_days,
+            "high": high_days,
+            "medium": med_days,
+            "low": low_days,
+        }
+        definition_patch = {
+            "severity_policy": severity_policy,
+            "scope": scope_objects,
+        }
+
         extracted_rules = {
             "policy_type": "Vulnerability Remediation SLA",
             "critical_sla_days": crit_days,
@@ -715,11 +781,14 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             "rules_count": len(structured_rules),
             "exceptions_count": 0,
             "ambiguities_count": 0,
+            "definition_patch": definition_patch,
+            "scope_targets": final_scope_refs,
         }
 
         return {
             "policy_name": "Vulnerability Management Standard v1.0" if "standard" in text_clean.lower() else (sentences[0] if sentences else "Vulnerability Management Standard"),
-            "scope": "Core Banking & Subsidiary Database Systems",
+            "scope": ", ".join(final_scope_refs) if extracted_targets else "Core Banking & Subsidiary Database Systems",
+            "scope_targets": final_scope_refs,
             "description": summary,
             "rule_summary": summary,
             "requirements": requirements_list,
@@ -731,6 +800,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             "citation": citation,
             "retention_years": 0,
             "extracted_rules": extracted_rules,
+            "definition_patch": definition_patch,
         }
 
     if "vulnerability" in text_clean.lower() or "cve" in text_clean.lower() or "hardening" in text_clean.lower():
@@ -805,7 +875,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "action": "PROHIBIT",
             },
         ]
-        exceptions_list = []
+        exceptions_list: list[dict[str, Any]] = []
         requirements_list = [
             {"requirement_id": "REQ-001", "description": "Superuser privileges across production databases must be reviewed monthly."},
             {"requirement_id": "REQ-002", "description": "Revocation gate triggers immediately upon detecting rogue superusers."},
@@ -836,7 +906,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "action": "ENFORCE",
             },
         ]
-        exceptions_list = []
+        exceptions_list: list[dict[str, Any]] = []
         requirements_list = [
             {"requirement_id": "REQ-001", "description": "Automated sanity test suite triggers on any deployment to core banking services."},
             {"requirement_id": "REQ-002", "description": "Immediate automated rollback gate upon detected regression on critical routes."},
@@ -860,7 +930,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "action": "EVALUATE",
             }
         ]
-        exceptions_list = []
+        exceptions_list: list[dict[str, Any]] = []
         requirements_list = [
             {"requirement_id": "REQ-001", "description": "Ensure recurring compliance with organizational policies."}
         ]
