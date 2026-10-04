@@ -36,6 +36,7 @@ def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:
             records_eligible INTEGER DEFAULT 0,
             records_processed INTEGER DEFAULT 0,
             records_affected INTEGER DEFAULT 0,
+            policy_id TEXT,
             policy_info TEXT,
             error_message TEXT,
             source_db TEXT,
@@ -96,11 +97,39 @@ def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:
             created_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS compliance_policy_documents (
+            policy_id TEXT PRIMARY KEY,
+            filename TEXT NOT NULL,
+            title TEXT NOT NULL,
+            control_id TEXT,
+            archetype TEXT DEFAULT 'D',
+            format TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            file_size_bytes INTEGER NOT NULL,
+            file_sha256 TEXT NOT NULL,
+            cloudinary_public_id TEXT NOT NULL,
+            cloudinary_url TEXT NOT NULL,
+            extracted_text TEXT NOT NULL,
+            rules_summary TEXT,
+            uploaded_at TEXT NOT NULL,
+            uploaded_by TEXT,
+            status TEXT DEFAULT 'Ready'
+        );
+
         CREATE INDEX IF NOT EXISTS idx_audit_steps_run ON control_audit_steps(run_id);
         CREATE INDEX IF NOT EXISTS idx_audit_findings_run ON control_findings(run_id);
         CREATE INDEX IF NOT EXISTS idx_audit_evidence_run ON control_evidence(run_id);
         CREATE INDEX IF NOT EXISTS idx_audit_approvals_run ON control_approvals(run_id);
+        CREATE INDEX IF NOT EXISTS idx_policy_documents_control ON compliance_policy_documents(control_id);
+        CREATE INDEX IF NOT EXISTS idx_policy_documents_sha256 ON compliance_policy_documents(file_sha256);
         """)
+
+        # Ensure policy_id column exists on existing control_audit_runs table
+        cur.execute("PRAGMA table_info(control_audit_runs)")
+        col_names = [col[1] for col in cur.fetchall()]
+        if "policy_id" not in col_names:
+            cur.execute("ALTER TABLE control_audit_runs ADD COLUMN policy_id TEXT")
+
         conn.commit()
     finally:
         if should_close:
@@ -130,6 +159,7 @@ def upsert_audit_run(
     records_eligible: int | None = None,
     records_processed: int | None = None,
     records_affected: int | None = None,
+    policy_id: str | None = None,
     policy_info: str | None = None,
     error_message: str | None = None,
     source_db: str | None = None,
@@ -138,7 +168,7 @@ def upsert_audit_run(
     archive_merkle_root: str | None = None,
     merkle_verified: int | bool | None = None,
     attestation_token: str | None = None,
-    metadata_json: str | dict | None = None,
+    metadata_json: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Insert or update a control run record in SQLite."""
     init_audit_tables()
@@ -172,6 +202,7 @@ def upsert_audit_run(
                 records_eligible = CASE WHEN ? IS NOT NULL THEN ? ELSE records_eligible END,
                 records_processed = CASE WHEN ? IS NOT NULL THEN ? ELSE records_processed END,
                 records_affected = CASE WHEN ? IS NOT NULL THEN ? ELSE records_affected END,
+                policy_id = COALESCE(?, policy_id),
                 policy_info = COALESCE(?, policy_info),
                 error_message = COALESCE(?, error_message),
                 source_db = COALESCE(?, source_db),
@@ -188,7 +219,7 @@ def upsert_audit_run(
                 records_eligible, records_eligible,
                 records_processed, records_processed,
                 records_affected, records_affected,
-                policy_info, error_message, source_db, archive_db,
+                policy_id, policy_info, error_message, source_db, archive_db,
                 source_merkle_root, archive_merkle_root,
                 merkle_verified_int, merkle_verified_int,
                 attestation_token, metadata_str,
@@ -199,10 +230,10 @@ def upsert_audit_run(
             INSERT INTO control_audit_runs (
                 run_id, control_id, version, archetype, status, started_at, completed_at,
                 records_evaluated, records_eligible, records_processed, records_affected,
-                policy_info, error_message, source_db, archive_db,
+                policy_id, policy_info, error_message, source_db, archive_db,
                 source_merkle_root, archive_merkle_root, merkle_verified, attestation_token,
                 metadata_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 run_id,
                 control_id or "UNKNOWN",
@@ -215,6 +246,7 @@ def upsert_audit_run(
                 records_eligible or 0,
                 records_processed or 0,
                 records_affected or 0,
+                policy_id,
                 policy_info,
                 error_message,
                 source_db,
@@ -284,7 +316,7 @@ def save_audit_step(
     completed_at: str | None = None,
     records_processed: int = 0,
     error_message: str | None = None,
-    metadata_json: str | dict | None = None,
+    metadata_json: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Record or update a step in a control run's lifecycle."""
     init_audit_tables()
@@ -354,7 +386,7 @@ def save_audit_finding(
     affected_record: str | None = None,
     description: str | None = None,
     risk_score: float = 0.0,
-    details_json: str | dict | None = None,
+    details_json: str | dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Persist a control evaluation finding."""
     init_audit_tables()
@@ -581,8 +613,42 @@ def get_full_audit_bundle(run_id: str) -> dict[str, Any] | None:
     evidence = list_audit_evidence(run_id)
     approvals = list_audit_approvals(run_id)
 
+    meta = run.get("metadata") or {}
+    pol_id = run.get("policy_id") or meta.get("policy_id")
+    policy_doc = None
+    if pol_id:
+        policy_doc = get_policy_document(pol_id)
+    if not policy_doc and meta.get("filename"):
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT * FROM compliance_policy_documents WHERE filename = ? ORDER BY uploaded_at DESC LIMIT 1",
+                (meta.get("filename"),),
+            )
+            row = cur.fetchone()
+            if row:
+                policy_doc = dict(row)
+        finally:
+            conn.close()
+
+    policy_used = None
+    if policy_doc:
+        policy_used = {
+            "policy_id": policy_doc["policy_id"],
+            "filename": policy_doc["filename"],
+            "title": policy_doc.get("title") or policy_doc["filename"],
+            "format": policy_doc.get("format", "PDF"),
+            "file_size": f"{max(1, policy_doc.get('file_size_bytes', 0) // 1024)} KB",
+            "cloudinary_url": policy_doc.get("cloudinary_url", ""),
+            "extracted_text": policy_doc.get("extracted_text", ""),
+            "rules_summary": policy_doc.get("rules_summary", ""),
+            "uploaded_at": policy_doc.get("uploaded_at", ""),
+        }
+
     return {
         "run": run,
+        "policy_used": policy_used,
         "steps": steps,
         "findings": findings,
         "evidence": evidence,
@@ -595,3 +661,101 @@ def get_full_audit_bundle(run_id: str) -> dict[str, Any] | None:
             "records_verified": run.get("records_processed") or run.get("records_eligible"),
         } if run.get("source_merkle_root") else None,
     }
+
+
+def save_policy_document(doc: dict[str, Any]) -> dict[str, Any]:
+    """Persist compliance policy document metadata and extracted text to SQLite."""
+    init_audit_tables()
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT OR REPLACE INTO compliance_policy_documents (
+                policy_id, filename, title, control_id, archetype, format,
+                mime_type, file_size_bytes, file_sha256, cloudinary_public_id,
+                cloudinary_url, extracted_text, rules_summary, uploaded_at,
+                uploaded_by, status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                doc["policy_id"],
+                doc["filename"],
+                doc["title"],
+                doc.get("control_id", ""),
+                doc.get("archetype", "D"),
+                doc["format"],
+                doc.get("mime_type", "application/octet-stream"),
+                int(doc["file_size_bytes"]),
+                doc["file_sha256"],
+                doc["cloudinary_public_id"],
+                doc["cloudinary_url"],
+                doc.get("extracted_text", ""),
+                doc.get("rules_summary", ""),
+                doc["uploaded_at"],
+                doc.get("uploaded_by", "Compliance Analyst"),
+                doc.get("status", "Ready"),
+            ),
+        )
+        conn.commit()
+        return doc
+    finally:
+        conn.close()
+
+
+def get_policy_document(policy_id: str) -> dict[str, Any] | None:
+    """Retrieve policy document by policy_id."""
+    init_audit_tables()
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM compliance_policy_documents WHERE policy_id = ?", (policy_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_policy_document_by_sha256(file_sha256: str) -> dict[str, Any] | None:
+    """Retrieve policy document by exact content SHA-256 hash."""
+    init_audit_tables()
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM compliance_policy_documents WHERE file_sha256 = ?", (file_sha256,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def list_policy_documents(control_id: str | None = None) -> list[dict[str, Any]]:
+    """List all persisted policy documents ordered by upload date descending."""
+    init_audit_tables()
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        if control_id:
+            cur.execute(
+                "SELECT * FROM compliance_policy_documents WHERE control_id = ? ORDER BY uploaded_at DESC",
+                (control_id,),
+            )
+        else:
+            cur.execute("SELECT * FROM compliance_policy_documents ORDER BY uploaded_at DESC")
+        return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def delete_policy_document(policy_id: str) -> bool:
+    """Delete policy document record by policy_id."""
+    init_audit_tables()
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM compliance_policy_documents WHERE policy_id = ?", (policy_id,))
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+

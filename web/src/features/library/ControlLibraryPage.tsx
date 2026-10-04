@@ -7,6 +7,7 @@ import {
   fetchUploadedPolicies,
   uploadPolicyDocument,
   deleteUploadedPolicy,
+  getPolicyDocumentFileUrl,
   UploadedPolicyDTO,
 } from '../../api/client';
 import {
@@ -22,6 +23,7 @@ import {
   Copy,
   Check,
   Upload,
+  ExternalLink,
 } from 'lucide-react';
 
 interface ControlLibraryPageProps {
@@ -43,6 +45,13 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
   const [selectedFormat, setSelectedFormat] = useState<string>('ALL');
   const [expandedPolicyId, setExpandedPolicyId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [duplicateInfo, setDuplicateInfo] = useState<{
+    filename: string;
+    policy_id: string;
+    uploaded_at: string;
+    control_id: string;
+    existingPolicy?: UploadedPolicyDTO;
+  } | null>(null);
 
   // Execution modal state
   const [modalControl, setModalControl] = useState<ControlDefinitionDTO | null>(null);
@@ -69,11 +78,25 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
   const handleFileUpload = async (file: File) => {
     setUploading(true);
     setUploadSuccess(null);
+    setDuplicateInfo(null);
     try {
       const res = await uploadPolicyDocument(file);
-      setUploadSuccess(`Successfully ingested "${file.name}" (${res.pages || 1} pages, ${res.format})`);
-      setTimeout(() => setUploadSuccess(null), 4000);
-      await loadPolicies();
+      if (res.is_duplicate) {
+        const allPolicies = await fetchUploadedPolicies();
+        setPolicies(allPolicies);
+        const existing = allPolicies.find((p) => p.policy_id === res.policy_id);
+        setDuplicateInfo({
+          filename: res.filename,
+          policy_id: res.policy_id || '',
+          uploaded_at: res.uploaded_at || '',
+          control_id: res.control_id || '',
+          existingPolicy: existing,
+        });
+      } else {
+        setUploadSuccess(`Successfully ingested & persisted "${file.name}" (${res.pages || 1} pages, ${res.format}) to Cloudinary & SQLite`);
+        setTimeout(() => setUploadSuccess(null), 5000);
+        await loadPolicies();
+      }
     } catch (err: any) {
       alert(`Upload failed: ${err.message || 'Unknown error'}`);
     } finally {
@@ -171,7 +194,52 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span className="font-medium">{uploadSuccess}</span>
           </div>
-          <span className="text-[11px] font-semibold text-emerald-700 font-mono">Ready to Run</span>
+          <span className="text-[11px] font-semibold text-emerald-700 font-mono">Persisted & Ready</span>
+        </div>
+      )}
+
+      {/* Existing Policy Notification Banner */}
+      {duplicateInfo && (
+        <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-200">
+          <div className="flex items-start gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold text-blue-950">Policy already exists:</span>{' '}
+              <span>This document has already been uploaded as <strong>"{duplicateInfo.filename}"</strong> (ID: <span className="font-mono text-blue-800 font-semibold">{duplicateInfo.policy_id}</span>). The existing copy will be used for this control run — no duplicate file was stored.</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {duplicateInfo.existingPolicy && (
+              <button
+                type="button"
+                onClick={() => {
+                  handleRunPolicy(duplicateInfo.existingPolicy!);
+                  setDuplicateInfo(null);
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white font-semibold text-[11px] shadow-xs cursor-pointer flex items-center gap-1"
+              >
+                <Play className="w-3 h-3 fill-current text-emerald-400" />
+                <span>Use Existing Policy</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setExpandedPolicyId(duplicateInfo.policy_id);
+                setDuplicateInfo(null);
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-900 font-semibold text-[11px] cursor-pointer"
+            >
+              Open Policy
+            </button>
+            <button
+              type="button"
+              onClick={() => setDuplicateInfo(null)}
+              className="p-1 text-blue-600 hover:text-blue-800 cursor-pointer text-xs"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -291,6 +359,12 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
                         <span>Size: <span className="text-slate-700 font-medium">{p.file_size}</span></span>
                         <span>•</span>
                         <span>Uploaded: <span className="text-slate-700 font-medium">{p.uploaded_at}</span></span>
+                        {p.file_sha256 && (
+                          <>
+                            <span>•</span>
+                            <span>SHA-256: <span className="text-slate-700 font-medium" title={p.file_sha256}>{p.file_sha256.slice(0, 10)}...</span></span>
+                          </>
+                        )}
                         <span>•</span>
                         <span>By: <span className="text-slate-700 font-medium">{p.uploaded_by}</span></span>
                       </div>
@@ -303,6 +377,20 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
 
                   {/* Right: Actions */}
                   <div className="flex items-center gap-2 shrink-0 self-end sm:self-start">
+                    {/* View Original in Cloudinary */}
+                    {(p.cloudinary_url || p.policy_id) && (
+                      <a
+                        href={p.cloudinary_url || getPolicyDocumentFileUrl(p.policy_id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition-colors cursor-pointer"
+                        title={`Open original ${p.format} document from Cloudinary storage`}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>View Original</span>
+                      </a>
+                    )}
+
                     <button
                       type="button"
                       onClick={() =>
@@ -390,6 +478,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
             currentUser={currentUser}
             initialPolicyText={activePolicy?.policy_text}
             initialFileName={activePolicy?.filename}
+            initialPolicyId={activePolicy?.policy_id}
             onClose={() => {
               setModalControl(null);
               setActivePolicy(null);
@@ -406,6 +495,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
             currentUser={currentUser}
             initialPolicyText={activePolicy?.policy_text}
             initialFileName={activePolicy?.filename}
+            initialPolicyId={activePolicy?.policy_id}
             onClose={() => {
               setModalControl(null);
               setActivePolicy(null);

@@ -50,6 +50,18 @@ export interface RunItemDTO {
   failed?: number;
   evidence_id?: string;
   table?: string;
+  policy_id?: string;
+  policy_filename?: string;
+  policy_used?: {
+    policy_id: string;
+    filename: string;
+    title: string;
+    cloudinary_url: string;
+    extracted_text?: string;
+    rules_summary?: string;
+    format?: string;
+    file_size?: string;
+  };
 }
 
 export interface FindingDTO {

@@ -40,6 +40,7 @@ interface ControlExecutionModalProps {
   onRunCompleted?: () => void;
   initialPolicyText?: string;
   initialFileName?: string;
+  initialPolicyId?: string;
   initialRunId?: string;
   initialStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED';
 }
@@ -51,6 +52,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   onRunCompleted,
   initialPolicyText,
   initialFileName,
+  initialPolicyId,
   initialRunId,
   initialStage,
 }) => {
@@ -58,6 +60,8 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   const [viewMode, setViewMode] = useState<number>(initialRunId ? 3 : 1);
   const [policyText, setPolicyText] = useState<string>(initialPolicyText || '');
   const [fileName, setFileName] = useState<string>(initialFileName || 'policy_spec.txt');
+  const [policyId, setPolicyId] = useState<string | null>(initialPolicyId || null);
+  const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -206,8 +210,19 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       setFileName(file.name);
       setLoading(true);
       setError(null);
+      setDuplicateNotice(null);
       try {
         const res = await uploadPolicyDocument(file);
+        if (res.policy_id) {
+          setPolicyId(res.policy_id);
+        }
+        if (res.is_duplicate) {
+          setDuplicateNotice(
+            `This document has already been uploaded as "${res.filename}" (Policy ID: ${res.policy_id || 'stored'}). The existing copy will be used for this control run — no duplicate file was stored.`
+          );
+        } else {
+          setDuplicateNotice(null);
+        }
         if (res.text && res.text.trim()) {
           setPolicyText(res.text);
         } else {
@@ -236,7 +251,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const data = await interpretPolicy(control.control_id, policyText, fileName);
+      const data = await interpretPolicy(control.control_id, policyText, fileName, policyId || undefined);
       setRunId(data.run_id);
       setExtractedData(data);
       setViewMode(2); // Show Policy Analysis View (Screenshot 2)
@@ -515,6 +530,25 @@ AND legal_hold = 0;`,
                   <ArchetypeBadge archetype={control.archetype} />
                 </div>
               </div>
+
+              {duplicateNotice && (
+                <div className="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 text-xs flex items-center justify-between gap-2 shadow-2xs animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                    <div>
+                      <span className="font-bold text-blue-950">Policy already exists: </span>
+                      <span>{duplicateNotice}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateNotice(null)}
+                    className="text-blue-700 hover:text-blue-900 text-xs font-semibold px-2 py-1 cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label className="border-2 border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors bg-white">
