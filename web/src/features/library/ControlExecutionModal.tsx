@@ -157,7 +157,12 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const prev = await previewDatabase(control.control_id, extractedData?.extracted_rules || {});
+      const prev = await previewDatabase(control.control_id, {
+        ...(extractedData?.extracted_rules || {}),
+        rules: extractedData?.rules || [],
+        exceptions: extractedData?.exceptions || [],
+        run_id: runId,
+      });
       setPreviewData(prev);
       setTotalRead(prev.total_source_records || 50);
       setEligibleCount(prev.eligible_records_count || 33);

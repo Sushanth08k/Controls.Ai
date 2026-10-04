@@ -82,6 +82,28 @@ CREATE TABLE archive_transactions (
     return "\n\n".join(ddl_statements)
 
 
+def derive_table_name(desc: str, default: str = "source_transactions") -> str:
+    """Derive appropriate table name from rule description."""
+    desc_lower = desc.lower()
+    if "support ticket" in desc_lower or "ticket" in desc_lower:
+        return "customer_support_tickets"
+    elif "employee" in desc_lower:
+        return "employee_records"
+    elif "audit log" in desc_lower or "log" in desc_lower:
+        return "system_audit_logs"
+    elif "customer doc" in desc_lower or "document" in desc_lower:
+        return "customer_documents"
+    elif "customer profile" in desc_lower:
+        return "customer_profiles"
+    elif "customer" in desc_lower:
+        return "customers"
+    elif "payment" in desc_lower:
+        return "payments"
+    elif "transaction" in desc_lower:
+        return "source_transactions"
+    return default
+
+
 def compile_schema_driven_sql(
     schema_ddl: str,
     rules: list[dict[str, Any]],
@@ -92,7 +114,8 @@ def compile_schema_driven_sql(
 ) -> dict[str, str]:
     """
     Deterministic schema-driven SQL compiler.
-    Constructs compliant queries matching the exact columns in the database schema.
+    Constructs compliant queries matching the exact columns in the database schema,
+    accounting for every extracted rule and every legal/investigation exclusion.
     """
     # Parse available columns from schema
     has_source_tx = "source_transactions" in schema_ddl
@@ -105,21 +128,84 @@ def compile_schema_driven_sql(
     date_field = "transaction_date" if "transaction_date" in schema_ddl else "created_at"
     hold_field = "legal_hold" if "legal_hold" in schema_ddl else "active_hold"
 
-    # Check for exceptions
-    has_hold = any(
-        e.get("field") == hold_field or "hold" in str(e.get("reason", "")).lower()
-        for e in exceptions
-    )
-    hold_clause = f"AND {hold_field} = 0" if has_hold else ""
+    # Build exclusion clauses from all extracted exceptions
+    exclusion_clauses: list[str] = []
+    for exc in exceptions:
+        f = exc.get("field", "")
+        op = str(exc.get("operator", "EQUALS")).upper()
+        val = str(exc.get("value", "")).strip()
+        reason = str(exc.get("reason", "") or exc.get("title", "")).lower()
 
+        if f == "legal_hold" or "legal hold" in reason:
+            exclusion_clauses.append("(legal_hold = 0 OR legal_hold IS NULL)")
+        elif f == "investigation_status" or "investigation" in reason:
+            exclusion_clauses.append("(investigation_status != 'ACTIVE' OR investigation_status IS NULL)")
+        elif f and val:
+            if op in ("EQUALS", "==", "="):
+                exclusion_clauses.append(f"({f} != '{val}' OR {f} IS NULL)")
+            elif op == "NOT_EQUALS":
+                exclusion_clauses.append(f"({f} = '{val}')")
+
+    if not exclusion_clauses and hold_field in schema_ddl:
+        exclusion_clauses.append(f"({hold_field} = 0 OR {hold_field} IS NULL)")
+
+    exclusion_sql = ("\n  AND " + "\n  AND ".join(exclusion_clauses)) if exclusion_clauses else ""
+
+    # Multi-rule generation: if multiple distinct rules were detected in policy
+    if len(rules) > 1:
+        sel_blocks = []
+        arch_blocks = []
+        clean_blocks = []
+
+        for idx, r in enumerate(rules):
+            rid = r.get("rule_id", f"RULE-{idx + 1:03d}")
+            rdesc = r.get("description", "Archival Rule")
+            cond = r.get("condition") or {}
+            df = cond.get("field") or date_field
+            val = cond.get("value") or str(retention_years)
+            unit = cond.get("unit") or "years"
+            src_tbl = derive_table_name(rdesc, default=source_table)
+            arch_tbl = f"archive_{src_tbl}" if not src_tbl.startswith("source_") else src_tbl.replace("source_", "archive_")
+
+            sel_blocks.append(
+                f"-- [{rid}] {rdesc}\n"
+                f"-- Target: {src_tbl} | Retention: older than {val} {unit}\n"
+                f"SELECT *\n"
+                f"FROM {src_tbl}\n"
+                f"WHERE {df} < DATE('now', '-{val} {unit}'){exclusion_sql};"
+            )
+
+            arch_blocks.append(
+                f"-- [{rid}] ARCHIVE FIRST -> {arch_tbl}\n"
+                f"-- Target: {src_tbl} | Rule: older than {val} {unit} | Run ID: {run_id}\n"
+                f"INSERT OR REPLACE INTO {arch_tbl}\n"
+                f"SELECT *, 'ARCHIVED' AS archival_status, '{run_id}' AS control_run_id, 'SHA256-' || substr(hex(randomblob(16)), 1, 16) AS verification_hash, CURRENT_TIMESTAMP AS archived_at\n"
+                f"FROM {src_tbl}\n"
+                f"WHERE {df} < DATE('now', '-{val} {unit}'){exclusion_sql};"
+            )
+
+            clean_blocks.append(
+                f"-- [{rid}] SOURCE CLEANUP -> {src_tbl} (AFTER RECONCILIATION & HUMAN APPROVAL)\n"
+                f"DELETE FROM {src_tbl}\n"
+                f"WHERE rowid IN (\n"
+                f"  SELECT rowid FROM {arch_tbl} WHERE control_run_id = '{run_id}'\n"
+                f"){exclusion_sql};"
+            )
+
+        return {
+            "selection_sql": "\n\n".join(sel_blocks),
+            "archival_sql": "\n\n".join(arch_blocks),
+            "cleanup_sql": "\n\n".join(clean_blocks),
+        }
+
+    # Single rule or baseline schema-driven queries
     selection_sql = f"""-- 1. ACTIVE SELECTION SQL (SELECT)
 -- Target: {source_table}
 -- Dialect: {dialect}
 -- Rule: Records older than {retention_years} years (excluding active legal holds)
 SELECT transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}
 FROM {source_table}
-WHERE {date_field} < DATE('now', '-{retention_years} years')
-  {hold_clause};"""
+WHERE {date_field} < DATE('now', '-{retention_years} years'){exclusion_sql};"""
 
     archival_sql = f"""-- 2. ARCHIVE FIRST - INSERT INTO APPROVED ARCHIVE DATABASE
 -- Destination: {archive_table}
@@ -134,8 +220,7 @@ SELECT
   'SHA256-' || substr(hex(randomblob(16)), 1, 16),
   CURRENT_TIMESTAMP
 FROM {source_table}
-WHERE {date_field} < DATE('now', '-{retention_years} years')
-  {hold_clause};"""
+WHERE {date_field} < DATE('now', '-{retention_years} years'){exclusion_sql};"""
 
     cleanup_sql = f"""-- 3. SOURCE CLEANUP SQL (DELETE) - PURGE VERIFIED RECORDS (AFTER HUMAN APPROVAL)
 -- Target: {source_table}
@@ -146,14 +231,14 @@ WHERE transaction_id IN (
   SELECT transaction_id 
   FROM {archive_table} 
   WHERE control_run_id = '{run_id}'
-)
-{hold_clause};"""
+){exclusion_sql};"""
 
     return {
         "selection_sql": selection_sql,
         "archival_sql": archival_sql,
         "cleanup_sql": cleanup_sql,
     }
+
 
 
 def generate_sql_with_gemini(

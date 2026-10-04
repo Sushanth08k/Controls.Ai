@@ -287,78 +287,165 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
                     })
                     sources.append(clean_body)
 
-    # 3. If no structured sections or rules were found, use general regex parsing
+    # 3. If no structured sections or rules were found, use general natural language parsing
     if not rules:
-        # Search for general retention statements: "older than 5 years", "retained for 7 years"
-        retention_matches = list(re.finditer(
-            r"(?:records?|data|documents?|accounts?|transactions?|logs?)\s+.*?(?:older than|retained for|more than)\s+(\w+)\s+(years?|months?|days?)",
-            text,
-            re.IGNORECASE,
-        ))
+        # Split sentences and clauses
+        raw_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if len(s.strip()) > 10]
 
-        for idx, rm in enumerate(retention_matches):
-            sentence = rm.group(0)
-            threshold = parse_numeric_value(rm.group(1))
-            unit = rm.group(2).lower()
+        # Filter out meta testing notes
+        clean_sentences = []
+        skip_notes = False
+        for s in raw_sentences:
+            if re.search(r"^(?:5\.\s*)?TESTING NOTES", s, re.I):
+                skip_notes = True
+                continue
+            if skip_notes and re.search(r"expected extraction concepts", s, re.I):
+                continue
+            clean_sentences.append(s)
 
-            # Guess field name
-            field_name = "created_at"
-            if "transaction" in sentence.lower():
-                field_name = "transaction_date"
-            elif "closed" in sentence.lower() or "account" in sentence.lower():
-                field_name = "closed_date"
+        for s in clean_sentences:
+            s_clean = " ".join(s.split())
+            s_lower = s_clean.lower()
 
-            rules.append({
-                "rule_id": f"RULE-{len(rules) + 1:03d}",
-                "description": sentence.strip(),
-                "rule_type": "ARCHIVAL",
-                "condition": {
-                    "field": field_name,
-                    "operator": "OLDER_THAN",
-                    "value": threshold,
-                    "unit": unit,
-                },
-                "action": "ARCHIVE",
-            })
-            sources.append(sentence)
+            # Search for retention / archival statements with number words or parenthetical digits:
+            # e.g., "retained for six (6) years", "no less than eight years", "archived after four years", "older than 5 years"
+            time_m = re.search(
+                r"\b(?:(?:shall|must|may)?\s*be\s+retained\s+for\s+(?:no less than\s+|at least\s+)?|archived\s+after\s+|older\s+than\s+|more\s+than\s+|exceeding\s+|retained\s+for\s+(?:no less than\s+|at least\s+)?)(?:up\s+to\s+)?(\w+)(?:\s*\(\s*(\d+)\s*\))?\s+(years?|months?|days?)\b",
+                s_clean,
+                re.I,
+            )
+            if time_m:
+                val_word = time_m.group(1).lower()
+                paren_num = time_m.group(2)
+                unit = time_m.group(3).lower()
+                threshold = paren_num if paren_num else parse_numeric_value(val_word)
 
-        # Search for exclusion / legal hold statements
-        if re.search(r"legal\s+hold", text, re.I):
-            exceptions.append({
-                "exception_id": f"EXC-{len(exceptions) + 1:03d}",
-                "title": "Active Legal Hold Exclusion",
-                "field": "legal_hold",
-                "operator": "EQUALS",
-                "value": "true",
-                "action": "EXCLUDE",
-                "reason": "Records subject to legal hold must not be archived or deleted.",
-            })
+                field_name = "created_at"
+                entity_label = "Records"
+                action = "ARCHIVE"
+                rule_type = "ARCHIVAL"
 
-        if re.search(r"investigation", text, re.I):
-            exceptions.append({
-                "exception_id": f"EXC-{len(exceptions) + 1:03d}",
-                "title": "Regulatory Investigation Hold",
-                "field": "investigation_status",
-                "operator": "EQUALS",
-                "value": "ACTIVE",
-                "action": "EXCLUDE",
-                "reason": "Records under active investigation are excluded from archival.",
-            })
+                if "customer relationship" in s_lower or "relationship is terminated" in s_lower:
+                    field_name = "relationship_terminated_at"
+                    entity_label = "Customer Profile Records"
+                    scopes_found.append("Customer Profile Records")
+                elif "posting date" in s_lower or "payment" in s_lower:
+                    field_name = "posting_date"
+                    entity_label = "Payment History"
+                    scopes_found.append("Payment History")
+                    if "no less than" in s_lower or "remain available" in s_lower:
+                        rule_type = "RETENTION"
+                elif "case is closed" in s_lower or "case closure" in s_lower or "correspondence" in s_lower:
+                    field_name = "case_closed_at"
+                    entity_label = "Customer Correspondence"
+                    scopes_found.append("Customer Correspondence")
+                elif "transaction" in s_lower:
+                    field_name = "transaction_date"
+                    entity_label = "Transactions"
+                    scopes_found.append("Transactions")
+                elif "account" in s_lower:
+                    field_name = "closed_date"
+                    entity_label = "Accounts"
+                    scopes_found.append("Accounts")
 
-        # Verification rule
-        if re.search(r"verif(?:ied|ication)", text, re.I):
-            rules.append({
-                "rule_id": f"RULE-{len(rules) + 1:03d}",
-                "description": "Independent verification of archival before source record removal.",
-                "rule_type": "VERIFICATION",
-                "condition": {
-                    "field": "archival_status",
+                op = "AT_LEAST" if rule_type == "RETENTION" else "OLDER_THAN"
+
+                rules.append({
+                    "rule_id": f"RULE-{len(rules) + 1:03d}",
+                    "description": f"{entity_label}: {s_clean}",
+                    "rule_type": rule_type,
+                    "condition": {
+                        "field": field_name,
+                        "operator": op,
+                        "value": str(threshold),
+                        "unit": unit,
+                    },
+                    "action": action,
+                })
+                sources.append(s_clean)
+
+            # Search for exception statements
+            if "legal hold" in s_lower:
+                exceptions.append({
+                    "exception_id": f"EXC-{len(exceptions) + 1:03d}",
+                    "title": "Pending Legal Hold Exclusion",
+                    "field": "legal_hold",
                     "operator": "EQUALS",
-                    "value": "VERIFIED",
-                    "unit": None,
-                },
-                "action": "VERIFY",
-            })
+                    "value": "true",
+                    "action": "EXCLUDE",
+                    "reason": s_clean,
+                })
+                sources.append(s_clean)
+
+            elif "fraud review" in s_lower or "unresolved fraud" in s_lower:
+                exceptions.append({
+                    "exception_id": f"EXC-{len(exceptions) + 1:03d}",
+                    "title": "Unresolved Fraud Review Exclusion",
+                    "field": "fraud_review_status",
+                    "operator": "EQUALS",
+                    "value": "UNRESOLVED",
+                    "action": "EXCLUDE",
+                    "reason": s_clean,
+                })
+                sources.append(s_clean)
+
+            elif "regulator" in s_lower and ("longer period" in s_lower or "precedence" in s_lower):
+                exceptions.append({
+                    "exception_id": f"EXC-{len(exceptions) + 1:03d}",
+                    "title": "Regulatory Retention Precedence Override",
+                    "field": "regulatory_override",
+                    "operator": "EQUALS",
+                    "value": "ACTIVE",
+                    "action": "EXCLUDE",
+                    "reason": s_clean,
+                })
+                sources.append(s_clean)
+
+            elif "investigation" in s_lower:
+                exceptions.append({
+                    "exception_id": f"EXC-{len(exceptions) + 1:03d}",
+                    "title": "Regulatory Investigation Hold",
+                    "field": "investigation_status",
+                    "operator": "EQUALS",
+                    "value": "ACTIVE",
+                    "action": "EXCLUDE",
+                    "reason": s_clean,
+                })
+                sources.append(s_clean)
+
+            # Archival controls & verification requirements
+            if "preserve" in s_lower and "key" in s_lower:
+                requirements.append({
+                    "requirement_id": f"REQ-{len(requirements) + 1:03d}",
+                    "description": s_clean,
+                })
+            elif "reconciliation" in s_lower and "deletion" in s_lower:
+                requirements.append({
+                    "requirement_id": f"REQ-{len(requirements) + 1:03d}",
+                    "description": s_clean,
+                })
+                rules.append({
+                    "rule_id": f"RULE-{len(rules) + 1:03d}",
+                    "description": f"Verification requirement: {s_clean}",
+                    "rule_type": "VERIFICATION",
+                    "condition": {
+                        "field": "archival_status",
+                        "operator": "EQUALS",
+                        "value": "VERIFIED",
+                        "unit": None,
+                    },
+                    "action": "VERIFY",
+                })
+            elif "approval" in s_lower and ("administrator" in s_lower or "authorized" in s_lower):
+                requirements.append({
+                    "requirement_id": f"REQ-{len(requirements) + 1:03d}",
+                    "description": s_clean,
+                })
+            elif "audit trail" in s_lower or "audit log" in s_lower:
+                requirements.append({
+                    "requirement_id": f"REQ-{len(requirements) + 1:03d}",
+                    "description": s_clean,
+                })
 
     # Default fallback rule if still nothing extracted
     if not rules:
@@ -376,11 +463,12 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
         })
 
     # 4. Extract Global Requirements
+    section_headers = {"purpose", "retention rules", "exceptions", "archival controls", "testing notes", "scope", "definitions"}
     req_lines = re.findall(r"(?:^|\n)\s*(\d+)\.\s+([^\n\r]+)", text)
     if req_lines:
         for r_num, r_text in req_lines[:8]:
             clean_req = " ".join(r_text.split())
-            if len(clean_req) > 10 and not clean_req.startswith("=="):
+            if len(clean_req) > 10 and not clean_req.startswith("==") and clean_req.lower() not in section_headers and len(clean_req.split()) > 2:
                 requirements.append({
                     "requirement_id": f"REQ-{len(requirements) + 1:03d}",
                     "description": clean_req,
@@ -390,7 +478,7 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
         if req_matches:
             for r_num, r_text in req_matches[:8]:
                 clean_req = " ".join(r_text.split())
-                if len(clean_req) > 10 and not clean_req.startswith("=="):
+                if len(clean_req) > 10 and not clean_req.startswith("==") and clean_req.lower() not in section_headers and len(clean_req.split()) > 2:
                     requirements.append({
                         "requirement_id": f"REQ-{len(requirements) + 1:03d}",
                         "description": clean_req,
@@ -404,7 +492,16 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
         ]
 
     # 5. Detect Ambiguities
-    if not re.search(r"(?:archival database|approved archive|destination)", text, re.I):
+    has_generic_dest = bool(re.search(r"approved archive(?: repository)?|archive repository|archive storage", text, re.I))
+    has_concrete_dest = bool(re.search(r"(?:postgres|sqlite|s3|hdfs)://|\b(?:archive_transactions|archive_records|bank_archive)\b|\.db\b", text, re.I))
+    if has_generic_dest and not has_concrete_dest:
+        ambiguities.append({
+            "type": "MISSING_ARCHIVE_DESTINATION",
+            "severity": "MEDIUM",
+            "description": "Archive repository referenced ('approved archive repository') without explicit database host, table, or connection URI.",
+            "requires_human_review": True,
+        })
+    elif not has_generic_dest and not has_concrete_dest:
         ambiguities.append({
             "type": "MISSING_ARCHIVE_DESTINATION",
             "severity": "MEDIUM",

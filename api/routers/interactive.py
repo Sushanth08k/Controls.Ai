@@ -40,9 +40,13 @@ class InterpretRequest(BaseModel):
 
 
 class PreviewRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
     control_id: str
-    approved_rules: dict[str, Any]
+    approved_rules: dict[str, Any] = {}
+    run_id: str | None = None
+    rules: list[dict[str, Any]] | None = None
+    exceptions: list[dict[str, Any]] | None = None
+
 
 
 class ExecuteStepRequest(BaseModel):
@@ -438,7 +442,30 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
                 "row_hash": hashlib.sha256(f"{r['transaction_id']}:{r['amount']}:{r['transaction_date']}".encode()).hexdigest(),
             })
 
-        sql_scripts = build_generated_sql_scripts(defn, "RUN-ACTIVE", ret_years)
+        # Extract rules, exceptions, and run_id from request or active session
+        rules = req.rules or req.approved_rules.get("rules") or []
+        exceptions = req.exceptions or req.approved_rules.get("exceptions") or []
+        run_id = req.run_id or req.approved_rules.get("run_id") or "RUN-ACTIVE"
+
+        if not rules or not exceptions:
+            for sess in reversed(list(_INTERACTIVE_SESSIONS.values())):
+                if sess.get("control_id") == req.control_id:
+                    if not rules and sess.get("rules"):
+                        rules = sess["rules"]
+                    if not exceptions and sess.get("exceptions"):
+                        exceptions = sess["exceptions"]
+                    if run_id == "RUN-ACTIVE" and sess.get("run_id"):
+                        run_id = sess["run_id"]
+                    break
+
+        sql_scripts = build_generated_sql_scripts(
+            defn,
+            run_id,
+            retention_years=ret_years,
+            rules=rules,
+            exceptions=exceptions,
+        )
+
 
         return {
             "control_id": req.control_id,
