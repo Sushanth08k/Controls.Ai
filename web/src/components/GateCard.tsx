@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
 import { GateItemDTO, UserSessionDTO } from '../types';
 import { StatusPill } from './StatusPill';
-import { ShieldAlert, CheckCircle2, XCircle, AlertTriangle, User } from 'lucide-react';
+import { ShieldAlert, CheckCircle2, XCircle, AlertTriangle, User, ArrowRight } from 'lucide-react';
 
 interface GateCardProps {
   gate: GateItemDTO;
   currentUser: UserSessionDTO;
   onDecide: (gateId: string, decision: 'approved' | 'rejected', comment: string) => Promise<void>;
+  onResumeRun?: (gate: GateItemDTO) => void;
 }
 
-export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide }) => {
+export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide, onResumeRun }) => {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +29,9 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide 
     try {
       await onDecide(gate.gate_id, decision, comment);
       setComment('');
+      if (decision === 'approved' && onResumeRun) {
+        onResumeRun(gate);
+      }
     } catch (err: any) {
       setError(err.message || 'Action failed');
     } finally {
@@ -105,23 +109,28 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide 
             </p>
           )}
 
-          <div className="flex items-center justify-end gap-2 pt-1">
-            <button
-              onClick={() => handleAction('rejected')}
-              disabled={submitting || isMaker || !hasRole}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-            >
-              <XCircle className="w-3.5 h-3.5" />
-              Reject
-            </button>
-            <button
-              onClick={() => handleAction('approved')}
-              disabled={submitting || !canApprove}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Approve
-            </button>
+          <div className="flex items-center justify-between gap-2 pt-1">
+            <span className="text-[11px] text-slate-500">
+              Approving authorizes run continuation to Step 5 (Source Cleanup).
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleAction('rejected')}
+                disabled={submitting || isMaker || !hasRole}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Reject
+              </button>
+              <button
+                onClick={() => handleAction('approved')}
+                disabled={submitting || !canApprove}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Review & Approve
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -135,8 +144,20 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide 
               "{gate.comment}"
             </p>
           )}
+          {gate.status === 'approved' && onResumeRun && (
+            <div className="mt-2.5 pt-2 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => onResumeRun(gate)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all shadow-xs"
+              >
+                <ArrowRight className="w-3.5 h-3.5" />
+                Resume Run (Step 5)
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 };
+

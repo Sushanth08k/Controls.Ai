@@ -1,7 +1,36 @@
+from collections.abc import Generator
+from datetime import datetime, timezone
+import pytest
 from fastapi.testclient import TestClient
 from api.main import app
+from api.routers.gates import _GATE_STORE, GateItem
+
+from sim.audit_store import get_connection
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def setup_rbac_test_gates() -> Generator[None, None, None]:
+    with get_connection() as conn:
+        conn.cursor().execute("DELETE FROM control_approvals WHERE gate_id = 'gate-dummy-001'")
+        conn.commit()
+
+    _GATE_STORE["gate-dummy-001"] = GateItem(
+        gate_id="gate-dummy-001",
+        run_id="run-dummy-001",
+        control_id="PILOT-ACCESS-001",
+        gate_name="finding_signoff",
+        maker_id="sec_owner_1",
+        approver_role="control_reviewer",
+        status="pending",
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    yield
+    _GATE_STORE.pop("gate-dummy-001", None)
+    with get_connection() as conn:
+        conn.cursor().execute("DELETE FROM control_approvals WHERE gate_id = 'gate-dummy-001'")
+        conn.commit()
 
 
 def test_api_health() -> None:

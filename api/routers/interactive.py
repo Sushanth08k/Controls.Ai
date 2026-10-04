@@ -37,6 +37,7 @@ from sim.audit_store import (
     save_audit_step,
     save_audit_evidence,
     save_audit_approval,
+    get_audit_approval,
     get_full_audit_bundle,
     get_audit_run,
     list_audit_steps,
@@ -563,8 +564,9 @@ async def upload_policy_file(
     except Exception as e:
         logger.error(f"Failed to persist policy record in SQLite: {e}")
         # Clean up orphaned Cloudinary object
-        if cloud_res.get("public_id"):
-            delete_from_cloudinary(cloud_res["public_id"])
+        pub_id = cloud_res.get("public_id")
+        if isinstance(pub_id, str) and pub_id:
+            delete_from_cloudinary(pub_id)
         raise HTTPException(
             status_code=500,
             detail=f"Database error saving policy record: {str(e)}"
@@ -1239,14 +1241,50 @@ async def verify_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
     attestation_token = session.get("attestation_token", f"ATTEST-RUN-{req.run_id[:8]}")
     records_count = 33 if defn.archetype == "D" else 4
 
+    # Prevent duplicate approval gates for the same run
+    existing_gate = get_audit_approval(run_id=req.run_id)
+    if existing_gate:
+        gate_id = existing_gate["gate_id"]
+        gate_status = existing_gate["status"]
+    else:
+        gate_id = f"APPR-GATE-{uuid.uuid4().hex[:8].upper()}"
+        gate_status = "pending"
+        save_audit_approval(
+            gate_id=gate_id,
+            run_id=req.run_id,
+            control_id=req.control_id,
+            status="pending",
+            gate_name="archival_signoff",
+            maker_id="sec_owner_1",
+            approver_role="control_reviewer",
+            comment="Independent SHA-256 dual-root Merkle reconciliation passed. Human authorization required prior to source record cleanup.",
+        )
+        now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        save_audit_step(
+            step_id=f"step-{req.run_id}-4",
+            run_id=req.run_id,
+            step_name="HUMAN_APPROVAL",
+            status="pending",
+            started_at=now_iso,
+            metadata_json={"gate_id": gate_id},
+        )
+        await sse_broker.publish(
+            "gate.created",
+            {"gate_id": gate_id, "run_id": req.run_id, "control_id": req.control_id, "status": "pending"},
+        )
+
+    session["gate_id"] = gate_id
+
     return {
         "run_id": req.run_id,
         "control_id": req.control_id,
         "status": "VERIFIED",
+        "gate_id": gate_id,
+        "gate_status": gate_status,
         "records_verified": records_count,
         "merkle_roots_match": True,
         "attestation_token": attestation_token,
-        "summary_message": f"Records are in archive_transactions. Independent SHA-256 hash reconciliation passed with 100% byte fidelity. Ready for Step 4: Human Approval.",
+        "summary_message": f"Records are in archive_transactions. Independent SHA-256 hash reconciliation passed with 100% byte fidelity. Approval gate {gate_id} pending in queue.",
         "next_action_label": "Step 4: Request Human Approval (Operator Sign-off Gate)",
     }
 
@@ -1258,17 +1296,37 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
     if not defn:
         raise HTTPException(status_code=404, detail="Control not found")
 
-    now = datetime.datetime.now(datetime.timezone.utc)
-    approval_cert = f"APPR-GATE-{uuid.uuid4().hex[:8].upper()}"
+    existing_gate = get_audit_approval(run_id=req.run_id)
+    gate_id = (
+        existing_gate["gate_id"]
+        if existing_gate and isinstance(existing_gate.get("gate_id"), str)
+        else f"APPR-GATE-{uuid.uuid4().hex[:8].upper()}"
+    )
+    raw_maker = existing_gate.get("maker_id") if existing_gate else None
+    maker_id: str = raw_maker if isinstance(raw_maker, str) and raw_maker else "sec_owner_1"
 
+    raw_role = existing_gate.get("approver_role") if existing_gate else None
+    approver_role: str = raw_role if isinstance(raw_role, str) and raw_role else "control_reviewer"
+
+    # Enforce maker-checker: Maker cannot approve their own gate
+    if req.operator_id == maker_id:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Maker '{maker_id}' cannot approve their own gate",
+        )
+
+    now = datetime.datetime.now(datetime.timezone.utc)
     save_audit_approval(
-        gate_id=approval_cert,
+        gate_id=gate_id,
         run_id=req.run_id,
         control_id=req.control_id,
         status="approved",
         approved_by=req.operator_id,
         approved_at=now.isoformat(),
         comment=req.operator_comment,
+        gate_name="archival_signoff",
+        maker_id=maker_id,
+        approver_role=approver_role,
     )
     save_audit_step(
         step_id=f"step-{req.run_id}-4",
@@ -1278,17 +1336,31 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
         started_at=now.isoformat(),
         completed_at=now.isoformat(),
         metadata_json={
-            "certificate_id": approval_cert,
+            "certificate_id": gate_id,
             "operator_id": req.operator_id,
             "comment": req.operator_comment,
         },
+    )
+    upsert_audit_run(
+        run_id=req.run_id,
+        control_id=req.control_id,
+        status="running",
+    )
+
+    await sse_broker.publish(
+        "gate.decided",
+        {"gate_id": gate_id, "decision": "approved", "decided_by": req.operator_id},
+    )
+    await sse_broker.publish(
+        "run.updated",
+        {"run_id": req.run_id, "control_id": req.control_id, "status": "running", "stage": "APPROVED"},
     )
 
     return {
         "run_id": req.run_id,
         "control_id": req.control_id,
         "status": "APPROVED",
-        "approval_certificate": approval_cert,
+        "approval_certificate": gate_id,
         "approver_id": req.operator_id,
         "comment": req.operator_comment,
         "timestamp": now.isoformat(),
@@ -1297,21 +1369,31 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
     }
 
 
-@router.post("/cleanup")
-async def commit_source_cleanup(req: CleanupRequest) -> dict[str, Any]:
-    """Step 5: Perform authorized real SQL delete on bank_core.db with hold re-checks."""
-    defn = default_registry.get_definition(req.control_id)
+async def perform_archival_cleanup(
+    control_id: str,
+    run_id: str,
+    attestation_token: str | None = None,
+    operator_comment: str | None = None,
+    operator_id: str = "sec_reviewer_1",
+) -> dict[str, Any]:
+    """Reusable source cleanup execution and ledger final signoff for archival control."""
+    defn = default_registry.get_definition(control_id)
     if not defn:
         raise HTTPException(status_code=404, detail="Control not found")
 
     now = datetime.datetime.now(datetime.timezone.utc)
     cert_id = f"AUD-CERT-{uuid.uuid4().hex[:12].upper()}"
 
-    if defn.archetype == "D":
-        session = _INTERACTIVE_SESSIONS.get(req.run_id, {})
-        ret_years = session.get("retention_years", 5)
+    session = _INTERACTIVE_SESSIONS.get(run_id, {})
+    run = get_audit_run(run_id) or {}
+    meta = run.get("metadata") or {}
 
-        purge_res = execute_real_source_purge(run_id=req.run_id, retention_years=ret_years)
+    ret_years = session.get("retention_years") or meta.get("retention_years", 5)
+    token = attestation_token or session.get("attestation_token") or run.get("attestation_token") or f"ATTEST-RUN-{run_id[:8]}"
+    comment = operator_comment or session.get("operator_comment") or "Authorized compliance cleanup after Merkle verification."
+
+    if defn.archetype == "D":
+        purge_res = execute_real_source_purge(run_id=run_id, retention_years=ret_years)
         deleted_count = purge_res["deleted_count"]
         summary = f"Source cleanup executed! {deleted_count} verified records deleted from source_transactions. {purge_res['remaining_core_count']} recent records safely retained in source."
     else:
@@ -1322,25 +1404,25 @@ async def commit_source_cleanup(req: CleanupRequest) -> dict[str, Any]:
         control_id=defn.control_id,
         control_version=defn.version,
         definition_sha256=default_registry.get_hash(defn.control_id) or "hash",
-        run_id=req.run_id,
+        run_id=run_id,
         kind="final_signoff",
         payload={
             "action": "completed",
-            "attestation_token": req.attestation_token,
-            "operator_id": req.operator_id,
-            "comment": req.operator_comment,
+            "attestation_token": token,
+            "operator_id": operator_id,
+            "comment": comment,
             "certificate_id": cert_id,
             "deleted_count": deleted_count,
         },
-        payload_ref=f"controls/{req.run_id}/signoff",
-        actor=req.operator_id,
+        payload_ref=f"controls/{run_id}/signoff",
+        actor=operator_id,
         ts=now,
     )
 
     now_iso = now.isoformat()
     save_audit_step(
-        step_id=f"step-{req.run_id}-5",
-        run_id=req.run_id,
+        step_id=f"step-{run_id}-5",
+        run_id=run_id,
         step_name="SOURCE_PURGE",
         status="completed",
         started_at=now_iso,
@@ -1349,8 +1431,8 @@ async def commit_source_cleanup(req: CleanupRequest) -> dict[str, Any]:
         metadata_json={"deleted_count": deleted_count},
     )
     save_audit_step(
-        step_id=f"step-{req.run_id}-6",
-        run_id=req.run_id,
+        step_id=f"step-{run_id}-6",
+        run_id=run_id,
         step_name="FINAL_VERIFICATION",
         status="completed",
         started_at=now_iso,
@@ -1358,36 +1440,35 @@ async def commit_source_cleanup(req: CleanupRequest) -> dict[str, Any]:
         metadata_json={"certificate_id": cert_id, "ledger_seq": ledger_entry.seq},
     )
     upsert_audit_run(
-        run_id=req.run_id,
-        control_id=req.control_id,
+        run_id=run_id,
+        control_id=control_id,
         status="completed",
         completed_at=now_iso,
         records_affected=deleted_count,
         metadata_json={"certificate_id": cert_id, "deleted_count": deleted_count},
     )
-    ev_final = f"EV-SIGNOFF-{req.run_id[:8]}"
+    ev_final = f"EV-SIGNOFF-{run_id[:8]}"
     save_audit_evidence(
         evidence_id=ev_final,
-        run_id=req.run_id,
-        control_id=req.control_id,
-        step_id=f"step-{req.run_id}-6",
+        run_id=run_id,
+        control_id=control_id,
+        step_id=f"step-{run_id}-6",
         evidence_type="final_signoff",
         evidence_payload={
             "certificate_id": cert_id,
-            "attestation_token": req.attestation_token,
+            "attestation_token": token,
             "deleted_count": deleted_count,
-            "operator_id": req.operator_id,
+            "operator_id": operator_id,
             "timestamp": now_iso,
         },
     )
-    session = _INTERACTIVE_SESSIONS.get(req.run_id, {})
-    _RUNS_STORE[req.run_id] = RunItem(
-        run_id=req.run_id,
-        control_id=req.control_id,
+    _RUNS_STORE[run_id] = RunItem(
+        run_id=run_id,
+        control_id=control_id,
         version=defn.version,
         archetype=defn.archetype,
         status="completed",
-        started_at=session.get("started_at", now_iso),
+        started_at=session.get("started_at") or run.get("started_at") or now_iso,
         completed_at=now_iso,
         targets=["bank_core.db", "bank_archive.db"] if defn.archetype == "D" else ["core_banking_sim"],
         records_scanned=50 if defn.archetype == "D" else deleted_count,
@@ -1399,12 +1480,12 @@ async def commit_source_cleanup(req: CleanupRequest) -> dict[str, Any]:
 
     await sse_broker.publish(
         "run.updated",
-        {"run_id": req.run_id, "status": "completed", "control_id": req.control_id},
+        {"run_id": run_id, "status": "completed", "control_id": control_id},
     )
 
     return {
         "status": "completed",
-        "run_id": req.run_id,
+        "run_id": run_id,
         "deleted_count": deleted_count,
         "certificate_id": cert_id,
         "ledger_seq": ledger_entry.seq,
@@ -1412,6 +1493,18 @@ async def commit_source_cleanup(req: CleanupRequest) -> dict[str, Any]:
         "timestamp": now.isoformat(),
         "summary": summary,
     }
+
+
+@router.post("/cleanup")
+async def commit_source_cleanup(req: CleanupRequest) -> dict[str, Any]:
+    """Step 5: Perform authorized real SQL delete on bank_core.db with hold re-checks."""
+    return await perform_archival_cleanup(
+        control_id=req.control_id,
+        run_id=req.run_id,
+        attestation_token=req.attestation_token,
+        operator_comment=req.operator_comment,
+        operator_id=req.operator_id,
+    )
 
 
 @router.post("/reseed")
@@ -1434,6 +1527,7 @@ def get_resume_session(run_id: str) -> dict[str, Any]:
     bundle = get_full_audit_bundle(run_id) or {}
     run = bundle.get("run") or get_audit_run(run_id) or {}
     steps = bundle.get("steps") or list_audit_steps(run_id)
+    gate = get_audit_approval(run_id=run_id)
 
     control_id = run.get("control_id") or (session.get("control_id") if session else None)
     if not control_id:
@@ -1441,17 +1535,17 @@ def get_resume_session(run_id: str) -> dict[str, Any]:
         control_id = all_defs[0].control_id if all_defs else "archival_control"
     defn = default_registry.get_definition(control_id)
 
-    has_cleanup = any(s.get("step_name") == "SOURCE_CLEANUP" and s.get("status") == "completed" for s in steps)
-    has_approval = any(s.get("step_name") == "APPROVAL" and s.get("status") == "completed" for s in steps)
-    has_verify = any(s.get("step_name") == "VERIFICATION" and s.get("status") == "completed" for s in steps)
-    has_archive = any(s.get("step_name") in ("ARCHIVE", "EXECUTE_ARCHIVAL") and s.get("status") == "completed" for s in steps)
+    has_cleanup = any(s.get("step_name") in ("SOURCE_CLEANUP", "SOURCE_PURGE") and s.get("status") == "completed" for s in steps)
+    has_approval = any(s.get("step_name") in ("APPROVAL", "HUMAN_APPROVAL") and s.get("status") == "completed" for s in steps) or (gate and gate.get("status") == "approved")
+    has_verify = any(s.get("step_name") in ("VERIFICATION", "MERKLE_VERIFY") and s.get("status") == "completed" for s in steps)
+    has_archive = any(s.get("step_name") in ("ARCHIVE", "EXECUTE_ARCHIVAL", "COPY_TO_ARCHIVE") and s.get("status") == "completed" for s in steps)
     has_preview = any(s.get("step_name") == "PREVIEW" and s.get("status") == "completed" for s in steps)
 
     if has_cleanup or run.get("status") == "completed":
         stage = "CLEANED"
     elif has_approval:
         stage = "APPROVED"
-    elif has_verify:
+    elif has_verify or (gate and gate.get("status") == "pending"):
         stage = "VERIFIED"
     elif has_archive:
         stage = "ARCHIVED"
@@ -1473,6 +1567,7 @@ def get_resume_session(run_id: str) -> dict[str, Any]:
         "control_id": control_id,
         "archetype": getattr(defn, "archetype", "D") if defn else "D",
         "stage": stage,
+        "gate": gate,
         "next_step": action_info["next_step"],
         "action_name": action_info["action_name"],
         "button_label": action_info["button_label"],
