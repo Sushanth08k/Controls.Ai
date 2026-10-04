@@ -60,7 +60,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
 
       <div className="grid grid-cols-2 gap-3 py-3 px-4 rounded-lg bg-slate-50 border border-slate-200 text-xs mb-4">
         <div>
-          <span className="text-slate-500 block mb-0.5 font-medium">Maker (Proposer)</span>
+          <span className="text-slate-500 block mb-0.5 font-medium">Requested by</span>
           <span className="font-mono text-slate-800 flex items-center gap-1 font-semibold">
             <User className="w-3 h-3 text-slate-400" />
             {gate.maker_id}
@@ -68,7 +68,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
           </span>
         </div>
         <div>
-          <span className="text-slate-500 block mb-0.5 font-medium">Required Approver Role</span>
+          <span className="text-slate-500 block mb-0.5 font-medium">Approval required from</span>
           <span className="font-mono text-blue-700 flex items-center gap-1 font-semibold">
             <ShieldAlert className="w-3 h-3 text-blue-600" />
             {gate.approver_role}
@@ -81,7 +81,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
           {isMaker && (
             <div className="flex items-center gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 p-2.5 rounded-lg">
               <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-              <span>Maker-checker rule: You created this gate and cannot approve your own request.</span>
+              <span>Two-person approval rule: You started this run and cannot approve your own request.</span>
             </div>
           )}
 
@@ -111,13 +111,13 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
 
           <div className="flex items-center justify-between gap-2 pt-1">
             <span className="text-[11px] text-slate-500">
-              Approving authorizes run continuation to Step 5 (Source Cleanup).
+              Approving authorizes the run to proceed to the next step.
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleAction('rejected')}
                 disabled={submitting || isMaker || !hasRole}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
                 <XCircle className="w-3.5 h-3.5" />
                 Reject
@@ -125,10 +125,10 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
               <button
                 onClick={() => handleAction('approved')}
                 disabled={submitting || !canApprove}
-                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm cursor-pointer"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                Review & Approve
+                Approve
               </button>
             </div>
           </div>

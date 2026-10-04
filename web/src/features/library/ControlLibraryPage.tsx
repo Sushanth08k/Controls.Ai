@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { ControlDefinitionDTO, UserSessionDTO } from '../../types';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
+import { SeverityTag } from '../../components/SeverityTag';
+import { formatFrequency } from '../../utils/formatFrequency';
 import { ControlExecutionModal } from './ControlExecutionModal';
 import { VulnerabilityExecutionModal } from './VulnerabilityExecutionModal';
 import {
@@ -24,6 +27,7 @@ import {
   Check,
   Upload,
   ExternalLink,
+  Shield,
 } from 'lucide-react';
 
 interface ControlLibraryPageProps {
@@ -37,6 +41,8 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
   currentUser,
   onRefresh,
 }) => {
+  const location = useLocation();
+  const isControlsView = location.pathname === '/controls';
   const [policies, setPolicies] = useState<UploadedPolicyDTO[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -93,7 +99,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
           existingPolicy: existing,
         });
       } else {
-        setUploadSuccess(`Successfully ingested & persisted "${file.name}" (${res.pages || 1} pages, ${res.format}) to Cloudinary & SQLite`);
+        setUploadSuccess(`Successfully uploaded "${file.name}". Ready for testing.`);
         setTimeout(() => setUploadSuccess(null), 5000);
         await loadPolicies();
       }
@@ -134,6 +140,22 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const formatRulesSummary = (summary: string) => {
+    if (!summary) return 'Ready for testing';
+    if (summary.toLowerCase().includes('ingested') && summary.toLowerCase().includes('ready')) {
+      return 'Ready for testing';
+    }
+    return summary;
+  };
+
+  const filteredControls = controls.filter((c) => {
+    const matchesSearch =
+      c.title.toLowerCase().includes(search.toLowerCase()) ||
+      c.control_id.toLowerCase().includes(search.toLowerCase()) ||
+      (c.objective && c.objective.toLowerCase().includes(search.toLowerCase()));
+    return matchesSearch;
+  });
+
   const filtered = policies.filter((p) => {
     const matchesSearch =
       p.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -144,6 +166,135 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
     return matchesSearch && matchesFormat;
   });
 
+  if (isControlsView) {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Controls</h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Available and configured controls for automated compliance testing.
+            </p>
+          </div>
+
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search controls by ID, title..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full text-xs pl-9 pr-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#143d2c] shadow-xs"
+            />
+          </div>
+        </div>
+
+        {/* Controls Grid */}
+        {filteredControls.length === 0 ? (
+          <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            <Shield className="w-8 h-8 text-slate-400 mx-auto" />
+            <h3 className="text-sm font-semibold text-slate-900">No Controls Found</h3>
+            <p className="text-xs text-slate-500">No controls matched your search query.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {filteredControls.map((c) => (
+              <div
+                key={c.control_id}
+                className="bg-white p-5 rounded-xl border border-slate-200/90 hover:border-emerald-300 transition-all shadow-xs hover:shadow-md flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div>
+                      <span className="text-xs font-mono font-bold text-emerald-800 block mb-0.5">
+                        {c.control_id}
+                      </span>
+                      <h3 className="text-sm font-semibold text-slate-900">{c.title}</h3>
+                    </div>
+                    <ArchetypeBadge archetype={c.archetype} />
+                  </div>
+
+                  {c.objective && (
+                    <p className="text-xs text-slate-600 mb-4 line-clamp-2">{c.objective}</p>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2 text-xs py-2 px-3 rounded-lg bg-slate-50 border border-slate-200 mb-4">
+                    <div>
+                      <span className="text-slate-500 block text-[10px] uppercase font-medium">Frequency</span>
+                      <span className="text-slate-800 font-medium">{formatFrequency(c.frequency)}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[10px] uppercase font-medium">Risk Rating</span>
+                      <SeverityTag severity={c.risk_rating} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="text-slate-500 text-[11px] truncate">
+                      Owner: <span className="font-mono text-slate-800 font-medium">{c.owner_role}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      onClick={() => {
+                        setActivePolicy(null);
+                        setModalControl(c);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
+                      title={`Run ${c.control_id} workflow`}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+                      <span>Run</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Interactive Compliance Execution Studio Modal */}
+        {modalControl && (
+          modalControl.control_id.toLowerCase().includes('vuln') ? (
+            <VulnerabilityExecutionModal
+              control={modalControl}
+              currentUser={currentUser}
+              initialPolicyText={activePolicy?.policy_text}
+              initialFileName={activePolicy?.filename}
+              initialPolicyId={activePolicy?.policy_id}
+              onClose={() => {
+                setModalControl(null);
+                setActivePolicy(null);
+              }}
+              onRunCompleted={() => {
+                if (onRefresh) onRefresh();
+              }}
+            />
+          ) : (
+            <ControlExecutionModal
+              control={modalControl}
+              currentUser={currentUser}
+              initialPolicyText={activePolicy?.policy_text}
+              initialFileName={activePolicy?.filename}
+              initialPolicyId={activePolicy?.policy_id}
+              onClose={() => {
+                setModalControl(null);
+                setActivePolicy(null);
+              }}
+              onRunCompleted={() => {
+                if (onRefresh) onRefresh();
+              }}
+            />
+          )
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header & Upload Action */}
@@ -151,7 +302,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
         <div>
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Policies</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Uploaded compliance policy documents, specifications, and automated verification rules.
+            Uploaded compliance policy documents and specifications.
           </p>
         </div>
 
@@ -194,7 +345,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span className="font-medium">{uploadSuccess}</span>
           </div>
-          <span className="text-[11px] font-semibold text-emerald-700 font-mono">Persisted & Ready</span>
+          <span className="text-[11px] font-semibold text-emerald-700 font-mono">Ready for testing</span>
         </div>
       )}
 
@@ -349,7 +500,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
                         </span>
                         <ArchetypeBadge archetype={p.archetype as any} />
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          {p.status}
+                          {p.status === 'READY' ? 'Ready for testing' : p.status}
                         </span>
                       </div>
 
@@ -370,7 +521,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
                       </div>
 
                       <p className="text-xs text-slate-600 pt-1 line-clamp-2">
-                        <span className="font-semibold text-slate-700">Specification:</span> {p.rules_summary}
+                        <span className="font-semibold text-slate-700">Specification:</span> {formatRulesSummary(p.rules_summary)}
                       </p>
                     </div>
                   </div>

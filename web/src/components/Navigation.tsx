@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, FileText, Activity, CheckSquare, Shield, UserCheck } from 'lucide-react';
+import { LayoutDashboard, FileText, PlayCircle, CheckSquare, Shield, UserCheck, AlertTriangle, History } from 'lucide-react';
 import { UserSessionDTO } from '../types';
 
 interface NavigationProps {
@@ -32,19 +32,21 @@ export const Navigation: React.FC<NavigationProps> = ({ currentUser, onSwitchUse
 
   const navItems = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/controls', label: 'Policies', icon: FileText },
-    { to: '/runs', label: 'Control runs', icon: Activity },
-    { to: '/approvals', label: 'Approval queue', icon: CheckSquare, badge: pendingGatesCount > 0 ? pendingGatesCount : undefined },
-    { to: '/findings', label: 'Audit evidence', icon: Shield },
+    { to: '/policies', label: 'Policies', icon: FileText },
+    { to: '/controls', label: 'Controls', icon: Shield },
+    { to: '/runs', label: 'Control Runs', icon: PlayCircle },
+    { to: '/approvals', label: 'Approvals', icon: CheckSquare, badge: pendingGatesCount > 0 ? pendingGatesCount : undefined },
+    { to: '/findings', label: 'Security Findings', icon: AlertTriangle },
+    { to: '/audit', label: 'Audit Trail', icon: History },
   ];
 
   return (
-    <aside className="w-64 bg-[#0d281e] border-r border-[#16382b] flex flex-col justify-between p-4 shrink-0 min-h-screen text-slate-100">
+    <aside className="w-64 bg-[#0d281e] border-r border-[#16382b] flex flex-col justify-between p-4 shrink-0 h-screen sticky top-0 text-slate-100 overflow-y-auto">
       <div>
         {/* Brand Header */}
         <div className="px-3 pt-3 pb-5 mb-3 border-b border-[#183e2e]">
           <h1 className="text-base font-bold text-white tracking-tight">AI for Controls</h1>
-          <p className="text-xs text-[#8ea79b] mt-0.5">Policy control runs</p>
+          <p className="text-xs text-[#8ea79b] mt-0.5">Control Testing Platform</p>
         </div>
 
         {/* Navigation Menu */}

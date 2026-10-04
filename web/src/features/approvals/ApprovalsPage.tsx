@@ -31,9 +31,9 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-900 tracking-tight">HITL Approval Gates</h2>
+        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Pending Approvals</h2>
         <p className="text-xs text-slate-500 mt-1">
-          Human-in-the-loop review for high-risk steps, policy discrepancies, and irreversible operations.
+          Review queue for control runs requiring authorized human approval.
         </p>
       </div>
 
@@ -41,9 +41,9 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
       <div className="flex items-start gap-3 p-4 rounded-xl bg-blue-50 border border-blue-200 text-xs text-blue-900 shadow-xs">
         <Info className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
         <div>
-          <span className="font-semibold block mb-0.5 text-blue-950">Strict Maker-Checker Governance</span>
+          <span className="font-semibold block mb-0.5 text-blue-950">Two-Person Approval Required</span>
           <span className="text-blue-800">
-            The proposer (maker) cannot approve their own gate, even if they possess the approver role. Approving authorizes the exact run to resume at Step 5 (Source Cleanup). All approvals are cryptographically hash-chained into the evidence ledger.
+            Two-person approval required. The person who starts a high-risk operation cannot approve their own request.
           </span>
         </div>
       </div>

@@ -159,9 +159,9 @@ export const RunsPage: React.FC<RunsPageProps> = ({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Runs & Persistent Audit History</h2>
+        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Control Runs</h2>
         <p className="text-xs text-slate-500 mt-1">
-          Cryptographically attested control execution runs, Merkle verification roots, human approvals, and SQLite persistent audit workpapers.
+          History of automated control test executions, runtime telemetry, and status.
         </p>
       </div>
 
@@ -170,19 +170,20 @@ export const RunsPage: React.FC<RunsPageProps> = ({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold">
-                <th className="py-3 px-4">Workflow Run ID</th>
+                <th className="py-3 px-4">Run ID</th>
                 <th className="py-3 px-3">Control ID</th>
-                <th className="py-3 px-3">Version</th>
-                <th className="py-3 px-3">Archetype</th>
+                <th className="py-3 px-3">Testing Method</th>
                 <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3">Scope / Targets</th>
-                <th className="py-3 px-3">Started At</th>
-                <th className="py-3 px-4 text-right">Audit Trail</th>
+                <th className="py-3 px-3">Data Checked</th>
+                <th className="py-3 px-3">Started</th>
+                <th className="py-3 px-4 text-right">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {runs.map((r) => {
                 const isExpanded = selectedRunId === r.run_id;
+                const matchedCtrl = controls?.find((c) => c.control_id === r.control_id);
+
                 return (
                   <React.Fragment key={r.run_id}>
                     <tr
@@ -192,8 +193,14 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                       }`}
                     >
                       <td className="py-3 px-4 font-mono text-slate-800 font-semibold">{r.run_id}</td>
-                      <td className="py-3 px-3 font-mono text-blue-600 font-bold">{r.control_id}</td>
-                      <td className="py-3 px-3 font-mono text-slate-500">{r.version}</td>
+                      <td className="py-3 px-3">
+                        <div className="font-mono text-blue-600 font-bold">{r.control_id}</div>
+                        {matchedCtrl && (
+                          <div className="text-[11px] text-slate-500 truncate max-w-[180px]" title={matchedCtrl.title}>
+                            {matchedCtrl.title}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-3">
                         <ArchetypeBadge archetype={r.archetype} />
                       </td>
@@ -210,7 +217,12 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                         )}
                       </td>
                       <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
-                        {new Date(r.started_at).toLocaleString()}
+                        <div>{new Date(r.started_at).toLocaleString()}</div>
+                        {r.completed_at && (
+                          <div className="text-[10px] text-slate-400">
+                            Completed: {new Date(r.completed_at).toLocaleTimeString()}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="inline-flex items-center gap-2">
@@ -244,7 +256,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                     {/* Expandable Persistent Audit Inspection Drawer */}
                     {isExpanded && (
                       <tr className="bg-slate-50/70 border-b border-slate-200">
-                        <td colSpan={8} className="p-5">
+                        <td colSpan={7} className="p-5">
                           {loadingAudit && (
                             <div className="flex items-center justify-center py-8 gap-2 text-slate-500 text-xs">
                               <Loader2 className="w-4 h-4 animate-spin text-blue-600" />

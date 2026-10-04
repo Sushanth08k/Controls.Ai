@@ -6,7 +6,7 @@ import { SeverityTag } from '../../components/SeverityTag';
 import { EvidenceChip } from '../../components/EvidenceChip';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
-import { Plus, ArrowUpRight, Play, PlayCircle, Database, ShieldCheck, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, ArrowUpRight, Play, PlayCircle, Shield, CheckCircle2, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatFrequency } from '../../utils/formatFrequency';
 
@@ -30,28 +30,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const navigate = useNavigate();
   const [modalControl, setModalControl] = useState<ControlDefinitionDTO | null>(null);
 
-  // Real live telemetry calculations from SQLite
-  const totalRuns = runs.length;
-  const activeRuns = runs.filter(
-    (r) => r.status === 'running' || r.status === 'ARCHIVED' || r.status === 'VERIFIED' || r.status === 'APPROVED'
-  );
-  const completedRuns = runs.filter((r) => r.status === 'completed' || r.status === 'CLEANED');
-  const completionRate = totalRuns > 0 ? Math.round((completedRuns.length / totalRuns) * 100) : 100;
-
-  // Real records throughput evaluated across runs
-  const totalScanned = runs.reduce((sum, r) => sum + (r.records_scanned || 0), 0);
-  const totalPassed = runs.reduce((sum, r) => sum + (r.passed || 0), 0);
-  const totalFailed = runs.reduce((sum, r) => sum + (r.failed || 0), 0);
-  const complianceRate = totalScanned > 0 ? Math.round((totalPassed / totalScanned) * 100) : 100;
-
-  // Real maker-checker approval gates
-  const pendingGates = gates.filter((g) => g.status === 'pending');
-  const approvedGates = gates.filter((g) => g.status === 'approved');
-  const approvalRate = gates.length > 0 ? Math.round((approvedGates.length / gates.length) * 100) : 100;
-
-  // Real deterministic audit findings
+  // Exactly 5 Control Testing Metrics
+  const totalControls = controls.length;
+  const testsRun = runs.length;
+  const testsPassed = runs.filter(
+    (r) =>
+      r.status === 'completed' ||
+      r.status === 'CLEANED' ||
+      r.status === 'VERIFIED' ||
+      (r.status !== 'failed' && r.status !== 'blocked' && (r.failed ?? 0) === 0)
+  ).length;
+  const passRate = testsRun > 0 ? Math.round((testsPassed / testsRun) * 100) : 100;
+  const pendingApprovals = gates.filter((g) => g.status === 'pending').length;
+  const openFindings = findings.filter(
+    (f) => f.status === 'open' || !f.status || f.status === 'active'
+  ).length;
   const criticalFindings = findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
-  const lowMediumFindings = findings.filter((f) => f.severity === 'low' || f.severity === 'medium');
+
+  // Helper to determine control testing status
+  const getControlStatus = (controlId: string): string => {
+    const controlRuns = runs.filter((r) => r.control_id === controlId);
+    if (controlRuns.length === 0) return 'Not Tested';
+    const latest = controlRuns[0];
+    if (latest.status === 'running') return 'Running';
+    if (latest.status === 'failed' || (latest.failed !== undefined && latest.failed > 0)) return 'Failed';
+    if (
+      latest.status === 'completed' ||
+      latest.status === 'CLEANED' ||
+      latest.status === 'VERIFIED' ||
+      latest.status === 'APPROVED'
+    ) {
+      return 'Passed';
+    }
+    return 'Passed';
+  };
 
   // Find default archival control (Archetype D) or first available control
   const defaultControl =
@@ -100,21 +112,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* 4 Real Telemetry & Analytics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Card 1: Control Runs Telemetry */}
+      {/* 5 Real Control Testing Metrics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* Card 1: Total Controls */}
         <div
-          onClick={() => navigate('/runs')}
+          onClick={() => navigate('/controls')}
           className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
         >
           <div>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                  <PlayCircle className="w-4 h-4" />
+                  <Shield className="w-4 h-4" />
                 </div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Control Runs
+                  Total Controls
                 </span>
               </div>
               <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
@@ -122,46 +134,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             <div className="mt-3.5 flex items-baseline justify-between">
               <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
-                {totalRuns}
+                {totalControls}
               </span>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  activeRuns.length > 0
-                    ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                }`}
-              >
-                {activeRuns.length > 0 ? `${activeRuns.length} Active` : `${completionRate}% Done`}
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Active Catalog
               </span>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
-            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
-              <div
-                style={{ width: `${completionRate}%` }}
-                className="bg-emerald-600 h-full rounded-full transition-all duration-500"
-              />
-              {activeRuns.length > 0 && (
-                <div
-                  style={{
-                    width: `${Math.min(
-                      100 - completionRate,
-                      Math.round((activeRuns.length / Math.max(totalRuns, 1)) * 100)
-                    )}%`,
-                  }}
-                  className="bg-blue-500 h-full transition-all duration-500"
-                />
-              )}
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-              <span>{completedRuns.length} completed</span>
-              <span>{activeRuns.length} in pipeline</span>
-            </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+            <span>Configured controls</span>
+            <span>View all →</span>
           </div>
         </div>
 
-        {/* Card 2: Records Evaluated & Verified */}
+        {/* Card 2: Tests Run */}
         <div
           onClick={() => navigate('/runs')}
           className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
@@ -170,10 +157,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
-                  <Database className="w-4 h-4" />
+                  <PlayCircle className="w-4 h-4" />
                 </div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Records Evaluated
+                  Tests Run
                 </span>
               </div>
               <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
@@ -181,10 +168,44 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             <div className="mt-3.5 flex items-baseline justify-between">
               <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
-                {totalScanned.toLocaleString()}
+                {testsRun}
+              </span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                Executions
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+            <span>Historical test runs</span>
+            <span>Control Runs →</span>
+          </div>
+        </div>
+
+        {/* Card 3: Tests Passed */}
+        <div
+          onClick={() => navigate('/runs')}
+          className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Tests Passed
+                </span>
+              </div>
+              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+            </div>
+
+            <div className="mt-3.5 flex items-baseline justify-between">
+              <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
+                {testsPassed}
               </span>
               <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                SHA-256 Verified
+                {passRate}% Pass Rate
               </span>
             </div>
           </div>
@@ -192,22 +213,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
               <div
-                style={{ width: `${complianceRate}%` }}
-                className="bg-blue-600 h-full rounded-full transition-all duration-500"
-              />
-              <div
-                style={{ width: `${100 - complianceRate}%` }}
-                className="bg-amber-400 h-full transition-all duration-500"
+                style={{ width: `${passRate}%` }}
+                className="bg-emerald-600 h-full rounded-full transition-all duration-500"
               />
             </div>
             <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-              <span className="text-emerald-700 font-semibold">{totalPassed.toLocaleString()} compliant</span>
-              <span className="text-slate-500">{totalFailed.toLocaleString()} exclusions</span>
+              <span>{testsPassed} passed</span>
+              <span>{testsRun - testsPassed} other</span>
             </div>
           </div>
         </div>
 
-        {/* Card 3: Maker-Checker Approval Gates */}
+        {/* Card 4: Pending Approvals */}
         <div
           onClick={() => navigate('/approvals')}
           className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
@@ -217,13 +234,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="flex items-center gap-2">
                 <div
                   className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                    pendingGates.length > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+                    pendingApprovals > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
                   }`}
                 >
-                  <ShieldCheck className="w-4 h-4" />
+                  <Clock className="w-4 h-4" />
                 </div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Maker-Checker Gates
+                  Pending Approvals
                 </span>
               </div>
               <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
@@ -231,41 +248,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             <div className="mt-3.5 flex items-baseline justify-between">
               <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
-                {pendingGates.length}
+                {pendingApprovals}
               </span>
               <span
                 className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  pendingGates.length > 0
+                  pendingApprovals > 0
                     ? 'bg-amber-100 text-amber-800 border border-amber-300'
                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                 }`}
               >
-                {pendingGates.length > 0 ? 'Action Required' : 'All Clear'}
+                {pendingApprovals > 0 ? 'Action Required' : 'All Clear'}
               </span>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
-            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
-              <div
-                style={{ width: `${approvalRate}%` }}
-                className="bg-emerald-600 h-full rounded-full transition-all duration-500"
-              />
-              {pendingGates.length > 0 && (
-                <div
-                  style={{ width: `${100 - approvalRate}%` }}
-                  className="bg-amber-500 h-full transition-all duration-500"
-                />
-              )}
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-              <span>{approvedGates.length} dual-authorized</span>
-              <span>{gates.length} total gates</span>
-            </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+            <span>Two-person gates</span>
+            <span>Review queue →</span>
           </div>
         </div>
 
-        {/* Card 4: Audit Findings & Posture */}
+        {/* Card 5: Open Findings */}
         <div
           onClick={() => navigate('/findings')}
           className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
@@ -281,7 +284,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <AlertTriangle className="w-4 h-4" />
                 </div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Active Findings
+                  Open Findings
                 </span>
               </div>
               <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
@@ -289,7 +292,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             <div className="mt-3.5 flex items-baseline justify-between">
               <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
-                {findings.length}
+                {openFindings}
               </span>
               <span
                 className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -303,31 +306,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
-            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
-              <div
-                style={{
-                  width: `${
-                    findings.length > 0
-                      ? Math.round((lowMediumFindings.length / findings.length) * 100)
-                      : 100
-                  }%`,
-                }}
-                className="bg-amber-400 h-full rounded-full transition-all duration-500"
-              />
-              {criticalFindings.length > 0 && (
-                <div
-                  style={{
-                    width: `${Math.round((criticalFindings.length / findings.length) * 100)}%`,
-                  }}
-                  className="bg-rose-500 h-full transition-all duration-500"
-                />
-              )}
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-              <span>{controls.length} controls monitored</span>
-              <span>Merkle ledger sealed</span>
-            </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+            <span>Discovered exceptions</span>
+            <span>View findings →</span>
           </div>
         </div>
       </div>
@@ -345,7 +326,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             onClick={() => navigate('/controls')}
             className="text-xs text-[#143d2c] hover:text-[#1a4d38] font-semibold flex items-center gap-1 cursor-pointer"
           >
-            View all policies <ArrowUpRight className="w-3.5 h-3.5" />
+            View all controls <ArrowUpRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
@@ -363,7 +344,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     </span>
                     <h3 className="text-sm font-semibold text-slate-900">{c.title}</h3>
                   </div>
-                  <ArchetypeBadge archetype={c.archetype} />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <StatusPill status={getControlStatus(c.control_id)} />
+                    <ArchetypeBadge archetype={c.archetype} />
+                  </div>
                 </div>
 
                 {c.objective && (
@@ -405,14 +389,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-
-
       {/* Active & Recent Executions Table */}
       <div className="bg-white rounded-xl p-5 border border-slate-200/90 shadow-xs">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Active & Recent Control Executions</h3>
-            <p className="text-xs text-slate-500">Temporal orchestrator execution pipeline</p>
+            <p className="text-xs text-slate-500">Control Test History</p>
           </div>
           <button
             onClick={() => navigate('/runs')}
@@ -428,9 +410,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <tr className="border-b border-slate-200 text-slate-500 font-medium">
                 <th className="pb-3 font-semibold">Run ID</th>
                 <th className="pb-3 font-semibold">Control ID</th>
-                <th className="pb-3 font-semibold">Archetype</th>
+                <th className="pb-3 font-semibold">Testing Method</th>
                 <th className="pb-3 font-semibold">Status</th>
-                <th className="pb-3 font-semibold">Scope Targets</th>
+                <th className="pb-3 font-semibold">Data Checked</th>
                 <th className="pb-3 font-semibold">Started</th>
               </tr>
             </thead>

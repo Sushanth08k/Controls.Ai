@@ -6,6 +6,7 @@ import { ControlLibraryPage } from './features/library/ControlLibraryPage';
 import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { FindingsPage } from './features/findings/FindingsPage';
+import { AuditTrailPage } from './features/audit/AuditTrailPage';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from './types';
 import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, API_BASE } from './api/client';
 import { AlertCircle, RefreshCw } from 'lucide-react';
@@ -41,7 +42,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   const isDashboard = location.pathname === '/';
 
   return (
-    <div className="flex min-h-screen bg-slate-50 text-slate-900 font-sans">
+    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900 font-sans">
       <Navigation
         currentUser={currentUser}
         onSwitchUser={setCurrentUser}
@@ -129,6 +130,17 @@ const AppLayout: React.FC<AppLayoutProps> = ({
             />
             <Route path="/findings" element={<FindingsPage findings={findings} />} />
             <Route path="/evidence" element={<FindingsPage findings={findings} />} />
+            <Route
+              path="/audit"
+              element={
+                <AuditTrailPage
+                  runs={runs}
+                  gates={gates}
+                  currentUser={currentUser}
+                  controls={controls}
+                />
+              }
+            />
           </Routes>
         </div>
       </main>
