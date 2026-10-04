@@ -292,7 +292,7 @@ async def upload_policy_file(
         txt_low = (extracted.get("text") or "").lower()
         fn_low = (file.filename or "").lower()
         if "vuln" in fn_low or "vulnerability management standard" in txt_low:
-            matched_control = default_registry.get_definition("CTL-VULN-001")
+            matched_control = next((d for d in default_registry.list_all() if "vuln" in d.control_id.lower()), None)
         if not matched_control:
             for defn in default_registry.list_all():
                 if defn.archetype == "D":
@@ -303,7 +303,7 @@ async def upload_policy_file(
             if all_defs:
                 matched_control = all_defs[0]
 
-    # If associated with CTL-VULN-001, dynamically bind extracted definition patch to registry
+    # If associated with vulnerability control, dynamically bind extracted definition patch to registry
     if matched_control and "vuln" in matched_control.control_id.lower():
         try:
             parsed_vuln = parse_policy_specification(extracted.get("text", ""), default_archetype="A")
@@ -386,7 +386,7 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
 
     parsed = parse_policy_specification(text, default_archetype=defn.archetype)
 
-    # When CTL-VULN-001 policy analysis succeeds, bind definition patch to registry
+    # When vulnerability control policy analysis succeeds, bind definition patch to registry
     if "vuln" in req.control_id.lower() and parsed.get("definition_patch"):
         patch = parsed["definition_patch"]
         current_defn = default_registry.get_definition(req.control_id)
