@@ -324,4 +324,11 @@ export async function fetchRunAudit(runId: string): Promise<any> {
   return res.json();
 }
 
+export async function resumeInteractiveRun(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/interactive/resume/${encodeURIComponent(runId)}`);
+  if (!res.ok) throw new Error(`Failed to resume run: ${res.statusText}`);
+  return res.json();
+}
+
+
 

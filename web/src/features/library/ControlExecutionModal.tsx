@@ -11,6 +11,8 @@ import {
   commitCleanup,
   reseedDatabase,
   uploadPolicyDocument,
+  resumeInteractiveRun,
+  fetchRunAudit,
 } from '../../api/client';
 import {
   X,
@@ -37,6 +39,8 @@ interface ControlExecutionModalProps {
   onRunCompleted?: () => void;
   initialPolicyText?: string;
   initialFileName?: string;
+  initialRunId?: string;
+  initialStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED';
 }
 
 export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
@@ -46,22 +50,26 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   onRunCompleted,
   initialPolicyText,
   initialFileName,
+  initialRunId,
+  initialStage,
 }) => {
   // Mode: 1 = Upload / Ingestion, 2 = Policy Analysis, 3 = Control Runs Console
-  const [viewMode, setViewMode] = useState<number>(1);
+  const [viewMode, setViewMode] = useState<number>(initialRunId ? 3 : 1);
   const [policyText, setPolicyText] = useState<string>(initialPolicyText || '');
   const [fileName, setFileName] = useState<string>(initialFileName || 'policy_spec.txt');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Run execution state
-  const [runId, setRunId] = useState<string>('RUN-062b4c91');
+  const [runId, setRunId] = useState<string>(initialRunId || 'RUN-062b4c91');
   const [extractedData, setExtractedData] = useState<any>(null);
   const [previewData, setPreviewData] = useState<any>(null);
 
   // Step progression in Control Runs Console:
   // 1 = EVALUATED, 2 = ARCHIVING/ARCHIVED, 3 = VERIFYING/VERIFIED, 4 = APPROVAL, 5 = CLEANUP, 6 = COMPLETED
-  const [runStage, setRunStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED'>('EVALUATED');
+  const [runStage, setRunStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED'>(
+    initialStage || 'EVALUATED'
+  );
 
   // Stats
   const [totalRead, setTotalRead] = useState<number>(50);
@@ -91,6 +99,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
 
   // Load defaults on mount
   useEffect(() => {
+    if (initialRunId) return; // Skip default policy load if resuming an existing run
     if (initialPolicyText) {
       setPolicyText(initialPolicyText);
       if (initialFileName) setFileName(initialFileName);
@@ -102,7 +111,87 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
         if (data.filename) setFileName(data.filename);
       })
       .catch((err) => console.error('Failed to load defaults:', err));
-  }, [control.control_id, initialPolicyText, initialFileName]);
+  }, [control.control_id, initialPolicyText, initialFileName, initialRunId]);
+
+  // If initialRunId is provided, resume execution from the exact step where it left off
+  useEffect(() => {
+    if (!initialRunId) return;
+    setRunId(initialRunId);
+    setViewMode(3); // Direct to Control Runs Console
+    setLoading(true);
+
+    Promise.all([
+      resumeInteractiveRun(initialRunId).catch(() => null),
+      previewDatabase(control.control_id, { run_id: initialRunId }).catch(() => null),
+      fetchRunAudit(initialRunId).catch(() => null),
+    ])
+      .then(([resumeRes, prev, audit]) => {
+        if (prev) {
+          setPreviewData(prev);
+          setTotalRead(prev.total_source_records || 50);
+          setEligibleCount(prev.eligible_records_count || 33);
+          setLegalHoldCount(prev.excluded_holds_count || 0);
+          setLiveRows(prev.sample_records || []);
+        }
+
+        const effectiveStage: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' =
+          resumeRes?.stage || initialStage || 'EVALUATED';
+        setRunStage(effectiveStage);
+
+        if (effectiveStage === 'CLEANED') {
+          setCleanedCount(33);
+          setVerifiedCount(33);
+          setArchivedCount(33);
+          if (prev) {
+            setLiveRows((prevRows) =>
+              prevRows.map((r) =>
+                r.eligible ? { ...r, cleaned: true, verified: true, archived: true, status: 'PURGED' } : r
+              )
+            );
+          }
+        } else if (effectiveStage === 'APPROVED') {
+          setVerifiedCount(33);
+          setArchivedCount(33);
+          if (prev) {
+            setLiveRows((prevRows) =>
+              prevRows.map((r) =>
+                r.eligible ? { ...r, verified: true, archived: true, status: 'APPROVED' } : r
+              )
+            );
+          }
+        } else if (effectiveStage === 'VERIFIED') {
+          setVerifiedCount(33);
+          setArchivedCount(33);
+          if (prev) {
+            setLiveRows((prevRows) =>
+              prevRows.map((r) =>
+                r.eligible ? { ...r, verified: true, archived: true, status: 'VERIFIED' } : r
+              )
+            );
+          }
+        } else if (effectiveStage === 'ARCHIVED') {
+          setArchivedCount(33);
+          if (prev) {
+            setLiveRows((prevRows) =>
+              prevRows.map((r) =>
+                r.eligible ? { ...r, archived: true, status: 'ARCHIVED' } : r
+              )
+            );
+          }
+        }
+
+        if (audit?.merkle_verification?.attestation_token) {
+          setAttestationToken(audit.merkle_verification.attestation_token);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to resume run:', err);
+        setError(`Failed to resume run ${initialRunId}`);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [initialRunId, control.control_id, initialStage]);
 
   // Handle file upload (Supports PDF, DOCX, TXT, MD)
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

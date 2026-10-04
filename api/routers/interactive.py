@@ -27,6 +27,9 @@ from sim.audit_store import (
     save_audit_step,
     save_audit_evidence,
     save_audit_approval,
+    get_full_audit_bundle,
+    get_audit_run,
+    list_audit_steps,
 )
 from api.routers.runs import _RUNS_STORE, RunItem
 
@@ -1094,3 +1097,60 @@ def get_live_db(table_name: str) -> dict[str, Any]:
     """Retrieve live rows from either source or archive tables."""
     rows = get_live_table_rows(table_name)
     return {"table_name": table_name, "count": len(rows), "rows": rows}
+
+
+@router.get("/resume/{run_id}")
+def get_resume_session(run_id: str) -> dict[str, Any]:
+    """Retrieve session state and current progress stage for resuming an execution where it left off."""
+    session = _INTERACTIVE_SESSIONS.get(run_id)
+    bundle = get_full_audit_bundle(run_id) or {}
+    run = bundle.get("run") or get_audit_run(run_id) or {}
+    steps = bundle.get("steps") or list_audit_steps(run_id)
+
+    control_id = run.get("control_id") or (session.get("control_id") if session else None)
+    if not control_id:
+        all_defs = default_registry.list_all()
+        control_id = all_defs[0].control_id if all_defs else "archival_control"
+    defn = default_registry.get_definition(control_id)
+
+    has_cleanup = any(s.get("step_name") == "SOURCE_CLEANUP" and s.get("status") == "completed" for s in steps)
+    has_approval = any(s.get("step_name") == "APPROVAL" and s.get("status") == "completed" for s in steps)
+    has_verify = any(s.get("step_name") == "VERIFICATION" and s.get("status") == "completed" for s in steps)
+    has_archive = any(s.get("step_name") in ("ARCHIVE", "EXECUTE_ARCHIVAL") and s.get("status") == "completed" for s in steps)
+    has_preview = any(s.get("step_name") == "PREVIEW" and s.get("status") == "completed" for s in steps)
+
+    if has_cleanup or run.get("status") == "completed":
+        stage = "CLEANED"
+    elif has_approval:
+        stage = "APPROVED"
+    elif has_verify:
+        stage = "VERIFIED"
+    elif has_archive:
+        stage = "ARCHIVED"
+    else:
+        stage = "EVALUATED"
+
+    stage_actions = {
+        "EVALUATED": {"next_step": 2, "action_name": "Step 2: Archival Execution (INSERT)", "button_label": "Execute Archival SQL"},
+        "ARCHIVED": {"next_step": 3, "action_name": "Step 3: Cryptographic Merkle Verification", "button_label": "Verify Records"},
+        "VERIFIED": {"next_step": 4, "action_name": "Step 4: Maker-Checker Human Approval", "button_label": "Record Human Approval"},
+        "APPROVED": {"next_step": 5, "action_name": "Step 5: Source Database Cleanup (DELETE)", "button_label": "Purge Source Records"},
+        "CLEANED": {"next_step": 6, "action_name": "Execution Completed", "button_label": "View Audit Package"},
+    }
+
+    action_info = stage_actions.get(stage, stage_actions["EVALUATED"])
+
+    return {
+        "run_id": run_id,
+        "control_id": control_id,
+        "archetype": getattr(defn, "archetype", "D") if defn else "D",
+        "stage": stage,
+        "next_step": action_info["next_step"],
+        "action_name": action_info["action_name"],
+        "button_label": action_info["button_label"],
+        "status": run.get("status", "running"),
+        "steps": steps,
+        "policy_info": run.get("policy_info"),
+        "merkle_verification": bundle.get("merkle_verification"),
+    }
+
