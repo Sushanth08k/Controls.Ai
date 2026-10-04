@@ -25,9 +25,12 @@ def get_archive_connection() -> sqlite3.Connection:
     return conn
 
 
-# Canonical seed matching user's compliance screenshots (50 total, 33 eligible > 5yr, 17 recent)
+# Canonical seed matching user's compliance screenshots (54 total, 33 clean eligible > 5yr, holds & active investigations, 18 recent)
 COMPLIANCE_TRANSACTIONS_SEED = [
+    ("TXN-171784", "ACC-001004", "BioTech Healthcare Inc", "2018-02-10", 38920.00, "WIRE", 1, "TKT-2018-0012", "NONE", "DOC-LEGAL-882", "ACTIVE"),
+    ("TXN-171785", "ACC-001004", "Horizon Wealth Partners", "2019-06-15", 52100.50, "ACH", 1, None, "NONE", "DOC-SUBPOENA-441", "ACTIVE"),
     ("TXN-171786", "ACC-001001", "Orion BioTech", "2020-03-28", 15427.95, "WIRE", 0, "TKT-2020-8841", "NONE", "DOC-KYC-7712", "ACTIVE"),
+    ("TXN-171787", "ACC-001002", "GlobalTech Inc", "2020-05-18", 61400.00, "WIRE", 0, "TKT-2020-9921", "ACTIVE", "DOC-INV-ACTIVE-01", "ACTIVE"),
     ("TXN-171788", "ACC-001002", "GlobalTech Inc", "2019-02-15", 43762.20, "ACH", 0, None, "NONE", "DOC-TAX-8910", "ACTIVE"),
     ("TXN-171790", "ACC-001003", "Pinnacle Retail", "2018-09-12", 88910.29, "CHECK", 0, "TKT-2018-4421", "RESOLVED", "DOC-INV-3041", "ACTIVE"),
     ("TXN-171791", "ACC-001001", "Delta Aviation", "2020-12-20", 43043.15, "WIRE", 0, None, "NONE", "DOC-WIRE-5521", "ACTIVE"),
@@ -78,6 +81,7 @@ COMPLIANCE_TRANSACTIONS_SEED = [
     ("TXN-171838", "ACC-001005", "Quantum Holdings", "2025-03-30", 39100.00, "ACH", 0, "TKT-2025-2289", "NONE", "DOC-CORR-6632", "ACTIVE"),
     ("TXN-171839", "ACC-001001", "Horizon Solar LLC", "2024-08-12", 67400.50, "CHECK", 0, None, "NONE", "DOC-KYC-4421", "ACTIVE"),
     ("TXN-171840", "ACC-001002", "Titan Manufacturing", "2025-05-28", 91500.00, "WIRE", 0, None, "NONE", "DOC-TAX-5590", "ACTIVE"),
+    ("TXN-171841", "ACC-001004", "Sterling Capital", "2025-06-11", 19500.00, "WIRE", 1, None, "NONE", "DOC-SEC-9901", "ACTIVE"),
 ]
 
 
@@ -502,7 +506,7 @@ def get_vulnerability_target_discovery(expected_targets: list[str] | None = None
 
 
 def query_eligible_archival_records(retention_years: int = 5) -> dict[str, Any]:
-    """Query real SQLite database for records older than retention cutoff, excluding active holds."""
+    """Query real SQLite database for records older than retention cutoff, excluding active holds and active investigations."""
     init_real_databases()
     conn = get_core_connection()
     cur = conn.cursor()
@@ -515,7 +519,11 @@ def query_eligible_archival_records(retention_years: int = 5) -> dict[str, Any]:
     total_count = cur.fetchone()[0]
 
     cur.execute(
-        "SELECT * FROM source_transactions WHERE transaction_date < ? ORDER BY transaction_date ASC",
+        """SELECT * FROM source_transactions 
+           WHERE transaction_date < ? 
+             AND (legal_hold = 0 OR legal_hold IS NULL) 
+             AND (investigation_status != 'ACTIVE' OR investigation_status IS NULL)
+           ORDER BY transaction_date ASC""",
         (cutoff_str,),
     )
     eligible_rows = [dict(r) for r in cur.fetchall()]
@@ -557,7 +565,11 @@ def query_eligible_archival_records(retention_years: int = 5) -> dict[str, Any]:
     }
 
 
-def execute_real_archive_copy(run_id: str, retention_years: int = 5) -> dict[str, Any]:
+def execute_real_archive_copy(
+    run_id: str,
+    retention_years: int = 5,
+    eligible_ids: list[str] | None = None,
+) -> dict[str, Any]:
     """Reversibly copy eligible records from bank_core.db to bank_archive.db and compute Merkle roots."""
     init_real_databases()
     conn_core = get_core_connection()
@@ -570,10 +582,25 @@ def execute_real_archive_copy(run_id: str, retention_years: int = 5) -> dict[str
     cur_core = conn_core.cursor()
     cur_arc = conn_arc.cursor()
 
-    cur_core.execute(
-        "SELECT * FROM source_transactions WHERE transaction_date < ? AND legal_hold = 0 ORDER BY transaction_date ASC",
-        (cutoff,),
-    )
+    if eligible_ids is not None and len(eligible_ids) > 0:
+        placeholders = ",".join("?" for _ in eligible_ids)
+        cur_core.execute(
+            f"""SELECT * FROM source_transactions 
+                WHERE transaction_id IN ({placeholders}) 
+                  AND (legal_hold = 0 OR legal_hold IS NULL) 
+                  AND (investigation_status != 'ACTIVE' OR investigation_status IS NULL)
+                ORDER BY transaction_date ASC""",
+            eligible_ids,
+        )
+    else:
+        cur_core.execute(
+            """SELECT * FROM source_transactions 
+               WHERE transaction_date < ? 
+                 AND (legal_hold = 0 OR legal_hold IS NULL) 
+                 AND (investigation_status != 'ACTIVE' OR investigation_status IS NULL)
+               ORDER BY transaction_date ASC""",
+            (cutoff,),
+        )
     rows = [dict(r) for r in cur_core.fetchall()]
 
     arc_inserts = []

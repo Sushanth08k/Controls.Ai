@@ -1,6 +1,8 @@
 import datetime
 import hashlib
 import json
+import logging
+import sqlite3
 import uuid
 from typing import Any
 from fastapi import APIRouter, HTTPException, File, UploadFile
@@ -445,7 +447,6 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
 
     if defn.archetype == "D":
         ret_years = int(req.approved_rules.get("retention_years", 5))
-        db_res = query_eligible_archival_records(retention_years=ret_years)
 
         connected_databases = {
             "source": {
@@ -461,29 +462,6 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
                 "ssl": True,
             },
         }
-
-        # Format sample records from real database query
-        sample_records = []
-        all_rows = get_live_table_rows("source_transactions", limit=50)
-        for r in all_rows:
-            is_eligible = r["transaction_date"] < "2021-09-01"
-            sample_records.append({
-                "transaction_id": r["transaction_id"],
-                "account_id": r["account_id"],
-                "customer_name": r["customer_name"],
-                "transaction_date": r["transaction_date"],
-                "amount": f"${r['amount']:,.2f}",
-                "legal_hold": bool(r["legal_hold"]),
-                "support_ticket_id": r.get("support_ticket_id") or "—",
-                "investigation_status": r.get("investigation_status") or "NONE",
-                "document_ref": r.get("document_ref") or "—",
-                "eligible": is_eligible,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "ELIGIBLE" if is_eligible else "RETAINED (Recent)",
-                "row_hash": hashlib.sha256(f"{r['transaction_id']}:{r['amount']}:{r['transaction_date']}".encode()).hexdigest(),
-            })
 
         # Extract rules, exceptions, and run_id from request or active session
         rules = req.rules or req.approved_rules.get("rules") or []
@@ -509,13 +487,78 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
             exceptions=exceptions,
         )
 
+        # Apply generated selection SQL directly to live bank_core.db to determine truly eligible records
+        eligible_ids: set[str] = set()
+        sel_sql = sql_scripts.get("selection_sql", "")
+        with sqlite3.connect(CORE_DB_PATH) as conn:
+            cur = conn.cursor()
+            for q in sel_sql.split(";"):
+                clean_q = "\n".join(l for l in q.splitlines() if not l.strip().startswith("--")).strip()
+                if clean_q.upper().startswith("SELECT"):
+                    try:
+                        cur.execute(clean_q)
+                        for r_row in cur.fetchall():
+                            eligible_ids.add(str(r_row[0]))
+                    except Exception as e:
+                        pass
+
+        # If selection SQL couldn't be parsed or returned 0, fall back to query_eligible_archival_records
+        if not eligible_ids and not rules:
+            db_res = query_eligible_archival_records(retention_years=ret_years)
+            eligible_ids = set(db_res.get("all_eligible_ids", []))
+
+        # Update session with active eligible_ids so archival execution copies the exact matching records
+        session = _INTERACTIVE_SESSIONS.get(run_id)
+        if session:
+            session["eligible_ids"] = list(eligible_ids)
+            session["rules"] = rules
+            session["exceptions"] = exceptions
+
+        # Format sample records from real database query matching actual eligibility
+        sample_records = []
+        all_rows = get_live_table_rows("source_transactions", limit=100)
+        for r in all_rows:
+            is_hold = bool(r.get("legal_hold"))
+            is_active_inv = (r.get("investigation_status") == "ACTIVE")
+            is_eligible = (r["transaction_id"] in eligible_ids) and not is_hold and not is_active_inv
+
+            if is_hold:
+                status = "EXCLUDED (Legal Hold)"
+            elif is_active_inv:
+                status = "EXCLUDED (Active Investigation)"
+            elif is_eligible:
+                status = "ELIGIBLE"
+            else:
+                status = "RETAINED (Active Lifecycle)"
+
+            sample_records.append({
+                "transaction_id": r["transaction_id"],
+                "account_id": r["account_id"],
+                "customer_name": r["customer_name"],
+                "transaction_date": r["transaction_date"],
+                "amount": f"${r['amount']:,.2f}",
+                "legal_hold": is_hold,
+                "support_ticket_id": r.get("support_ticket_id") or "—",
+                "investigation_status": r.get("investigation_status") or "NONE",
+                "document_ref": r.get("document_ref") or "—",
+                "eligible": is_eligible,
+                "archived": False,
+                "verified": False,
+                "cleaned": False,
+                "status": status,
+                "row_hash": hashlib.sha256(f"{r['transaction_id']}:{r['amount']}:{r['transaction_date']}".encode()).hexdigest(),
+            })
+
+        total_source_count = len(all_rows)
+        eligible_count = len([r for r in sample_records if r["eligible"]])
+        excluded_holds_count = len([r for r in sample_records if r["legal_hold"]])
 
         return {
             "control_id": req.control_id,
             "connected_databases": connected_databases,
-            "total_source_records": db_res["total_source_count"],
-            "eligible_records_count": db_res["eligible_count"],
-            "excluded_holds_count": db_res["exempt_count"],
+            "total_source_records": total_source_count,
+            "eligible_records_count": eligible_count,
+            "excluded_holds_count": excluded_holds_count,
             "archived_count": 0,
             "verified_count": 0,
             "source_cleaned_count": 0,
@@ -775,7 +818,8 @@ async def execute_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
         ret_years = session.get("retention_years", 5)
 
         # Execute real SQL insert into bank_archive.db
-        copy_res = execute_real_archive_copy(run_id=req.run_id, retention_years=ret_years)
+        eligible_ids = session.get("eligible_ids")
+        copy_res = execute_real_archive_copy(run_id=req.run_id, retention_years=ret_years, eligible_ids=eligible_ids)
 
         token_seed = f"{req.run_id}:{copy_res['source_merkle_root']}:{datetime.datetime.now(datetime.timezone.utc).isoformat()}"
         attestation_sig = hashlib.sha256(token_seed.encode("utf-8")).hexdigest()
