@@ -113,6 +113,7 @@ def get_control_defaults(control_id: str) -> dict[str, Any]:
             "GLOBAL BANKING CORPORATION - DATA RETENTION & ARCHIVAL POLICY v2.4\n\n"
             "POLICY 1: Transaction Data Archival Policy\n"
             "Source table: source_transactions\n"
+            "Destination table: archive_transactions (sqlite:///bank_archive.db)\n"
             "date field: transaction_date\n\n"
             "Rule 1:\n"
             "Operation: ARCHIVE\n"
@@ -120,6 +121,10 @@ def get_control_defaults(control_id: str) -> dict[str, Any]:
             "Rule 2:\n"
             "Operation: ARCHIVE\n"
             "Records must be retained for eight years prior to any final disposal.\n\n"
+            "Rule 3:\n"
+            "Operation: EXCLUDE\n"
+            "Condition: legal_hold equals true\n"
+            "Records subject to an active legal hold are strictly exempt from archival or cleanup.\n\n"
             "GLOBAL REQUIREMENTS:\n"
             "1. Financial transaction records must be retained per regulatory lifecycle periods.\n"
             "2. Independent verification and cryptographic SHA-256 validation required before source deletion.\n"
@@ -466,6 +471,9 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
                 "transaction_date": r["transaction_date"],
                 "amount": f"${r['amount']:,.2f}",
                 "legal_hold": bool(r["legal_hold"]),
+                "support_ticket_id": r.get("support_ticket_id") or "—",
+                "investigation_status": r.get("investigation_status") or "NONE",
+                "document_ref": r.get("document_ref") or "—",
                 "eligible": is_eligible,
                 "archived": False,
                 "verified": False,
@@ -510,7 +518,7 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
             "source_cleaned_count": 0,
             "sample_records": sample_records,
             "generated_sql": sql_scripts,
-            "columns": ["Transaction ID", "Customer Name", "Txn Date", "Amount", "Legal Hold", "Eligible", "Archived", "Verified", "Cleaned"],
+            "columns": ["Transaction ID", "Customer Name", "Txn Date", "Amount", "Support Ticket", "Investigation", "Document Ref", "Legal Hold", "Eligible", "Archived", "Verified", "Cleaned"],
         }
 
     elif "vuln" in cid_lower:

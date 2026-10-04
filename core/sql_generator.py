@@ -61,6 +61,9 @@ CREATE TABLE source_transactions (
     amount REAL NOT NULL,
     transaction_type TEXT NOT NULL,
     legal_hold INTEGER NOT NULL DEFAULT 0,
+    support_ticket_id TEXT,
+    investigation_status TEXT NOT NULL DEFAULT 'NONE',
+    document_ref TEXT,
     status TEXT NOT NULL DEFAULT 'ACTIVE'
 );
 
@@ -73,6 +76,9 @@ CREATE TABLE archive_transactions (
     amount REAL NOT NULL,
     transaction_type TEXT NOT NULL,
     legal_hold INTEGER NOT NULL DEFAULT 0,
+    support_ticket_id TEXT,
+    investigation_status TEXT NOT NULL DEFAULT 'NONE',
+    document_ref TEXT,
     status TEXT NOT NULL DEFAULT 'ARCHIVED',
     control_run_id TEXT NOT NULL,
     verification_hash TEXT NOT NULL,
@@ -198,12 +204,22 @@ def compile_schema_driven_sql(
             "cleanup_sql": "\n\n".join(clean_blocks),
         }
 
+    # Extra compliance columns
+    extra_cols = []
+    if "support_ticket_id" in schema_ddl:
+        extra_cols.append("support_ticket_id")
+    if "investigation_status" in schema_ddl:
+        extra_cols.append("investigation_status")
+    if "document_ref" in schema_ddl:
+        extra_cols.append("document_ref")
+    extra_cols_str = (", " + ", ".join(extra_cols)) if extra_cols else ""
+
     # Single rule or baseline schema-driven queries
     selection_sql = f"""-- 1. ACTIVE SELECTION SQL (SELECT)
 -- Target: {source_table}
 -- Dialect: {dialect}
 -- Rule: Records older than {retention_years} years (excluding active legal holds)
-SELECT transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}
+SELECT transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}{extra_cols_str}
 FROM {source_table}
 WHERE {date_field} < DATE('now', '-{retention_years} years'){exclusion_sql};"""
 
@@ -212,10 +228,10 @@ WHERE {date_field} < DATE('now', '-{retention_years} years'){exclusion_sql};"""
 -- Run ID: {run_id}
 -- Dialect: {dialect}
 INSERT OR REPLACE INTO {archive_table} (
-  transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}, status, control_run_id, verification_hash, archived_at
+  transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}{extra_cols_str}, status, control_run_id, verification_hash, archived_at
 )
 SELECT 
-  transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}, 'ARCHIVED',
+  transaction_id, account_id, customer_name, {date_field}, amount, transaction_type, {hold_field}{extra_cols_str}, 'ARCHIVED',
   '{run_id}',
   'SHA256-' || substr(hex(randomblob(16)), 1, 16),
   CURRENT_TIMESTAMP

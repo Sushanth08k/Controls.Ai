@@ -298,7 +298,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     selection_sql: `-- 1. ACTIVE SELECTION SQL (SELECT)
 -- Target: source_transactions
 -- Dialect: SQLITE
-SELECT transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold
+SELECT transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, support_ticket_id, investigation_status, document_ref
 FROM source_transactions
 WHERE transaction_date < DATE('now', '-5 years')
   AND legal_hold = 0;`,
@@ -307,10 +307,10 @@ WHERE transaction_date < DATE('now', '-5 years')
 -- Run ID: ${runId}
 -- Dialect: SQLITE
 INSERT OR REPLACE INTO archive_transactions (
-  transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, status, control_run_id, verification_hash, archived_at
+  transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, support_ticket_id, investigation_status, document_ref, status, control_run_id, verification_hash, archived_at
 )
 SELECT 
-  transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, 'ARCHIVED',
+  transaction_id, account_id, customer_name, transaction_date, amount, transaction_type, legal_hold, support_ticket_id, investigation_status, document_ref, 'ARCHIVED',
   '${runId}',
   'SHA256-' || substr(hex(randomblob(16)), 1, 16),
   CURRENT_TIMESTAMP
@@ -1081,6 +1081,9 @@ AND legal_hold = 0;`,
                           <th className="py-2.5 px-3">Customer Name</th>
                           <th className="py-2.5 px-3">Txn Date</th>
                           <th className="py-2.5 px-3">Amount</th>
+                          <th className="py-2.5 px-3">Support Ticket</th>
+                          <th className="py-2.5 px-3">Investigation</th>
+                          <th className="py-2.5 px-3">Document Ref</th>
                           <th className="py-2.5 px-3">Legal Hold</th>
                           <th className="py-2.5 px-3">Eligible</th>
                           <th className="py-2.5 px-3">Archived</th>
@@ -1095,6 +1098,37 @@ AND legal_hold = 0;`,
                             <td className="py-2.5 px-3 text-slate-700 font-sans">{r.customer_name}</td>
                             <td className="py-2.5 px-3 text-slate-500">{r.transaction_date}</td>
                             <td className="py-2.5 px-3 text-slate-800 font-semibold">{r.amount}</td>
+                            <td className="py-2.5 px-3">
+                              {r.support_ticket_id && r.support_ticket_id !== '—' ? (
+                                <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.5 rounded text-[10px] font-medium">
+                                  {r.support_ticket_id}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {r.investigation_status === 'ACTIVE' ? (
+                                <span className="bg-amber-100 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                                  ACTIVE
+                                </span>
+                              ) : r.investigation_status === 'RESOLVED' ? (
+                                <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">
+                                  RESOLVED
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">NONE</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-3">
+                              {r.document_ref && r.document_ref !== '—' ? (
+                                <span className="font-mono text-[10px] text-slate-700 bg-slate-50 border border-slate-200 px-1.5 py-0.5 rounded">
+                                  {r.document_ref}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">—</span>
+                              )}
+                            </td>
                             <td className="py-2.5 px-3">
                               {r.legal_hold ? (
                                 <span className="text-rose-700 font-bold">Yes</span>
