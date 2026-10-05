@@ -165,12 +165,31 @@ class Evaluation(BaseContract):
     rationale: str
     evidence_ids: list[str] = Field(default_factory=list)
 
+    @classmethod
+    def mock_instance(cls) -> "Evaluation":
+        return cls(
+            rule_id="RULE-EVAL-001",
+            applicable=True,
+            compensating_control=None,
+            rationale="Automated rule evaluation confirms finding applicability against evidence.",
+            evidence_ids=[],
+        )
+
 
 class Challenge(BaseContract):
     subject_id: str
     verdict: Literal["confirmed", "objection"]
     objection_type: Literal["evidence_missing", "not_applicable", "risk_accepted", "other"] | None = None
     detail: str
+
+    @classmethod
+    def mock_instance(cls) -> "Challenge":
+        return cls(
+            subject_id="FND-CHALLENGE-MOCK",
+            verdict="confirmed",
+            objection_type=None,
+            detail="The cited evidence confirms the observed finding with zero mitigating factors.",
+        )
 
 
 class Finding(BaseContract):
@@ -223,6 +242,23 @@ class PolicyIR(BaseContract):
     archive_target: str
     citations: dict[str, Citation] = Field(default_factory=dict)
 
+    @classmethod
+    def mock_instance(cls) -> "PolicyIR":
+        return cls(
+            policy_id="POL-ARCH-DEFAULT",
+            version="1.0.0",
+            effective_from="2024-01-01",
+            source_doc_sha256="0" * 64,
+            entity="transactions",
+            source_table="source_transactions",
+            date_column="transaction_date",
+            retention=RetentionSpec(value=5, unit="years"),
+            exclusions=[],
+            action="archive_then_delete",
+            archive_target="archive_transactions",
+            citations={},
+        )
+
 
 class BaselineStats(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -247,6 +283,14 @@ class PlanReview(BaseContract):
     flags: list[str] = Field(default_factory=list)
     explanations: list[str] = Field(default_factory=list)
     suggested_batch_size: int | None = None
+
+    @classmethod
+    def mock_instance(cls) -> "PlanReview":
+        return cls(
+            flags=[],
+            explanations=["Execution plan reviewed: volume matches baseline and FK constraints are met."],
+            suggested_batch_size=500,
+        )
 
 
 class Manifest(BaseContract):
@@ -305,6 +349,10 @@ class AddedEndpoint(BaseModel):
 class ImpactAddendum(BaseContract):
     added_endpoints: list[AddedEndpoint] = Field(default_factory=list)
 
+    @classmethod
+    def mock_instance(cls) -> "ImpactAddendum":
+        return cls(added_endpoints=[])
+
 
 class LatencyBaseline(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -356,6 +404,19 @@ class Workpaper(BaseContract):
     sections: list[WorkpaperSection] = Field(default_factory=list)
     findings_ref: list[str] = Field(default_factory=list)
 
+    @classmethod
+    def mock_instance(cls) -> "Workpaper":
+        return cls(
+            run_id="RUN-MOCK",
+            control_id="CTL-MOCK",
+            version="1.0.0",
+            period="current_period",
+            conclusion="effective",
+            summary="Automated control verification completed with evidence citations.",
+            sections=[],
+            findings_ref=[],
+        )
+
 
 class PriorityInputs(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -371,3 +432,23 @@ class DraftControlDefinition(BaseContract):
     gaps: list[str] = Field(default_factory=list)
     priority_inputs: PriorityInputs
     rcm_ref: str
+
+    @classmethod
+    def mock_instance(cls) -> "DraftControlDefinition":
+        defn = ControlDefinition(
+            control_id="CTL-ONB-001",
+            version="1.0.0",
+            title="Drafted Compliance Control",
+            owner_role="COMPLIANCE_OFFICER",
+            reviewer_role="AUDITOR",
+            risk_rating="medium",
+            frequency="monthly",
+            archetype="A",
+        )
+        return cls(
+            definition=defn,
+            fit="clean",
+            gaps=[],
+            priority_inputs=PriorityInputs(frequency=1.0, manual_effort=2.0, risk=2.0, feasibility=3.0),
+            rcm_ref="RCM-001",
+        )

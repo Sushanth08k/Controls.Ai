@@ -22,7 +22,6 @@ import {
   ShieldCheck,
   CheckCircle2,
   AlertTriangle,
-  Sparkles,
   Loader2,
   Trash2,
   Copy,
@@ -741,10 +740,7 @@ AND legal_hold = 0;`,
                       <span>Extracting with AI Interpreter Agent...</span>
                     </>
                   ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>Extract Policies & Rules</span>
-                    </>
+                    <span>Extract Policies & Rules</span>
                   )}
                 </button>
               </div>
