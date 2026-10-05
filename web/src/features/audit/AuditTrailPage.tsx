@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { RunItemDTO, GateItemDTO, UserSessionDTO, ControlDefinitionDTO } from '../../types';
 import { fetchUploadedPolicies, UploadedPolicyDTO } from '../../api/client';
-import { Search, User, CheckCircle2, XCircle, FileUp, Play, Clock } from 'lucide-react';
+import { Search, Mail, CheckCircle2, XCircle, FileUp, Play, Clock } from 'lucide-react';
 
 interface AuditEvent {
   id: string;
@@ -36,6 +36,37 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
       .catch((err) => console.error('Failed to load policies for audit trail:', err));
   }, []);
 
+  // Resolve user identifier to user email
+  const resolveUserEmail = (userVal?: string): string => {
+    if (!userVal) return currentUser.email;
+
+    // Already an email address
+    if (userVal.includes('@')) return userVal;
+
+    // Matches current logged-in user or Firebase UID prefix
+    if (
+      userVal === currentUser.user_id ||
+      userVal.toLowerCase() === currentUser.user_id.toLowerCase() ||
+      (currentUser.email && userVal.length >= 10 && !userVal.includes(' ') && !userVal.includes('_'))
+    ) {
+      return currentUser.email;
+    }
+
+    // Check localStorage cache
+    const stored = localStorage.getItem(`controls_user_email_${userVal}`);
+    if (stored) return stored;
+
+    // Known internal role personas
+    if (userVal === 'sec_reviewer_1') return 'reviewer@bank.internal';
+    if (userVal === 'sec_owner_1') return 'owner@bank.internal';
+    if (userVal === 'release_owner_1') return 'release@bank.internal';
+    if (userVal.toLowerCase() === 'operator' || userVal.toLowerCase() === 'sushanth') {
+      return currentUser.email || 'operator@bank.internal';
+    }
+
+    return `${userVal.toLowerCase()}@bank.internal`;
+  };
+
   // Map control_id to title
   const controlMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -56,7 +87,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
         events.push({
           id: `gate-created-${g.gate_id}`,
           time: g.created_at,
-          user: g.maker_id || currentUser.user_id,
+          user: resolveUserEmail(g.maker_id || currentUser.user_id),
           action: 'Requested approval',
           actionType: 'approval',
           target: `${g.control_id} · ${g.run_id}`,
@@ -70,7 +101,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
         events.push({
           id: `gate-decided-${g.gate_id}`,
           time: g.decided_at,
-          user: g.decided_by,
+          user: resolveUserEmail(g.decided_by),
           action: isApproved ? 'Approved run' : 'Rejected approval',
           actionType: isApproved ? 'approval' : 'rejection',
           target: `${g.control_id} · ${g.run_id}`,
@@ -85,7 +116,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
         events.push({
           id: `policy-uploaded-${p.policy_id}`,
           time: p.uploaded_at,
-          user: p.uploaded_by || 'Sushanth',
+          user: resolveUserEmail(p.uploaded_by || 'Sushanth'),
           action: 'Uploaded policy',
           actionType: 'policy',
           target: p.control_id ? `${p.control_id}` : p.title,
@@ -101,7 +132,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
         events.push({
           id: `run-started-${r.run_id}`,
           time: r.started_at,
-          user: 'Operator',
+          user: resolveUserEmail('Operator'),
           action: 'Started control test',
           actionType: 'run',
           target: `${r.control_id} · ${r.run_id}`,
@@ -248,7 +279,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
                     </td>
                     <td className="py-3 px-3">
                       <span className="font-mono text-slate-800 font-semibold flex items-center gap-1.5">
-                        <User className="w-3 h-3 text-slate-400 shrink-0" />
+                        <Mail className="w-3 h-3 text-slate-400 shrink-0" />
                         <span>{ev.user}</span>
                       </span>
                     </td>

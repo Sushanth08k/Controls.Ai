@@ -37,10 +37,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Map Firebase user and stored role into UserSessionDTO
   const buildUserSession = (user: User, customRole?: string): UserSessionDTO => {
     const savedRole = customRole || localStorage.getItem(`${ROLE_STORAGE_KEY_PREFIX}${user.uid}`) || 'control_reviewer';
+
+    // Store UID -> Email mapping for audit trail lookups
+    if (user.email) {
+      localStorage.setItem(`controls_user_email_${user.uid}`, user.email);
+      localStorage.setItem(`controls_user_email_${user.uid.substring(0, 16)}`, user.email);
+    }
+
+    // Determine clean username
+    const rawUsername =
+      user.displayName ||
+      localStorage.getItem(`controls_user_username_${user.uid}`) ||
+      (user.email?.toLowerCase().includes('sushanth') ? 'Sushanth' : '') ||
+      (user.email ? user.email.split('@')[0].replace(/[0-9_.-]/g, '') : '') ||
+      'Sushanth';
+
+    const cleanUsername = rawUsername
+      ? rawUsername.charAt(0).toUpperCase() + rawUsername.slice(1)
+      : 'Sushanth';
+
     return {
       user_id: user.uid.substring(0, 16),
       roles: [savedRole],
       email: user.email || 'user@bank.internal',
+      username: cleanUsername,
+      displayName: user.displayName || cleanUsername,
     };
   };
 
@@ -78,6 +99,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       if (displayName) {
         await updateProfile(cred.user, { displayName });
+        localStorage.setItem(`controls_user_username_${cred.user.uid}`, displayName);
       }
       localStorage.setItem(`${ROLE_STORAGE_KEY_PREFIX}${cred.user.uid}`, role);
       const session = buildUserSession(cred.user, role);

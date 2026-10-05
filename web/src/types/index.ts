@@ -78,4 +78,7 @@ export interface UserSessionDTO {
   user_id: string;
   roles: string[];
   email: string;
+  username?: string;
+  displayName?: string;
 }
+

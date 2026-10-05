@@ -245,7 +245,7 @@ const AuthenticatedPlatform: React.FC = () => {
       gateId,
       decision,
       comment,
-      currentUser.user_id,
+      currentUser.email || currentUser.user_id,
       currentUser.roles
     );
     // Optimistically update local gate state

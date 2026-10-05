@@ -62,15 +62,20 @@ export const Navigation: React.FC<NavigationProps> = ({
     { to: '/audit', label: 'Audit Trail', icon: History },
   ];
 
-  const userInitial = (
-    currentUser.email?.[0] ||
-    currentUser.user_id?.[0] ||
-    'U'
-  ).toUpperCase();
+  const rawUsername =
+    currentUser.username ||
+    currentUser.displayName ||
+    localStorage.getItem(`controls_user_username_${currentUser.user_id}`) ||
+    localStorage.getItem('controls_username') ||
+    (currentUser.email?.toLowerCase().includes('sushanth') ? 'Sushanth' : '') ||
+    (currentUser.email ? currentUser.email.split('@')[0].replace(/[0-9_.-]/g, '') : '') ||
+    'Sushanth';
 
-  const userDisplayName = currentUser.email
-    ? currentUser.email.split('@')[0]
-    : currentUser.user_id;
+  const username = rawUsername
+    ? rawUsername.charAt(0).toUpperCase() + rawUsername.slice(1)
+    : 'Sushanth';
+
+  const userInitial = (username[0] || 'S').toUpperCase();
 
   return (
     <aside className="w-64 bg-[#0d281e] border-r border-[#16382b] flex flex-col justify-between p-4 shrink-0 h-screen sticky top-0 text-slate-100 overflow-y-auto">
@@ -120,8 +125,8 @@ export const Navigation: React.FC<NavigationProps> = ({
             {userInitial}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-white truncate capitalize">
-              {userDisplayName}
+            <div className="text-sm font-semibold text-white truncate" title={currentUser.email}>
+              {username}
             </div>
             <div className="text-[10px] uppercase font-semibold tracking-wider text-[#8ea79b] truncate">
               {currentUser.roles[0]?.replace(/_/g, ' ') || 'CONTROL REVIEWER'}
