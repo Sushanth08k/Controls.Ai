@@ -68,60 +68,80 @@ export const RunsPage: React.FC<RunsPageProps> = ({
     switch (stage) {
       case 'COMPLETED':
         return {
-          label: 'Completed & Certified',
-          nextAction: 'View Sealed Audit Package',
+          label: 'Completed & Verified',
+          nextAction: 'View Audit Details',
           stepNum: 6,
           isCompleted: true,
-          statusText: 'All 6 lifecycle verification & archival steps completed. Audit certificate sealed.',
+          statusText: 'All test and verification steps completed.',
           badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
         };
       case 'CLEANED':
         return {
-          label: 'Ready for Step 6: Final Verification',
-          nextAction: 'Complete Final Verification',
+          label: 'Ready for Step 6: Final Check',
+          nextAction: 'Complete Final Check',
           stepNum: 6,
           isCompleted: false,
-          statusText: 'Step 5 executed. Ready for Step 6: Final Verification & Sealing.',
+          statusText: 'Source data removed. Ready for Step 6: Final Check.',
           badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
         };
       case 'APPROVED':
         return {
-          label: 'Ready for Step 5: Source Cleanup (DELETE)',
-          nextAction: 'Purge Source Records',
+          label: 'Ready for Step 5: Source Data Removal',
+          nextAction: 'Remove Source Data',
           stepNum: 5,
           isCompleted: false,
-          statusText: 'Step 4 approved. Ready for Step 5: Controlled Source Cleanup.',
+          statusText: 'Review approved. Ready for Step 5: Source Data Removal.',
           badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
         };
       case 'VERIFIED':
         return {
-          label: 'Ready for Step 4: Maker-Checker Human Approval',
-          nextAction: 'Record Human Approval',
+          label: 'Ready for Step 4: Review & Approval',
+          nextAction: 'Submit for Approval',
           stepNum: 4,
           isCompleted: false,
-          statusText: 'Step 3 verified. Ready for Step 4: Maker-Checker Human Approval.',
+          statusText: 'Archive verified. Ready for Step 4: Review & Approval.',
           badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
         };
       case 'ARCHIVED':
         return {
-          label: 'Ready for Step 3: Cryptographic Merkle Verification',
+          label: 'Ready for Step 3: Archive Verification',
           nextAction: 'Verify Records',
           stepNum: 3,
           isCompleted: false,
-          statusText: 'Step 2 archived. Ready for Step 3: Cryptographic Merkle Verification.',
+          statusText: 'Archive created. Ready for Step 3: Archive Verification.',
           badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
         };
       case 'EVALUATED':
       default:
         return {
-          label: 'Ready for Step 2: Archival Execution (INSERT)',
-          nextAction: 'Execute Archival SQL',
+          label: 'Ready for Step 2: Archive Creation',
+          nextAction: 'Create Archive',
           stepNum: 2,
           isCompleted: false,
-          statusText: 'Step 1 evaluated. Ready for Step 2: Archival Execution.',
+          statusText: 'Data evaluated. Ready for Step 2: Archive Creation.',
           badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
         };
     }
+  };
+
+  const formatStepName = (stepName: string): string => {
+    const map: Record<string, string> = {
+      EVALUATION: 'Data Checked',
+      COPY_TO_ARCHIVE: 'Archive Created',
+      ARCHIVE: 'Archive Created',
+      EXECUTE_ARCHIVAL: 'Archive Created',
+      MERKLE_VERIFY: 'Archive Verified',
+      VERIFICATION: 'Archive Verified',
+      APPROVAL: 'Approval Completed',
+      HUMAN_APPROVAL: 'Approval Completed',
+      SOURCE_PURGE: 'Source Data Removed',
+      SOURCE_CLEANUP: 'Source Data Removed',
+      FINAL_VERIFICATION: 'Final Check',
+      SEAL_LEDGER: 'Final Check',
+      ARCHIVE_RECONCILE: 'Archive Reconciled',
+      DOC_EXTRACTION: 'Document Extracted',
+    };
+    return map[stepName] || stepName.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
   const handleResumeRun = async (
@@ -182,7 +202,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
       <div>
         <h2 className="text-xl font-bold text-slate-900 tracking-tight">Control Runs</h2>
         <p className="text-xs text-slate-500 mt-1">
-          History of automated control test executions, runtime telemetry, and status.
+          History of automated control test executions and verification records.
         </p>
       </div>
 
@@ -307,7 +327,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                       <div>
                                         <div className="flex items-center gap-2">
                                           <h4 className="font-bold text-slate-900 text-xs">
-                                            {stageInfo.isCompleted ? 'Control Lifecycle Completed & Sealed' : (r.status === 'running' ? 'Active Execution In-Progress' : 'Control Execution Workflow')}
+                                            {stageInfo.isCompleted ? 'Control Test Completed' : (r.status === 'running' ? 'Active Execution In-Progress' : 'Control Execution Workflow')}
                                           </h4>
                                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${stageInfo.badgeColor}`}>
                                             {stageInfo.label}
@@ -339,14 +359,14 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                   <span className="block text-slate-500 font-mono text-[10px]">{r.run_id}</span>
                                 </div>
                                 <div>
-                                  <span className="text-slate-500 block text-[11px]">Verification Status</span>
+                                  <span className="text-slate-500 block text-[11px]">Test Status</span>
                                   <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 mt-0.5">
                                     <ShieldCheck className="w-3.5 h-3.5" />
                                     {auditData.run?.status?.toUpperCase() || 'COMPLETED'}
                                   </span>
                                 </div>
                                 <div>
-                                  <span className="text-slate-500 block text-[11px]">Records Ingestion</span>
+                                  <span className="text-slate-500 block text-[11px]">Records Checked</span>
                                   <span className="font-semibold text-slate-700">
                                     Evaluated: <strong className="text-slate-900">{auditData.run?.records_evaluated ?? r.records_scanned ?? 0}</strong>
                                   </span>
@@ -357,22 +377,22 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                   )}
                                 </div>
                                 <div>
-                                  <span className="text-slate-500 block text-[11px]">Storage Engine</span>
+                                  <span className="text-slate-500 block text-[11px]">Data Source</span>
                                   <span className="font-mono text-slate-700 text-[11px]">
                                     {auditData.run?.source_db || 'bank_core.db'}
                                   </span>
-                                  <span className="block text-slate-500 text-[10px]">SQLite Persistent Table</span>
+                                  <span className="block text-slate-500 text-[10px]">Database Target</span>
                                 </div>
                               </div>
 
-                              {/* Policy Used Historical Audit Card */}
-                              <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                  <div>
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                                      Policy Used
-                                    </span>
-                                    {auditData.policy_used ? (
+                              {/* Policy Used Historical Audit Card (shown only when recorded) */}
+                              {auditData.policy_used && (
+                                <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div>
+                                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                                        Policy Used
+                                      </span>
                                       <div className="mt-1">
                                         <div className="flex items-center gap-1.5 font-bold text-slate-900 font-mono text-xs">
                                           <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
@@ -384,14 +404,8 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                           Policy ID: <span className="font-semibold text-slate-700">{auditData.policy_used.policy_id}</span>
                                         </div>
                                       </div>
-                                    ) : (
-                                      <div className="text-xs text-slate-500 italic mt-1">
-                                        Policy Used: Not recorded
-                                      </div>
-                                    )}
-                                  </div>
+                                    </div>
 
-                                  {auditData.policy_used && (
                                     <div className="flex items-center gap-2 shrink-0">
                                       <a
                                         href={
@@ -420,37 +434,40 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                         </button>
                                       )}
                                     </div>
+                                  </div>
+
+                                  {expandedPolicyTextRunId === r.run_id && auditData.policy_used?.extracted_text && (
+                                    <div className="mt-3 pt-3 border-t border-slate-100 animate-in fade-in duration-200">
+                                      <div className="flex items-center justify-between mb-1.5">
+                                        <span className="text-[10px] uppercase font-bold text-slate-500 font-mono tracking-wider">
+                                          Extracted Policy Content ({auditData.policy_used.filename})
+                                        </span>
+                                        <span className="text-[10px] text-slate-400 font-mono">
+                                          ID: {auditData.policy_used.policy_id}
+                                        </span>
+                                      </div>
+                                      <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
+                                        {auditData.policy_used.extracted_text}
+                                      </pre>
+                                    </div>
                                   )}
                                 </div>
+                              )}
 
-                                {expandedPolicyTextRunId === r.run_id && auditData.policy_used?.extracted_text && (
-                                  <div className="mt-3 pt-3 border-t border-slate-100 animate-in fade-in duration-200">
-                                    <div className="flex items-center justify-between mb-1.5">
-                                      <span className="text-[10px] uppercase font-bold text-slate-500 font-mono tracking-wider">
-                                        Extracted Policy Content ({auditData.policy_used.filename})
-                                      </span>
-                                      <span className="text-[10px] text-slate-400 font-mono">
-                                        ID: {auditData.policy_used.policy_id}
-                                      </span>
-                                    </div>
-                                    <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
-                                      {auditData.policy_used.extracted_text}
-                                    </pre>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Merkle Verification Card (if available for Archival control) */}
+                              {/* Merkle Verification Card (Audit Integrity Check) */}
                               {auditData.merkle_verification?.source_merkle_root && (
                                 <div className="bg-white rounded-lg p-4 border border-emerald-200 shadow-2xs space-y-2">
-                                  <div className="flex items-center justify-between">
+                                  <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
                                     <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
                                       <Lock className="w-4 h-4 text-emerald-600" />
-                                      <span>Cryptographic Merkle Tree Verification (PASSED)</span>
+                                      <span>Audit Integrity Check (Passed)</span>
                                     </div>
                                     <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-100/70 text-emerald-800">
                                       Byte-Fidelity: 100% Match
                                     </span>
+                                  </div>
+                                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pt-0.5">
+                                    Technical & Audit Details
                                   </div>
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-[11px] font-mono">
                                     <div className="bg-slate-50 p-2.5 rounded border border-slate-200">
@@ -482,7 +499,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                 <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs space-y-2">
                                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                                     <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                                    Execution Lifecycle Steps (Audit Log)
+                                    Test Steps
                                   </h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1">
                                     {auditData.steps.map((st: any) => (
@@ -498,8 +515,11 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                           )}
                                         </div>
                                         <div className="text-xs leading-tight">
-                                          <div className="font-bold text-slate-900 font-mono text-[11px]">{st.step_name}</div>
+                                          <div className="font-bold text-slate-900 text-[11px]">
+                                            {formatStepName(st.step_name)}
+                                          </div>
                                           <div className="text-[10px] text-slate-500 mt-0.5">
+                                            <span className="font-mono text-[9px] text-slate-400 mr-1.5">{st.step_name}</span>
                                             Status: <span className="font-medium text-slate-700 uppercase">{st.status}</span>
                                             {st.records_processed > 0 && ` (${st.records_processed} records)`}
                                           </div>
@@ -572,7 +592,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                 <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs space-y-2">
                                   <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                                     <UserCheck className="w-3.5 h-3.5 text-blue-600" />
-                                    Maker-Checker Human Approvals
+                                    Review & Approval
                                   </h4>
                                   <div className="space-y-2 pt-1 text-xs">
                                     {auditData.approvals.map((a: any) => (

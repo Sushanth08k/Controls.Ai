@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
-  Shield,
   Lock,
   Mail,
   User,
@@ -58,8 +57,8 @@ export const AuthPage: React.FC = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         {/* App Logo & Header */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#0d281e] border border-[#204a37] shadow-lg mb-3">
-            <Shield className="w-6 h-6 text-emerald-400" />
+          <div className="inline-flex items-center justify-center p-2 rounded-xl bg-[#0d281e] border border-[#204a37] shadow-lg mb-3">
+            <img src="/lbglogo.webp" alt="Logo" className="w-12 h-12 object-contain rounded-lg" />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white">AI for Controls</h1>
           <p className="mt-1 text-xs text-slate-400">

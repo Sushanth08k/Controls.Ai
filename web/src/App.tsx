@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Navigation } from './components/Navigation';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { ControlLibraryPage } from './features/library/ControlLibraryPage';
@@ -11,7 +11,7 @@ import { AuthPage } from './features/auth/AuthPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from './types';
 import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, API_BASE } from './api/client';
-import { AlertCircle, RefreshCw, Shield } from 'lucide-react';
+import { AlertCircle, Shield } from 'lucide-react';
 
 interface AppLayoutProps {
   currentUser: UserSessionDTO;
@@ -37,14 +37,10 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   runs,
   gates,
   findings,
-  loading,
   error,
   loadData,
   handleDecideGate,
 }) => {
-  const location = useLocation();
-  const isDashboard = location.pathname === '/';
-
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900 font-sans">
       <Navigation
@@ -55,18 +51,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({
       />
 
       <main className="flex-1 overflow-y-auto">
-        {/* Top Status Bar for non-dashboard pages */}
-        {!isDashboard && (
-          <div className="bg-white border-b border-slate-200 px-6 md:px-8 py-2.5 flex items-center justify-end shadow-2xs">
-            <button
-              onClick={loadData}
-              className="p-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-slate-900 shadow-xs transition-colors cursor-pointer"
-              title="Refresh Data"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-        )}
 
         <div className="p-6 md:p-8">
           {error && (
@@ -133,8 +117,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 />
               }
             />
-            <Route path="/findings" element={<FindingsPage findings={findings} />} />
-            <Route path="/evidence" element={<FindingsPage findings={findings} />} />
+            <Route path="/findings" element={<FindingsPage findings={findings} controls={controls} />} />
+            <Route path="/evidence" element={<FindingsPage findings={findings} controls={controls} />} />
             <Route
               path="/audit"
               element={

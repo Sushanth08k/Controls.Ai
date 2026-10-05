@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { FindingDTO } from '../../types';
+import { FindingDTO, ControlDefinitionDTO } from '../../types';
 import { SeverityTag } from '../../components/SeverityTag';
 import { EvidenceChip } from '../../components/EvidenceChip';
 import { StatusPill } from '../../components/StatusPill';
@@ -7,9 +7,10 @@ import { Search, AlertTriangle, ShieldCheck, ChevronDown, ChevronUp } from 'luci
 
 interface FindingsPageProps {
   findings: FindingDTO[];
+  controls?: ControlDefinitionDTO[];
 }
 
-export const FindingsPage: React.FC<FindingsPageProps> = ({ findings }) => {
+export const FindingsPage: React.FC<FindingsPageProps> = ({ findings, controls }) => {
   const [search, setSearch] = useState('');
   const [selectedControl, setSelectedControl] = useState<string>('ALL');
   const [selectedSeverity, setSelectedSeverity] = useState<string>('ALL');
@@ -105,7 +106,7 @@ export const FindingsPage: React.FC<FindingsPageProps> = ({ findings }) => {
       <div>
         <h2 className="text-xl font-bold text-slate-900 tracking-tight">Security Findings</h2>
         <p className="text-xs text-slate-500 mt-1">
-          Identified exceptions and rule failures grouped by control run.
+          Issues identified during control testing.
         </p>
       </div>
 
@@ -224,10 +225,10 @@ export const FindingsPage: React.FC<FindingsPageProps> = ({ findings }) => {
                       {group.control_id}
                     </span>
                     <span className="text-xs font-mono text-slate-600">
-                      Run: <strong className="text-slate-800">{group.run_id}</strong>
+                      Test Run: <strong className="text-slate-800">{group.run_id}</strong>
                     </span>
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200/70 text-slate-700">
-                      {group.findings.length} {group.findings.length === 1 ? 'Finding' : 'Findings'}
+                      {group.findings.length} {group.findings.length === 1 ? 'Issue Found' : 'Issues Found'}
                     </span>
                   </div>
 
@@ -268,39 +269,66 @@ export const FindingsPage: React.FC<FindingsPageProps> = ({ findings }) => {
 
                 {/* Group Findings List */}
                 {!isCollapsed && (
-                  <div className="p-4 space-y-2.5 divide-y divide-slate-100">
-                    {group.findings.map((f, idx) => (
-                      <div
-                        key={f.finding_id}
-                        className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-                          idx > 0 ? 'pt-2.5' : ''
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="mt-0.5">
-                            <SeverityTag severity={f.severity} />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-semibold text-slate-900">{f.title}</h4>
-                            <span className="text-[11px] font-mono text-slate-500">
-                              ID: {f.finding_id}
-                            </span>
-                          </div>
-                        </div>
+                  <div className="p-4 space-y-3 divide-y divide-slate-100">
+                    {group.findings.map((f, idx) => {
+                      const ctrl = controls?.find((c) => c.control_id === f.control_id);
+                      const cleanTitle = f.title
+                        .replace(/^(Critical|High|Medium|Low)\s+vulnerability\s+/i, 'Vulnerability ')
+                        .replace(/SLA/g, 'deadline');
 
-                        <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
-                          {f.evidence_ids && f.evidence_ids.length > 0 && (
-                            <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-slate-500">Evidence:</span>
-                              {f.evidence_ids.map((id) => (
-                                <EvidenceChip key={id} evidenceId={id} />
-                              ))}
+                      const cveMatch = f.title.match(/(CVE-\d{4}-\d+)/i);
+                      const cveId = cveMatch ? cveMatch[1] : null;
+
+                      return (
+                        <div
+                          key={f.finding_id}
+                          className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                            idx > 0 ? 'pt-3' : ''
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 shrink-0">
+                              <SeverityTag severity={f.severity} />
                             </div>
-                          )}
-                          <StatusPill status={f.status} />
+                            <div>
+                              <h4 className="text-xs font-semibold text-slate-900">{cleanTitle}</h4>
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[11px] text-slate-500">
+                                {cveId && (
+                                  <span className="font-mono font-medium text-slate-700 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
+                                    {cveId}
+                                  </span>
+                                )}
+                                <span>
+                                  Control:{' '}
+                                  <strong className="text-slate-800 font-medium">
+                                    {ctrl ? ctrl.title : f.control_id}
+                                  </strong>{' '}
+                                  {ctrl && (
+                                    <span className="font-mono text-slate-500 text-[10px]">
+                                      ({f.control_id})
+                                    </span>
+                                  )}
+                                </span>
+                                <span>·</span>
+                                <span className="font-mono text-slate-400">ID: {f.finding_id}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                            {f.evidence_ids && f.evidence_ids.length > 0 && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-slate-500 font-medium">Affected System:</span>
+                                {f.evidence_ids.map((id) => (
+                                  <EvidenceChip key={id} evidenceId={id} />
+                                ))}
+                              </div>
+                            )}
+                            <StatusPill status={f.status} />
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -311,4 +339,3 @@ export const FindingsPage: React.FC<FindingsPageProps> = ({ findings }) => {
     </div>
   );
 };
-

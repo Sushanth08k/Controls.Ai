@@ -30,44 +30,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const navigate = useNavigate();
   const [modalControl, setModalControl] = useState<ControlDefinitionDTO | null>(null);
 
-  // Exactly 4 Control Testing Metrics
+  // Control Testing Metrics
   const totalControls = controls.length;
   const testsRun = runs.length;
   const pendingApprovals = gates.filter((g) => g.status === 'pending').length;
-  const openFindings = findings.filter(
-    (f) => f.status === 'open' || !f.status || f.status === 'active'
-  ).length;
-  const criticalFindings = findings.filter((f) => f.severity === 'critical' || f.severity === 'high');
 
-  // Helper to determine control testing status
-  const getControlStatus = (controlId: string): string => {
-    const controlRuns = runs.filter((r) => r.control_id === controlId);
-    if (controlRuns.length === 0) return 'Not Tested';
-    const latest = controlRuns[0];
-    if (latest.status === 'running') return 'Running';
-    if (latest.status === 'failed' || (latest.failed !== undefined && latest.failed > 0)) return 'Failed';
-    if (
-      latest.status === 'completed' ||
-      latest.status === 'CLEANED' ||
-      latest.status === 'VERIFIED' ||
-      latest.status === 'APPROVED'
-    ) {
-      return 'Passed';
-    }
-    return 'Passed';
-  };
-
-  // Find default archival control (Archetype D) or first available control
-  const defaultControl =
-    controls.find((c) => c.archetype === 'D') || controls[0] || null;
-
-  const handleStartRun = () => {
-    if (defaultControl) {
-      setModalControl(defaultControl);
-    } else {
-      navigate('/controls');
-    }
-  };
+  // Unresolved open findings calculation
+  const unresolvedFindings = findings.filter((f) => {
+    const s = (f.status || '').toUpperCase();
+    return s === 'OPEN' || s === 'ACTIVE' || (!['PATCHED', 'RESOLVED', 'CLOSED'].includes(s) && s !== '');
+  });
+  const openFindingsCount = unresolvedFindings.length;
+  const openHighCriticalCount = unresolvedFindings.filter((f) => {
+    const sev = (f.severity || '').toLowerCase();
+    return sev === 'high' || sev === 'critical';
+  }).length;
 
   return (
     <div className="space-y-6">
@@ -76,7 +53,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Real-time compliance telemetry, deterministic verification, and automated controls audit.
+            Overview of controls, test runs, and security findings.
           </p>
         </div>
 
@@ -95,7 +72,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
           <button
             type="button"
-            onClick={handleStartRun}
+            onClick={() => navigate('/policies')}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-xs sm:text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4 stroke-[2.5]" />
@@ -104,7 +81,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* 4 Real Control Testing Metrics Cards */}
+      {/* 4 Control Testing Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Controls */}
         <div
@@ -218,7 +195,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
 
-        {/* Card 5: Open Findings */}
+        {/* Card 4: Open Findings */}
         <div
           onClick={() => navigate('/findings')}
           className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
@@ -228,7 +205,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="flex items-center gap-2">
                 <div
                   className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                    criticalFindings.length > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
+                    openHighCriticalCount > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
                   }`}
                 >
                   <AlertTriangle className="w-4 h-4" />
@@ -242,34 +219,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             <div className="mt-3.5 flex items-baseline justify-between">
               <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
-                {openFindings}
+                {openFindingsCount}
               </span>
               <span
                 className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  criticalFindings.length > 0
+                  openHighCriticalCount > 0
                     ? 'bg-rose-50 text-rose-700 border border-rose-200'
                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                 }`}
               >
-                {criticalFindings.length > 0 ? `${criticalFindings.length} High/Crit` : 'Zero High Risk'}
+                High/Critical: {openHighCriticalCount}
               </span>
             </div>
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Discovered exceptions</span>
+            <span>Issues requiring attention</span>
             <span>View findings →</span>
           </div>
         </div>
       </div>
 
-      {/* 4 Active Compliance Controls & Workflows */}
+      {/* Controls Section */}
       <div className="space-y-3 pt-2">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-slate-900 tracking-tight">Active Controls & Workflows</h3>
+            <h3 className="text-base font-bold text-slate-900 tracking-tight">Controls</h3>
             <p className="text-xs text-slate-500">
-              Select any control and click Run to launch its interactive verification workflow.
+              Run a control to perform its automated test.
             </p>
           </div>
           <button
@@ -294,8 +271,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                     </span>
                     <h3 className="text-sm font-semibold text-slate-900">{c.title}</h3>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <StatusPill status={getControlStatus(c.control_id)} />
+                  <div className="shrink-0">
                     <ArchetypeBadge archetype={c.archetype} />
                   </div>
                 </div>
@@ -327,7 +303,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   <button
                     onClick={() => setModalControl(c)}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
-                    title={`Run ${c.control_id} workflow`}
+                    title={`Run ${c.control_id} test`}
                   >
                     <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
                     <span>Run</span>
@@ -358,25 +334,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500 font-medium">
-                <th className="pb-3 font-semibold">Run ID</th>
-                <th className="pb-3 font-semibold">Control ID</th>
-                <th className="pb-3 font-semibold">Testing Method</th>
-                <th className="pb-3 font-semibold">Status</th>
-                <th className="pb-3 font-semibold">Data Checked</th>
-                <th className="pb-3 font-semibold">Started</th>
+                <th className="py-2.5 font-semibold">Run ID</th>
+                <th className="py-2.5 font-semibold">Control ID</th>
+                <th className="py-2.5 font-semibold">Testing Method</th>
+                <th className="py-2.5 font-semibold">Status</th>
+                <th className="py-2.5 font-semibold">Data Checked</th>
+                <th className="py-2.5 font-semibold">Started</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {runs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-slate-400">
-                    No runs recorded yet. Click "+ Upload Policy" to start a new run.
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                    No control runs recorded yet. Click "Run" on any control above to start.
                   </td>
                 </tr>
               ) : (
                 runs.slice(0, 5).map((r) => (
-                  <tr key={r.run_id} className="hover:bg-slate-50 transition-colors">
-                    <td className="py-3 font-mono text-slate-700">{r.run_id}</td>
+                  <tr key={r.run_id} className="hover:bg-slate-50/50">
+                    <td className="py-3 font-mono text-slate-700 font-semibold">{r.run_id}</td>
                     <td className="py-3 font-mono text-emerald-800 font-semibold">{r.control_id}</td>
                     <td className="py-3">
                       <ArchetypeBadge archetype={r.archetype} />
@@ -396,13 +372,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* Security & Integrity Findings Preview */}
+      {/* Recent Security Findings */}
       {findings.length > 0 && (
         <div className="bg-white rounded-xl p-5 border border-slate-200/90 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-sm font-semibold text-slate-900">Security & Integrity Findings</h3>
-              <p className="text-xs text-slate-500">Findings derived from deterministic rule evaluation</p>
+              <h3 className="text-sm font-semibold text-slate-900">Recent Security Findings</h3>
+              <p className="text-xs text-slate-500">Issues identified during control testing.</p>
             </div>
             <button
               onClick={() => navigate('/findings')}
@@ -412,28 +388,54 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
           </div>
 
-          <div className="space-y-2">
-            {findings.slice(0, 3).map((f) => (
-              <div
-                key={f.finding_id}
-                className="flex items-center justify-between p-3 rounded-lg bg-slate-50 border border-slate-200"
-              >
-                <div className="flex items-center gap-3">
-                  <SeverityTag severity={f.severity} />
-                  <div>
-                    <span className="text-xs font-semibold text-slate-900 block">{f.title}</span>
-                    <span className="text-[11px] text-slate-500 font-mono">
-                      Control: {f.control_id} · Run: {f.run_id}
-                    </span>
+          <div className="space-y-2.5">
+            {findings.slice(0, 3).map((f) => {
+              const ctrl = controls.find((c) => c.control_id === f.control_id);
+              const ctrlTitle = ctrl ? ctrl.title : f.control_id;
+
+              const cleanTitle = f.title
+                .replace(/^(Critical|High|Medium|Low)\s+vulnerability\s+/i, 'Vulnerability ')
+                .replace(/SLA/g, 'deadline');
+
+              const cveMatch = f.title.match(/(CVE-\d{4}-\d+)/i);
+              const cveId = cveMatch ? cveMatch[1] : null;
+
+              return (
+                <div
+                  key={f.finding_id}
+                  className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 shrink-0">
+                      <SeverityTag severity={f.severity} />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-slate-900 block">
+                        {cleanTitle}
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-500">
+                        {cveId && (
+                          <span className="font-mono font-medium text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                            {cveId}
+                          </span>
+                        )}
+                        <span>{ctrlTitle}</span>
+                        <span>·</span>
+                        <span className="capitalize">
+                          Status: <strong className="font-medium text-slate-700">{f.status || 'Open'}</strong>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+                    {f.evidence_ids.map((id) => (
+                      <EvidenceChip key={id} evidenceId={id} />
+                    ))}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {f.evidence_ids.map((id) => (
-                    <EvidenceChip key={id} evidenceId={id} />
-                  ))}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
