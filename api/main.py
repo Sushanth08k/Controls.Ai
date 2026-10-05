@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from api.routers import controls, evidence, findings, gates, health, interactive, runs, vulnerability
 from api.sse import sse_broker
-from sim.database import seed_databases
+from sim.database import init_real_databases, seed_databases
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # Ensure SQLite databases and baseline records exist upon startup on Render / cloud platforms
     try:
-        seed_databases()
+        init_real_databases()
         logger.info("Database schemas and seed data initialized successfully.")
     except Exception as e:
         logger.warning(f"Database auto-seeding warning on startup: {e}")

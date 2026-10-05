@@ -704,3 +704,8 @@ def get_live_table_rows(table_name: str = "source_transactions", limit: int = 10
 
     return rows
 
+
+# Convenience alias for cloud deployment and startup initializers
+seed_databases = init_real_databases
+
+
