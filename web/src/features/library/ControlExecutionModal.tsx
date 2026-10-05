@@ -13,10 +13,12 @@ import {
   uploadPolicyDocument,
   resumeInteractiveRun,
   fetchRunAudit,
+  UploadedPolicyDTO,
 } from '../../api/client';
 import {
   X,
   Upload,
+  FolderOpen,
   ShieldCheck,
   CheckCircle2,
   AlertTriangle,
@@ -33,6 +35,7 @@ import {
   Database,
   Clock,
 } from 'lucide-react';
+import { SelectExistingPolicyModal } from './SelectExistingPolicyModal';
 
 interface ControlExecutionModalProps {
   control: ControlDefinitionDTO;
@@ -63,8 +66,19 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
   const [fileName, setFileName] = useState<string>(initialFileName || 'policy_spec.txt');
   const [policyId, setPolicyId] = useState<string | null>(initialPolicyId || null);
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  const [selectedNotice, setSelectedNotice] = useState<string | null>(null);
+  const [showExistingPolicyModal, setShowExistingPolicyModal] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleSelectExistingPolicy = (selected: UploadedPolicyDTO) => {
+    setPolicyText(selected.policy_text);
+    setFileName(selected.filename);
+    setPolicyId(selected.policy_id);
+    setDuplicateNotice(null);
+    setSelectedNotice(`Loaded existing policy "${selected.filename}" (ID: ${selected.policy_id})`);
+    setTimeout(() => setSelectedNotice(null), 5000);
+  };
 
   // Run execution state
   const [runId, setRunId] = useState<string>(initialRunId || 'RUN-062b4c91');
@@ -647,19 +661,61 @@ AND legal_hold = 0;`,
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label className="border-2 border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-colors bg-white">
-                  <Upload className="w-7 h-7 text-emerald-600 mb-2" />
+              {selectedNotice && (
+                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs flex items-center justify-between gap-2 shadow-2xs animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="font-bold text-emerald-950">Selected policy document: </span>
+                      <span>{selectedNotice}</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedNotice(null)}
+                    className="text-emerald-700 hover:text-emerald-900 text-xs font-semibold px-2 py-1 cursor-pointer"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Upload Specification File */}
+                <label className="border-2 border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all bg-white hover:bg-emerald-50/20 group text-center shadow-xs">
+                  <Upload className="w-7 h-7 text-emerald-600 mb-2 group-hover:scale-105 transition-transform" />
                   <span className="text-xs font-semibold text-slate-800">Upload Specification File</span>
                   <span className="text-[11px] text-slate-500 mt-0.5">PDF, Word (DOCX), Markdown, or TXT</span>
                   <input type="file" onChange={handleFileUpload} className="hidden" accept=".pdf,.docx,.doc,.txt,.md,.rtf,.csv" />
                 </label>
+
+                {/* 2. Select Existing Policy Docs */}
+                <button
+                  type="button"
+                  onClick={() => setShowExistingPolicyModal(true)}
+                  className="border-2 border-dashed border-slate-300 hover:border-emerald-600 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all bg-white hover:bg-emerald-50/20 group text-center shadow-xs"
+                >
+                  <FolderOpen className="w-7 h-7 text-emerald-600 mb-2 group-hover:scale-105 transition-transform" />
+                  <span className="text-xs font-semibold text-slate-800">Select Existing Policy Docs</span>
+                  <span className="text-[11px] text-slate-500 mt-0.5">Choose from uploaded library</span>
+                </button>
+
+                {/* 3. Active Specification */}
                 <div className="p-5 rounded-xl bg-white border border-slate-200 flex flex-col justify-between shadow-xs">
                   <div>
-                    <span className="text-[11px] font-mono text-emerald-700 font-semibold block mb-1">Active Specification:</span>
-                    <span className="text-xs font-bold text-slate-900 block truncate">{fileName}</span>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-mono text-emerald-700 font-semibold block">Active Specification:</span>
+                      {policyId && (
+                        <span className="text-[10px] font-mono bg-emerald-50 text-emerald-800 px-1.5 py-0.5 rounded border border-emerald-200 truncate max-w-[130px]" title={policyId}>
+                          {policyId}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-bold text-slate-900 block truncate" title={fileName}>{fileName}</span>
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono">Source: Approved Compliance Repository</span>
+                  <span className="text-[10px] text-slate-500 font-mono mt-2">
+                    Source: {policyId ? 'Policy Repository (Selected)' : 'Approved Compliance Repository'}
+                  </span>
                 </div>
               </div>
 
@@ -1680,6 +1736,16 @@ AND legal_hold = 0;`,
 
         </div>
       </div>
+
+      {/* Select Existing Policy Document Modal */}
+      <SelectExistingPolicyModal
+        isOpen={showExistingPolicyModal}
+        onClose={() => setShowExistingPolicyModal(false)}
+        onSelectPolicy={handleSelectExistingPolicy}
+        currentControlId={control.control_id}
+        currentPolicyId={policyId}
+        themeColor="emerald"
+      />
     </div>
   );
 };
