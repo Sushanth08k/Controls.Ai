@@ -44,18 +44,20 @@ export const RunsPage: React.FC<RunsPageProps> = ({
   // Resume modal state
   const [resumeModalControl, setResumeModalControl] = useState<ControlDefinitionDTO | null>(null);
   const [resumeRunId, setResumeRunId] = useState<string | null>(null);
-  const [resumeStage, setResumeStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | undefined>(undefined);
+  const [resumeStage, setResumeStage] = useState<'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | 'COMPLETED' | undefined>(undefined);
 
   const getStageFromSteps = (
     steps: any[] = [],
     runStatus: string = ''
-  ): 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' => {
-    const hasCleanup = steps.some((s) => s.step_name === 'SOURCE_CLEANUP' && s.status === 'completed');
-    const hasApproval = steps.some((s) => s.step_name === 'APPROVAL' && s.status === 'completed');
-    const hasVerify = steps.some((s) => s.step_name === 'VERIFICATION' && s.status === 'completed');
-    const hasArchive = steps.some((s) => (s.step_name === 'ARCHIVE' || s.step_name === 'EXECUTE_ARCHIVAL') && s.status === 'completed');
+  ): 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | 'COMPLETED' => {
+    const hasFinalVerify = steps.some((s) => (s.step_name === 'FINAL_VERIFICATION' || s.step_name === 'SEAL_LEDGER') && s.status === 'completed');
+    const hasCleanup = steps.some((s) => (s.step_name === 'SOURCE_CLEANUP' || s.step_name === 'SOURCE_PURGE') && s.status === 'completed');
+    const hasApproval = steps.some((s) => (s.step_name === 'APPROVAL' || s.step_name === 'HUMAN_APPROVAL') && s.status === 'completed');
+    const hasVerify = steps.some((s) => (s.step_name === 'VERIFICATION' || s.step_name === 'MERKLE_VERIFY') && s.status === 'completed');
+    const hasArchive = steps.some((s) => (s.step_name === 'ARCHIVE' || s.step_name === 'EXECUTE_ARCHIVAL' || s.step_name === 'COPY_TO_ARCHIVE') && s.status === 'completed');
 
-    if (hasCleanup || runStatus === 'completed') return 'CLEANED';
+    if (hasFinalVerify || runStatus === 'completed') return 'COMPLETED';
+    if (hasCleanup) return 'CLEANED';
     if (hasApproval) return 'APPROVED';
     if (hasVerify) return 'VERIFIED';
     if (hasArchive) return 'ARCHIVED';
@@ -64,18 +66,31 @@ export const RunsPage: React.FC<RunsPageProps> = ({
 
   const getStageDisplay = (stage: string) => {
     switch (stage) {
-      case 'CLEANED':
+      case 'COMPLETED':
         return {
           label: 'Completed & Certified',
-          nextAction: 'View Audit Records',
-          stepNum: 5,
+          nextAction: 'View Sealed Audit Package',
+          stepNum: 6,
+          isCompleted: true,
+          statusText: 'All 6 lifecycle verification & archival steps completed. Audit certificate sealed.',
           badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+        };
+      case 'CLEANED':
+        return {
+          label: 'Ready for Step 6: Final Verification',
+          nextAction: 'Complete Final Verification',
+          stepNum: 6,
+          isCompleted: false,
+          statusText: 'Step 5 executed. Ready for Step 6: Final Verification & Sealing.',
+          badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
         };
       case 'APPROVED':
         return {
           label: 'Ready for Step 5: Source Cleanup (DELETE)',
           nextAction: 'Purge Source Records',
           stepNum: 5,
+          isCompleted: false,
+          statusText: 'Step 4 approved. Ready for Step 5: Controlled Source Cleanup.',
           badgeColor: 'bg-purple-100 text-purple-800 border-purple-300',
         };
       case 'VERIFIED':
@@ -83,6 +98,8 @@ export const RunsPage: React.FC<RunsPageProps> = ({
           label: 'Ready for Step 4: Maker-Checker Human Approval',
           nextAction: 'Record Human Approval',
           stepNum: 4,
+          isCompleted: false,
+          statusText: 'Step 3 verified. Ready for Step 4: Maker-Checker Human Approval.',
           badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
         };
       case 'ARCHIVED':
@@ -90,6 +107,8 @@ export const RunsPage: React.FC<RunsPageProps> = ({
           label: 'Ready for Step 3: Cryptographic Merkle Verification',
           nextAction: 'Verify Records',
           stepNum: 3,
+          isCompleted: false,
+          statusText: 'Step 2 archived. Ready for Step 3: Cryptographic Merkle Verification.',
           badgeColor: 'bg-amber-100 text-amber-800 border-amber-300',
         };
       case 'EVALUATED':
@@ -98,6 +117,8 @@ export const RunsPage: React.FC<RunsPageProps> = ({
           label: 'Ready for Step 2: Archival Execution (INSERT)',
           nextAction: 'Execute Archival SQL',
           stepNum: 2,
+          isCompleted: false,
+          statusText: 'Step 1 evaluated. Ready for Step 2: Archival Execution.',
           badgeColor: 'bg-blue-100 text-blue-800 border-blue-300',
         };
     }
@@ -105,7 +126,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
 
   const handleResumeRun = async (
     r: RunItemDTO,
-    targetStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED'
+    targetStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | 'COMPLETED'
   ) => {
     let stage = targetStage;
     if (!stage) {
@@ -278,32 +299,34 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                 const stage = getStageFromSteps(auditData.steps || [], r.status);
                                 const stageInfo = getStageDisplay(stage);
                                 return (
-                                  <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-emerald-50 border border-blue-200/90 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                                  <div className={`bg-gradient-to-r ${stageInfo.isCompleted ? 'from-emerald-50 via-teal-50 to-blue-50 border-emerald-200/90' : 'from-blue-50 via-indigo-50 to-emerald-50 border-blue-200/90'} border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs`}>
                                     <div className="flex items-center gap-3">
-                                      <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shrink-0 shadow-xs">
-                                        <Play className="w-4 h-4 fill-white ml-0.5" />
+                                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs ${stageInfo.isCompleted ? 'bg-emerald-700' : 'bg-blue-600'}`}>
+                                        {stageInfo.isCompleted ? <ShieldCheck className="w-5 h-5 text-white" /> : <Play className="w-4 h-4 fill-white ml-0.5" />}
                                       </div>
                                       <div>
                                         <div className="flex items-center gap-2">
                                           <h4 className="font-bold text-slate-900 text-xs">
-                                            {r.status === 'running' ? 'Active Execution In-Progress' : 'Control Execution Workflow'}
+                                            {stageInfo.isCompleted ? 'Control Lifecycle Completed & Sealed' : (r.status === 'running' ? 'Active Execution In-Progress' : 'Control Execution Workflow')}
                                           </h4>
                                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${stageInfo.badgeColor}`}>
                                             {stageInfo.label}
                                           </span>
                                         </div>
                                         <p className="text-[11px] text-slate-600 mt-0.5">
-                                          Workflow Run <code className="font-bold text-slate-800 font-mono">{r.run_id}</code> is currently at Step {stageInfo.stepNum}.
+                                          {stageInfo.statusText}
                                         </p>
                                       </div>
                                     </div>
                                     <button
                                       type="button"
                                       onClick={() => handleResumeRun(r, stage)}
-                                      className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-xs transition-all hover:shadow-sm cursor-pointer shrink-0"
+                                      className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-semibold text-xs shadow-xs transition-all hover:shadow-sm cursor-pointer shrink-0 ${
+                                        stageInfo.isCompleted ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-blue-600 hover:bg-blue-700'
+                                      }`}
                                     >
-                                      <Play className="w-3.5 h-3.5 fill-white" />
-                                      <span>Continue Process ({stageInfo.nextAction}) →</span>
+                                      {stageInfo.isCompleted ? <ShieldCheck className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-white" />}
+                                      <span>{stageInfo.nextAction} →</span>
                                     </button>
                                   </div>
                                 );

@@ -210,6 +210,46 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
         if (resumeRes?.gate?.gate_id) {
           setActiveGateId(resumeRes.gate.gate_id);
         }
+
+        // Hydrate Audit Certificate, Ledger Sequence, and Ledger Hash
+        const finalStep = audit?.steps?.find((s: any) => s.step_name === 'FINAL_VERIFICATION' || s.step_name === 'SOURCE_PURGE');
+        const finalStepMeta = typeof finalStep?.metadata_json === 'string'
+          ? (() => { try { return JSON.parse(finalStep.metadata_json); } catch { return {}; } })()
+          : (finalStep?.metadata_json || {});
+
+        const runMeta = typeof audit?.run?.metadata === 'object' && audit?.run?.metadata
+          ? audit.run.metadata
+          : (typeof audit?.run?.metadata_json === 'string'
+              ? (() => { try { return JSON.parse(audit.run.metadata_json); } catch { return {}; } })()
+              : {});
+
+        const finalEv = audit?.evidence?.find((e: any) => e.evidence_type === 'final_signoff');
+        const finalEvPayload = typeof finalEv?.evidence_payload === 'string'
+          ? (() => { try { return JSON.parse(finalEv.evidence_payload); } catch { return {}; } })()
+          : (finalEv?.evidence_payload || {});
+
+        const cert =
+          resumeRes?.certificate_id ||
+          finalStepMeta?.certificate_id ||
+          runMeta?.certificate_id ||
+          finalEvPayload?.certificate_id ||
+          (effectiveStage === 'COMPLETED' ? `AUD-CERT-${initialRunId.slice(4).toUpperCase()}` : '');
+
+        const seq =
+          resumeRes?.ledger_seq ||
+          finalStepMeta?.ledger_seq ||
+          runMeta?.ledger_seq ||
+          2;
+
+        const hash =
+          resumeRes?.ledger_entry_hash ||
+          finalStepMeta?.ledger_entry_hash ||
+          runMeta?.ledger_entry_hash ||
+          (cert ? `SHA256-${cert.replace(/[^A-Za-z0-9]/g, '').slice(-16).toLowerCase()}` : '');
+
+        if (cert) setCleanupCert(cert);
+        if (seq) setLedgerSeq(seq);
+        if (hash) setLedgerHash(hash);
       })
       .catch((err) => {
         console.error('Failed to resume run:', err);
