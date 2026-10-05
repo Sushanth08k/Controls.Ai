@@ -100,6 +100,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
                 <ApprovalsPage
                   gates={gates}
                   controls={controls}
+                  runs={runs}
                   currentUser={currentUser}
                   onDecideGate={handleDecideGate}
                   onRefresh={loadData}

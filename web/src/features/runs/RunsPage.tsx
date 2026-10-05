@@ -211,13 +211,13 @@ export const RunsPage: React.FC<RunsPageProps> = ({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold">
-                <th className="py-3 px-4">Run ID</th>
-                <th className="py-3 px-3">Control ID</th>
-                <th className="py-3 px-3">Testing Method</th>
-                <th className="py-3 px-3">Status</th>
-                <th className="py-3 px-3">Data Checked</th>
-                <th className="py-3 px-3">Started</th>
-                <th className="py-3 px-4 text-right">Details</th>
+                <th className="py-3 px-4 w-[130px] whitespace-nowrap">Run ID</th>
+                <th className="py-3 px-3 w-[220px]">Control ID</th>
+                <th className="py-3 px-3 w-[160px] whitespace-nowrap">Testing Method</th>
+                <th className="py-3 px-3 w-[110px]">Status</th>
+                <th className="py-3 px-3 min-w-[200px]">Data Checked</th>
+                <th className="py-3 px-3 w-[180px] whitespace-nowrap">Started</th>
+                <th className="py-3 px-4 w-[130px] text-right">Details</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -233,31 +233,33 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                         isExpanded ? 'bg-blue-50/40 border-l-4 border-l-blue-600' : ''
                       }`}
                     >
-                      <td className="py-3 px-4 font-mono text-slate-800 font-semibold">{r.run_id}</td>
+                      <td className="py-3 px-4 font-mono text-slate-800 font-semibold whitespace-nowrap">{r.run_id}</td>
                       <td className="py-3 px-3">
                         <div className="font-mono text-blue-600 font-bold">{r.control_id}</div>
                         {matchedCtrl && (
-                          <div className="text-[11px] text-slate-500 truncate max-w-[180px]" title={matchedCtrl.title}>
+                          <div className="text-[11px] text-slate-500 truncate max-w-[210px]" title={matchedCtrl.title}>
                             {matchedCtrl.title}
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-3">
+                      <td className="py-3 px-3 whitespace-nowrap">
                         <ArchetypeBadge archetype={r.archetype} />
                       </td>
-                      <td className="py-3 px-3">
+                      <td className="py-3 px-3 whitespace-nowrap">
                         <StatusPill status={r.status} />
                       </td>
                       <td className="py-3 px-3 text-slate-600 font-medium">
-                        <div>{r.targets.join(', ') || 'Default'}</div>
+                        <div className="truncate max-w-[320px]" title={r.targets.join(', ') || 'Default'}>
+                          {r.targets.join(', ') || 'Default'}
+                        </div>
                         {r.policy_filename && (
-                          <div className="text-[10px] text-slate-500 font-mono truncate max-w-[160px] flex items-center gap-1 mt-0.5" title={`Policy: ${r.policy_filename}`}>
+                          <div className="text-[10px] text-slate-500 font-mono truncate max-w-[300px] flex items-center gap-1 mt-0.5" title={`Policy: ${r.policy_filename}`}>
                             <FileText className="w-2.5 h-2.5 text-blue-500 shrink-0" />
                             <span className="truncate">{r.policy_filename}</span>
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-3 text-slate-500 font-mono text-[11px]">
+                      <td className="py-3 px-3 text-slate-500 font-mono text-[11px] whitespace-nowrap">
                         <div>{new Date(r.started_at).toLocaleString()}</div>
                         {r.completed_at && (
                           <div className="text-[10px] text-slate-400">
@@ -265,7 +267,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-2">
                           <button
                             type="button"

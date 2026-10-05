@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GateItemDTO, UserSessionDTO } from '../types';
+import { GateItemDTO, UserSessionDTO, RunItemDTO } from '../types';
 import { StatusPill } from './StatusPill';
 import { ShieldAlert, CheckCircle2, XCircle, AlertTriangle, User, ArrowRight } from 'lucide-react';
 
@@ -8,9 +8,10 @@ interface GateCardProps {
   currentUser: UserSessionDTO;
   onDecide: (gateId: string, decision: 'approved' | 'rejected', comment: string) => Promise<void>;
   onResumeRun?: (gate: GateItemDTO) => void;
+  run?: RunItemDTO;
 }
 
-export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide, onResumeRun }) => {
+export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide, onResumeRun, run }) => {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -144,15 +145,28 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
               "{gate.comment}"
             </p>
           )}
-          {gate.status === 'approved' && onResumeRun && (
-            <div className="mt-2.5 pt-2 border-t border-slate-200 flex justify-end">
-              <button
-                onClick={() => onResumeRun(gate)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all shadow-xs"
-              >
-                <ArrowRight className="w-3.5 h-3.5" />
-                Resume Run (Step 5)
-              </button>
+          {gate.status === 'approved' && (
+            <div className="mt-2.5 pt-2 border-t border-slate-200 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500 font-medium">Run execution:</span>
+              {run?.status === 'completed' ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  Run Completed
+                </span>
+              ) : run?.status === 'failed' ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200">
+                  <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                  Run Failed
+                </span>
+              ) : onResumeRun ? (
+                <button
+                  onClick={() => onResumeRun(gate)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all shadow-xs cursor-pointer"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  Resume Run (Step 5)
+                </button>
+              ) : null}
             </div>
           )}
         </div>

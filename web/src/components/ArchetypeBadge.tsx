@@ -18,7 +18,7 @@ export const ArchetypeBadge: React.FC<ArchetypeBadgeProps> = ({ archetype }) => 
   const conf = ARCHETYPE_CONFIG[archetype] || { title: archetype, color: 'bg-slate-100 text-slate-700 border-slate-200' };
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${conf.color}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold whitespace-nowrap border ${conf.color}`}>
       <span>{conf.title}</span>
     </span>
   );

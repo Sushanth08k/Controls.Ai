@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GateItemDTO, UserSessionDTO, ControlDefinitionDTO } from '../../types';
+import { GateItemDTO, UserSessionDTO, ControlDefinitionDTO, RunItemDTO } from '../../types';
 import { GateCard } from '../../components/GateCard';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { ShieldCheck, Info } from 'lucide-react';
@@ -9,6 +9,7 @@ interface ApprovalsPageProps {
   currentUser: UserSessionDTO;
   onDecideGate: (gateId: string, decision: 'approved' | 'rejected', comment: string) => Promise<void>;
   controls?: ControlDefinitionDTO[];
+  runs?: RunItemDTO[];
   onRefresh?: () => void;
 }
 
@@ -17,6 +18,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
   currentUser,
   onDecideGate,
   controls,
+  runs,
   onRefresh,
 }) => {
   const [resumingGate, setResumingGate] = useState<GateItemDTO | null>(null);
@@ -69,6 +71,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
               <GateCard
                 key={gate.gate_id}
                 gate={gate}
+                run={runs?.find((r) => r.run_id === gate.run_id)}
                 currentUser={currentUser}
                 onDecide={onDecideGate}
                 onResumeRun={(g) => setResumingGate(g)}
@@ -87,6 +90,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
               <GateCard
                 key={gate.gate_id}
                 gate={gate}
+                run={runs?.find((r) => r.run_id === gate.run_id)}
                 currentUser={currentUser}
                 onDecide={onDecideGate}
                 onResumeRun={(g) => setResumingGate(g)}
