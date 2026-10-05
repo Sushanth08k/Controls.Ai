@@ -6,7 +6,7 @@ import { SeverityTag } from '../../components/SeverityTag';
 import { EvidenceChip } from '../../components/EvidenceChip';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
-import { Plus, ArrowUpRight, Play, PlayCircle, Shield, CheckCircle2, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, ArrowUpRight, Play, PlayCircle, Shield, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatFrequency } from '../../utils/formatFrequency';
 
@@ -30,17 +30,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const navigate = useNavigate();
   const [modalControl, setModalControl] = useState<ControlDefinitionDTO | null>(null);
 
-  // Exactly 5 Control Testing Metrics
+  // Exactly 4 Control Testing Metrics
   const totalControls = controls.length;
   const testsRun = runs.length;
-  const testsPassed = runs.filter(
-    (r) =>
-      r.status === 'completed' ||
-      r.status === 'CLEANED' ||
-      r.status === 'VERIFIED' ||
-      (r.status !== 'failed' && r.status !== 'blocked' && (r.failed ?? 0) === 0)
-  ).length;
-  const passRate = testsRun > 0 ? Math.round((testsPassed / testsRun) * 100) : 100;
   const pendingApprovals = gates.filter((g) => g.status === 'pending').length;
   const openFindings = findings.filter(
     (f) => f.status === 'open' || !f.status || f.status === 'active'
@@ -112,8 +104,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* 5 Real Control Testing Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* 4 Real Control Testing Metrics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Total Controls */}
         <div
           onClick={() => navigate('/controls')}
@@ -182,49 +174,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           </div>
         </div>
 
-        {/* Card 3: Tests Passed */}
-        <div
-          onClick={() => navigate('/runs')}
-          className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
-        >
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center">
-                  <CheckCircle2 className="w-4 h-4" />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Tests Passed
-                </span>
-              </div>
-              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
-            </div>
-
-            <div className="mt-3.5 flex items-baseline justify-between">
-              <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
-                {testsPassed}
-              </span>
-              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                {passRate}% Pass Rate
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 space-y-1.5">
-            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
-              <div
-                style={{ width: `${passRate}%` }}
-                className="bg-emerald-600 h-full rounded-full transition-all duration-500"
-              />
-            </div>
-            <div className="flex items-center justify-between text-[11px] text-slate-500 font-medium">
-              <span>{testsPassed} passed</span>
-              <span>{testsRun - testsPassed} other</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Pending Approvals */}
+        {/* Card 3: Pending Approvals */}
         <div
           onClick={() => navigate('/approvals')}
           className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
