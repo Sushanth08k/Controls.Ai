@@ -1,10 +1,13 @@
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO } from '../types';
 
+const envApiBase = (import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || '').replace(/\/+$/, '');
+
 export const API_BASE =
-  typeof window !== 'undefined' &&
+  envApiBase ||
+  (typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:8000'
-    : '/api';
+    : '');
 
 
 export async function fetchControls(): Promise<ControlDefinitionDTO[]> {

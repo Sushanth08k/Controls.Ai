@@ -1,20 +1,38 @@
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from api.routers import controls, evidence, findings, gates, health, interactive, runs, vulnerability
 from api.sse import sse_broker
+from sim.database import seed_databases
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Ensure SQLite databases and baseline records exist upon startup on Render / cloud platforms
+    try:
+        seed_databases()
+        logger.info("Database schemas and seed data initialized successfully.")
+    except Exception as e:
+        logger.warning(f"Database auto-seeding warning on startup: {e}")
+    yield
+
 
 app = FastAPI(
     title="Agentic Control Automation Platform BFF",
     version="1.0.0",
     docs_url="/docs",
     openapi_url="/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

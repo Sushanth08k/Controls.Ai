@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: controls-ai-backend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: LITELLM_MOCK
+        value: "0"
+      - key: LITELLM_FALLBACK_MOCK
+        value: "1"
+      - key: GEMINI_API_KEY
+        sync: false
