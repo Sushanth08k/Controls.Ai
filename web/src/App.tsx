@@ -7,13 +7,16 @@ import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { RunsPage } from './features/runs/RunsPage';
 import { FindingsPage } from './features/findings/FindingsPage';
 import { AuditTrailPage } from './features/audit/AuditTrailPage';
+import { AuthPage } from './features/auth/AuthPage';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from './types';
 import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, API_BASE } from './api/client';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, Shield } from 'lucide-react';
 
 interface AppLayoutProps {
   currentUser: UserSessionDTO;
-  setCurrentUser: (u: UserSessionDTO) => void;
+  onSwitchUser: (u: UserSessionDTO) => void;
+  onLogout: () => void;
   pendingCount: number;
   controls: ControlDefinitionDTO[];
   runs: RunItemDTO[];
@@ -27,7 +30,8 @@ interface AppLayoutProps {
 
 const AppLayout: React.FC<AppLayoutProps> = ({
   currentUser,
-  setCurrentUser,
+  onSwitchUser,
+  onLogout,
   pendingCount,
   controls,
   runs,
@@ -45,7 +49,8 @@ const AppLayout: React.FC<AppLayoutProps> = ({
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900 font-sans">
       <Navigation
         currentUser={currentUser}
-        onSwitchUser={setCurrentUser}
+        onSwitchUser={onSwitchUser}
+        onLogout={onLogout}
         pendingGatesCount={pendingCount}
       />
 
@@ -148,24 +153,21 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   );
 };
 
-export const App: React.FC = () => {
-  const [currentUser, setCurrentUser] = useState<UserSessionDTO>({
-    user_id: 'sec_reviewer_1',
-    roles: ['control_reviewer'],
-    email: 'sushanth@bank.internal',
-  });
+const AuthenticatedPlatform: React.FC = () => {
+  const { currentUser, switchRole, logout, loading: authLoading } = useAuth();
 
   const [controls, setControls] = useState<ControlDefinitionDTO[]>([]);
   const [runs, setRuns] = useState<RunItemDTO[]>([]);
   const [gates, setGates] = useState<GateItemDTO[]>([]);
   const [findings, setFindings] = useState<FindingDTO[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, setSseConnected] = useState(false);
 
   const loadData = async () => {
+    if (!currentUser) return;
     try {
-      setLoading(true);
+      setDataLoading(true);
       setError(null);
       const [c, r, g, f] = await Promise.all([
         fetchControls().catch(() => []),
@@ -180,16 +182,20 @@ export const App: React.FC = () => {
     } catch (err: any) {
       setError(err.message || 'Failed to load initial data');
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    if (currentUser) {
+      loadData();
+    }
   }, [currentUser]);
 
   // Realtime Server-Sent Events listener
   useEffect(() => {
+    if (!currentUser) return;
+
     const sse = new EventSource(`${API_BASE}/events`);
 
     sse.onopen = () => {
@@ -227,13 +233,14 @@ export const App: React.FC = () => {
     return () => {
       sse.close();
     };
-  }, []);
+  }, [currentUser]);
 
   const handleDecideGate = async (
     gateId: string,
     decision: 'approved' | 'rejected',
     comment: string
   ) => {
+    if (!currentUser) return;
     const result = await decideGate(
       gateId,
       decision,
@@ -247,23 +254,47 @@ export const App: React.FC = () => {
     );
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-300">
+        <div className="w-12 h-12 rounded-xl bg-[#0d281e] border border-[#204a37] flex items-center justify-center mb-4">
+          <Shield className="w-6 h-6 text-emerald-400 animate-pulse" />
+        </div>
+        <p className="text-sm font-semibold tracking-wide text-white">Authenticating Secure Session...</p>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return <AuthPage />;
+  }
+
   const pendingCount = gates.filter((g) => g.status === 'pending').length;
 
   return (
     <BrowserRouter>
       <AppLayout
         currentUser={currentUser}
-        setCurrentUser={setCurrentUser}
+        onSwitchUser={(user) => switchRole(user.roles[0])}
+        onLogout={logout}
         pendingCount={pendingCount}
         controls={controls}
         runs={runs}
         gates={gates}
         findings={findings}
-        loading={loading}
+        loading={dataLoading}
         error={error}
         loadData={loadData}
         handleDecideGate={handleDecideGate}
       />
     </BrowserRouter>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AuthenticatedPlatform />
+    </AuthProvider>
   );
 };
