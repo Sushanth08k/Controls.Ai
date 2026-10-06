@@ -452,3 +452,13 @@ class DraftControlDefinition(BaseContract):
             priority_inputs=PriorityInputs(frequency=1.0, manual_effort=2.0, risk=2.0, feasibility=3.0),
             rcm_ref="RCM-001",
         )
+
+
+class ComplianceSQLScript(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    selection_sql: str
+    archival_sql: str
+    cleanup_sql: str
+    generator: str = "ComplianceSQLAgent"
+    model: str = "gemini-1.5-flash"
+    schema_used: str = ""

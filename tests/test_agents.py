@@ -7,6 +7,7 @@ from agents.interpreter import InterpreterAgent
 from agents.onboarder import OnboarderAgent
 from agents.planner import PlannerAgent
 from agents.reporter import ReporterAgent
+from agents.sql_agent import ComplianceSQLAgent
 from contracts.models import (
     Challenge,
     DraftControlDefinition,
@@ -145,3 +146,26 @@ def test_mock_instances_completeness() -> None:
         assert hasattr(model_cls, "mock_instance"), f"{model_cls.__name__} missing mock_instance()"
         inst = model_cls.mock_instance()
         assert isinstance(inst, model_cls)
+
+
+def test_compliance_sql_agent() -> None:
+    agent = ComplianceSQLAgent()
+    # 1. Test Archival synthesis
+    arch_res = agent.synthesize(
+        control_id="CTL-ARCH-001",
+        run_id="run-test-arch",
+        retention_years=5,
+    )
+    assert arch_res["agent"] == "ComplianceSQLAgent"
+    assert "selection_sql" in arch_res
+    assert "archival_sql" in arch_res
+    assert "cleanup_sql" in arch_res
+
+    # 2. Test Vulnerability synthesis
+    vuln_res = agent.synthesize(
+        control_id="CTL-VULN-001",
+        run_id="run-test-vuln",
+    )
+    assert vuln_res["agent"] == "ComplianceSQLAgent"
+    assert "selection_sql" in vuln_res
+    assert "database_users" in vuln_res["selection_sql"] or "SELECT" in vuln_res["selection_sql"]
