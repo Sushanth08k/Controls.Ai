@@ -10,10 +10,17 @@ export const API_BASE =
     : '');
 
 
+export const isTargetControl = (val?: string): boolean => {
+  if (!val) return false;
+  const s = val.toLowerCase();
+  return s.includes('arch') || s.includes('vuln') || s.includes('vulnerability');
+};
+
 export async function fetchControls(): Promise<ControlDefinitionDTO[]> {
   const res = await fetch(`${API_BASE}/controls`);
   if (!res.ok) throw new Error(`Failed to fetch controls: ${res.statusText}`);
-  return res.json();
+  const data: ControlDefinitionDTO[] = await res.json();
+  return data.filter((c) => isTargetControl(c.control_id) || isTargetControl(c.title));
 }
 
 export async function fetchGates(userId?: string, roles?: string[]): Promise<GateItemDTO[]> {
@@ -23,7 +30,8 @@ export async function fetchGates(userId?: string, roles?: string[]): Promise<Gat
 
   const res = await fetch(`${API_BASE}/gates`, { headers });
   if (!res.ok) throw new Error(`Failed to fetch gates: ${res.statusText}`);
-  return res.json();
+  const data: GateItemDTO[] = await res.json();
+  return data.filter((g) => !g.control_id || isTargetControl(g.control_id));
 }
 
 export async function decideGate(
@@ -53,13 +61,15 @@ export async function decideGate(
 export async function fetchRuns(): Promise<RunItemDTO[]> {
   const res = await fetch(`${API_BASE}/runs`);
   if (!res.ok) throw new Error(`Failed to fetch runs: ${res.statusText}`);
-  return res.json();
+  const data: RunItemDTO[] = await res.json();
+  return data.filter((r) => !r.control_id || isTargetControl(r.control_id));
 }
 
 export async function fetchFindings(): Promise<FindingDTO[]> {
   const res = await fetch(`${API_BASE}/findings`);
   if (!res.ok) throw new Error(`Failed to fetch findings: ${res.statusText}`);
-  return res.json();
+  const data: FindingDTO[] = await res.json();
+  return data.filter((f) => !f.control_id || isTargetControl(f.control_id));
 }
 
 export async function triggerRun(controlId: string): Promise<RunItemDTO> {
@@ -117,7 +127,8 @@ export interface UploadPolicyResponse {
 export async function fetchUploadedPolicies(): Promise<UploadedPolicyDTO[]> {
   const res = await fetch(`${API_BASE}/interactive/uploaded_policies`);
   if (!res.ok) throw new Error(`Failed to fetch uploaded policies: ${res.statusText}`);
-  return res.json();
+  const data: UploadedPolicyDTO[] = await res.json();
+  return data.filter((p) => !p.control_id || isTargetControl(p.control_id) || isTargetControl(p.title));
 }
 
 export async function fetchPolicyDocument(policyId: string): Promise<UploadedPolicyDTO> {
