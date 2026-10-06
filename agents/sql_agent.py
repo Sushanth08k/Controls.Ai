@@ -1,7 +1,15 @@
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any
+from dotenv import load_dotenv
+
+env_file = Path(__file__).resolve().parent.parent / ".env"
+if env_file.exists():
+    load_dotenv(dotenv_path=env_file)
+else:
+    load_dotenv()
 
 from contracts.models import ComplianceSQLScript
 from core.sql_generator import (
@@ -10,6 +18,8 @@ from core.sql_generator import (
 )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
 
 
 class ComplianceSQLAgent:
@@ -41,10 +51,17 @@ class ComplianceSQLAgent:
         """
         rules = rules or []
         exceptions = exceptions or []
-        schema_ddl = get_live_database_schema_ddl()
         cid_lower = control_id.lower()
+        target_tables = (
+            ["source_transactions", "archive_transactions", "legal_holds"]
+            if not cid_lower or "arch" in cid_lower
+            else (["database_users", "system_config", "public_grants", "db_vulnerabilities"] if "vuln" in cid_lower else None)
+        )
+        schema_ddl = get_live_database_schema_ddl(target_tables=target_tables)
 
         gemini_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        if gemini_api_key and not os.environ.get("GOOGLE_API_KEY"):
+            os.environ["GOOGLE_API_KEY"] = gemini_api_key
 
         # 1. Specialized handling for non-archival control archetypes (Vulnerability, IAM)
         if "vuln" in cid_lower:
@@ -153,10 +170,10 @@ REQUIREMENTS:
             )
 
             llm = ChatGoogleGenerativeAI(
-                model="gemini-1.5-flash",
-                google_api_key=gemini_api_key,
+                model=DEFAULT_GEMINI_MODEL,
+                api_key=gemini_api_key,
                 temperature=0.0,
-                timeout=12.0,
+                timeout=30.0,
             )
 
             chain = prompt | llm | parser
@@ -176,16 +193,16 @@ REQUIREMENTS:
 
             if isinstance(parsed, dict) and "selection_sql" in parsed and "archival_sql" in parsed and "cleanup_sql" in parsed:
                 logger.info(
-                    "ComplianceSQLAgent: Successfully synthesized queries via LangChain LCEL (gemini-1.5-flash)."
+                    f"ComplianceSQLAgent: Successfully synthesized queries via LangChain LCEL ({DEFAULT_GEMINI_MODEL})."
                 )
                 return {
                     "selection_sql": parsed["selection_sql"],
                     "archival_sql": parsed["archival_sql"],
                     "cleanup_sql": parsed["cleanup_sql"],
                     "agent": "ComplianceSQLAgent (LangChain + Gemini)",
-                    "generator": "ComplianceSQLAgent (LangChain + Google Gemini 1.5 Flash)",
+                    "generator": f"ComplianceSQLAgent (LangChain + {DEFAULT_GEMINI_MODEL})",
                     "framework": "LangChain LCEL",
-                    "model": "gemini-1.5-flash",
+                    "model": DEFAULT_GEMINI_MODEL,
                     "schema_used": schema_ddl,
                 }
         except Exception as e:
@@ -216,10 +233,10 @@ Generate 3 distinct SQL scripts for a Database Security & Vulnerability Control 
                     partial_variables={"format_instructions": parser.get_format_instructions()},
                 )
                 llm = ChatGoogleGenerativeAI(
-                    model="gemini-1.5-flash",
-                    google_api_key=gemini_api_key,
+                    model=DEFAULT_GEMINI_MODEL,
+                    api_key=gemini_api_key,
                     temperature=0.0,
-                    timeout=10.0,
+                    timeout=30.0,
                 )
                 chain = prompt | llm | parser
                 parsed = chain.invoke({})
@@ -230,9 +247,9 @@ Generate 3 distinct SQL scripts for a Database Security & Vulnerability Control 
                         "archival_sql": parsed["archival_sql"],
                         "cleanup_sql": parsed["cleanup_sql"],
                         "agent": "ComplianceSQLAgent (LangChain + Gemini)",
-                        "generator": "ComplianceSQLAgent (LangChain + Google Gemini 1.5 Flash)",
+                        "generator": f"ComplianceSQLAgent (LangChain + {DEFAULT_GEMINI_MODEL})",
                         "framework": "LangChain LCEL",
-                        "model": "gemini-1.5-flash",
+                        "model": DEFAULT_GEMINI_MODEL,
                         "schema_used": schema_ddl,
                     }
             except Exception as e:
