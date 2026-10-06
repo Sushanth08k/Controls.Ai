@@ -34,6 +34,12 @@ export interface GateItemDTO {
   decided_at?: string;
   decided_by?: string;
   comment?: string;
+  gate_type?: string;
+  payload_summary?: {
+    exceptions_count?: number;
+    escalations_count?: number;
+    [key: string]: any;
+  };
 }
 
 export interface RunItemDTO {

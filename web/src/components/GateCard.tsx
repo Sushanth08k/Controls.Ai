@@ -9,12 +9,19 @@ interface GateCardProps {
   onDecide: (gateId: string, decision: 'approved' | 'rejected', comment: string) => Promise<void>;
   onResumeRun?: (gate: GateItemDTO) => void;
   run?: RunItemDTO;
+  resumeLabel?: string;
 }
 
-export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide, onResumeRun, run }) => {
+export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide, onResumeRun, run, resumeLabel }) => {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const defaultResumeLabel =
+    gate.gate_type === 'vuln_approval' || gate.control_id.toLowerCase().includes('vuln')
+      ? 'Resume Run (Apply Outcomes)'
+      : 'Resume Run (Step 5)';
+  const activeResumeLabel = resumeLabel || defaultResumeLabel;
 
   const isMaker = currentUser.user_id === gate.maker_id;
   const hasRole = currentUser.roles.includes(gate.approver_role);
@@ -58,6 +65,15 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
         </div>
         <StatusPill status={gate.status} />
       </div>
+
+      {gate.payload_summary && (
+        <div className="mb-4 px-3.5 py-2.5 rounded-lg bg-amber-50/80 border border-amber-200/90 text-xs text-amber-900 flex items-center justify-between">
+          <span className="font-medium text-amber-800">Pending Actions Payload:</span>
+          <span className="font-semibold font-mono bg-amber-100/80 px-2 py-0.5 rounded text-amber-900">
+            {gate.payload_summary.exceptions_count || 0} exception(s), {gate.payload_summary.escalations_count || 0} escalation(s)
+          </span>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 py-3 px-4 rounded-lg bg-slate-50 border border-slate-200 text-xs mb-4">
         <div>
@@ -164,7 +180,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all shadow-xs cursor-pointer"
                 >
                   <ArrowRight className="w-3.5 h-3.5" />
-                  Resume Run (Step 5)
+                  {activeResumeLabel}
                 </button>
               ) : null}
             </div>

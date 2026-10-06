@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { GateItemDTO, UserSessionDTO, ControlDefinitionDTO, RunItemDTO } from '../../types';
 import { GateCard } from '../../components/GateCard';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
+import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
 import { ShieldCheck, Info } from 'lucide-react';
 
 interface ApprovalsPageProps {
@@ -102,20 +103,37 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
 
       {/* Resume Execution Modal */}
       {resumingGate && selectedControl && (
-        <ControlExecutionModal
-          control={selectedControl}
-          currentUser={currentUser}
-          initialRunId={resumingGate.run_id}
-          initialStage="APPROVED"
-          onClose={() => {
-            setResumingGate(null);
-            onRefresh?.();
-          }}
-          onRunCompleted={() => {
-            setResumingGate(null);
-            onRefresh?.();
-          }}
-        />
+        selectedControl.control_id.toLowerCase().includes('vuln') || selectedControl.archetype === 'A' ? (
+          <VulnerabilityExecutionModal
+            control={selectedControl}
+            currentUser={currentUser}
+            initialRunId={resumingGate.run_id}
+            initialStage="APPROVED"
+            onClose={() => {
+              setResumingGate(null);
+              onRefresh?.();
+            }}
+            onRunCompleted={() => {
+              setResumingGate(null);
+              onRefresh?.();
+            }}
+          />
+        ) : (
+          <ControlExecutionModal
+            control={selectedControl}
+            currentUser={currentUser}
+            initialRunId={resumingGate.run_id}
+            initialStage="APPROVED"
+            onClose={() => {
+              setResumingGate(null);
+              onRefresh?.();
+            }}
+            onRunCompleted={() => {
+              setResumingGate(null);
+              onRefresh?.();
+            }}
+          />
+        )
       )}
     </div>
   );

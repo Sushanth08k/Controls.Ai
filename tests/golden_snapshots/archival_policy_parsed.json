@@ -1,0 +1,73 @@
+{
+  "policy_name": "GLOBAL BANKING CORPORATION - DATA RETENTION & ARCHIVAL POLICY v2.4",
+  "scope": "Transaction Data Archival Policy",
+  "description": "Policy 'GLOBAL BANKING CORPORATION - DATA RETENTION & ARCHIVAL POLICY v2.4' defines compliance retention and archival thresholds for Transaction Data Archival Policy.",
+  "rule_summary": "Policy 'GLOBAL BANKING CORPORATION - DATA RETENTION & ARCHIVAL POLICY v2.4' defines compliance retention and archival thresholds for Transaction Data Archival Policy.",
+  "requirements": [
+    {
+      "requirement_id": "REQ-001",
+      "description": "Financial transaction records must be retained per regulatory lifecycle periods."
+    },
+    {
+      "requirement_id": "REQ-002",
+      "description": "Independent verification and cryptographic SHA-256 validation required before source deletion."
+    },
+    {
+      "requirement_id": "REQ-003",
+      "description": "Maker-checker dual-human authorization required before source database record cleanup."
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "RULE-001",
+      "description": "[source_transactions] Operation: ARCHIVE transaction records older than five years must be transferred to immutable archival storage.",
+      "rule_type": "ARCHIVAL",
+      "condition": {
+        "field": "transaction_date",
+        "operator": "OLDER_THAN",
+        "value": "5",
+        "unit": "years"
+      },
+      "action": "ARCHIVE"
+    },
+    {
+      "rule_id": "RULE-002",
+      "description": "[source_transactions] Operation: ARCHIVE Records must be retained for eight years prior to any final disposal.",
+      "rule_type": "ARCHIVAL",
+      "condition": {
+        "field": "transaction_date",
+        "operator": "OLDER_THAN",
+        "value": "8",
+        "unit": "years"
+      },
+      "action": "ARCHIVE"
+    }
+  ],
+  "exceptions": [
+    {
+      "exception_id": "EXC-001",
+      "title": "Exclusion (legal_hold)",
+      "field": "legal_hold",
+      "operator": "EQUALS",
+      "value": "true",
+      "action": "EXCLUDE",
+      "reason": "Operation: EXCLUDE Condition: legal_hold equals true Records subject to an active legal hold are strictly exempt from archival or cleanup."
+    }
+  ],
+  "ambiguities": [],
+  "source_references": [
+    "Operation: ARCHIVE transaction records older than five years must be transferred to immutable archival storage.",
+    "Operation: ARCHIVE Records must be retained for eight years prior to any final disposal.",
+    "Operation: EXCLUDE Condition: legal_hold equals true Records subject to an active legal hold are strictly exempt from archival or cleanup."
+  ],
+  "citation": "Operation: ARCHIVE transaction records older than five years must be transferred to immutable archival storage.",
+  "retention_years": 5,
+  "extracted_rules": {
+    "target_table": "transactions",
+    "retention_years": 5,
+    "legal_hold_filter": "EXCLUDE active_hold == TRUE",
+    "verification_method": "SHA256 Merkle Dual-Root Match",
+    "rules_count": 2,
+    "exceptions_count": 1
+  }
+}

@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,9 @@ from api.sse import sse_broker
 from sim.audit_store import get_audit_approval, list_audit_approvals, save_audit_approval
 
 router = APIRouter(prefix="/gates", tags=["gates"])
+
+
+VULN_BYPASS_MAKER_CHECKER = True
 
 
 class GateDecisionRequest(BaseModel):
@@ -30,6 +34,8 @@ class GateItem(BaseModel):
     decided_at: str | None = None
     decided_by: str | None = None
     comment: str | None = None
+    gate_type: str = "archival_signoff"
+    payload_summary: dict[str, Any] | None = None
 
 
 # Dynamic gate store for runtime/testing overrides
@@ -42,6 +48,16 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
     db_approvals = list_audit_approvals()
     db_gates: dict[str, GateItem] = {}
     for a in db_approvals:
+        p_json = a.get("payload_json")
+        p_summary = None
+        if p_json:
+            if isinstance(p_json, dict):
+                p_summary = p_json.get("summary")
+            elif isinstance(p_json, str):
+                try:
+                    p_summary = json.loads(p_json).get("summary")
+                except Exception:
+                    pass
         db_gates[a["gate_id"]] = GateItem(
             gate_id=a["gate_id"],
             run_id=a["run_id"],
@@ -54,6 +70,8 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
             decided_at=a.get("approved_at"),
             decided_by=a.get("approved_by"),
             comment=a.get("comment"),
+            gate_type=a.get("gate_type") or "archival_signoff",
+            payload_summary=p_summary,
         )
     merged = {**db_gates, **_GATE_STORE}
     return list(merged.values())
@@ -69,6 +87,18 @@ async def decide_gate(
     # Lookup gate: first in database, then in _GATE_STORE
     gate_dict = get_audit_approval(gate_id=gate_id)
     gate: GateItem | None = None
+    gate_type = (gate_dict.get("gate_type") if gate_dict else None) or "archival_signoff"
+    p_json = gate_dict.get("payload_json") if gate_dict else None
+    p_summary = None
+    if p_json:
+        if isinstance(p_json, dict):
+            p_summary = p_json.get("summary")
+        elif isinstance(p_json, str):
+            try:
+                p_summary = json.loads(p_json).get("summary")
+            except Exception:
+                pass
+
     if gate_dict:
         gate = GateItem(
             gate_id=gate_dict["gate_id"],
@@ -82,6 +112,8 @@ async def decide_gate(
             decided_at=gate_dict.get("approved_at"),
             decided_by=gate_dict.get("approved_by"),
             comment=gate_dict.get("comment"),
+            gate_type=gate_type,
+            payload_summary=p_summary,
         )
     elif gate_id in _GATE_STORE:
         gate = _GATE_STORE[gate_id]
@@ -92,15 +124,24 @@ async def decide_gate(
     if gate.status != "pending":
         raise HTTPException(status_code=400, detail="Gate is already decided")
 
-    # Enforce RBAC & maker != checker
-    check_gate_authorization(
-        user=user,
-        gate_name=gate.gate_name,
-        required_role=gate.approver_role,
-        maker_id=gate.maker_id,
-        decision=body.decision,
-        comment=body.comment,
+    is_vuln = (
+        (gate_dict and gate_dict.get("gate_type") == "vuln_approval")
+        or gate.gate_name == "vuln_approval"
+        or "vuln" in gate.control_id.lower()
     )
+
+    # Enforce RBAC & maker != checker (bypassed for vuln demo only)
+    if is_vuln and VULN_BYPASS_MAKER_CHECKER:
+        pass
+    else:
+        check_gate_authorization(
+            user=user,
+            gate_name=gate.gate_name,
+            required_role=gate.approver_role,
+            maker_id=gate.maker_id,
+            decision=body.decision,
+            comment=body.comment,
+        )
 
     # Update gate state
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -116,6 +157,8 @@ async def decide_gate(
         decided_at=now_iso,
         decided_by=user.user_id,
         comment=body.comment,
+        gate_type=gate.gate_type,
+        payload_summary=gate.payload_summary,
     )
     if gate_id in _GATE_STORE:
         _GATE_STORE[gate_id] = updated
@@ -141,55 +184,113 @@ async def decide_gate(
 
     # Resume/block the associated run after human approval.
     if gate.run_id:
-        if body.decision == "approved":
-            from sim.audit_store import save_audit_step, upsert_audit_run
+        if is_vuln:
+            from sim.audit_store import get_audit_run, save_audit_step, upsert_audit_run
             from api.routers.runs import _RUNS_STORE
-            save_audit_step(
-                step_id=f"step-{gate.run_id}-4",
-                run_id=gate.run_id,
-                step_name="HUMAN_APPROVAL",
-                status="completed",
-                completed_at=now_iso,
-                metadata_json={
-                    "certificate_id": gate.gate_id,
-                    "operator_id": user.user_id,
-                    "comment": body.comment,
-                },
-            )
-            upsert_audit_run(
-                run_id=gate.run_id,
-                control_id=gate.control_id,
-                status="running",
-            )
-            if gate.run_id in _RUNS_STORE:
-                _RUNS_STORE[gate.run_id].status = "running"
-            await sse_broker.publish(
-                "run.updated",
-                {"run_id": gate.run_id, "status": "running", "control_id": gate.control_id, "stage": "APPROVED"},
-            )
-        elif body.decision == "rejected":
-            from sim.audit_store import upsert_audit_run, save_audit_step
-            from api.routers.runs import _RUNS_STORE
-            upsert_audit_run(
-                run_id=gate.run_id,
-                control_id=gate.control_id,
-                status="blocked",
-                error_message=f"Human approval rejected by {user.user_id}: {body.comment}",
-            )
-            save_audit_step(
-                step_id=f"step-{gate.run_id}-4",
-                run_id=gate.run_id,
-                step_name="HUMAN_APPROVAL",
-                status="rejected",
-                completed_at=now_iso,
-                error_message=body.comment,
-                metadata_json={"reviewer": user.user_id, "decision": "rejected"},
-            )
-            if gate.run_id in _RUNS_STORE:
-                _RUNS_STORE[gate.run_id].status = "blocked"
-            await sse_broker.publish(
-                "run.updated",
-                {"run_id": gate.run_id, "status": "blocked", "control_id": gate.control_id},
-            )
+
+            db_run = get_audit_run(gate.run_id)
+            meta = db_run.get("metadata") or {} if db_run else {}
+
+            if body.decision == "approved":
+                meta["stage"] = "APPROVED"
+                save_audit_step(
+                    step_id=f"step-{gate.run_id}-vuln-approval",
+                    run_id=gate.run_id,
+                    step_name="VULN_APPROVAL",
+                    status="completed",
+                    completed_at=now_iso,
+                    metadata_json={
+                        "certificate_id": gate.gate_id,
+                        "operator_id": user.user_id,
+                        "comment": body.comment,
+                    },
+                )
+                upsert_audit_run(
+                    run_id=gate.run_id,
+                    control_id=gate.control_id,
+                    status="running",
+                    metadata_json=meta,
+                )
+                if gate.run_id in _RUNS_STORE:
+                    _RUNS_STORE[gate.run_id].status = "running"
+                await sse_broker.publish(
+                    "run.updated",
+                    {"run_id": gate.run_id, "status": "running", "control_id": gate.control_id, "stage": "APPROVED"},
+                )
+            elif body.decision == "rejected":
+                meta["stage"] = "REJECTED"
+                upsert_audit_run(
+                    run_id=gate.run_id,
+                    control_id=gate.control_id,
+                    status="blocked",
+                    error_message=f"Human approval rejected by {user.user_id}: {body.comment}",
+                    metadata_json=meta,
+                )
+                save_audit_step(
+                    step_id=f"step-{gate.run_id}-vuln-approval",
+                    run_id=gate.run_id,
+                    step_name="VULN_APPROVAL",
+                    status="rejected",
+                    completed_at=now_iso,
+                    error_message=body.comment,
+                    metadata_json={"reviewer": user.user_id, "decision": "rejected"},
+                )
+                if gate.run_id in _RUNS_STORE:
+                    _RUNS_STORE[gate.run_id].status = "blocked"
+                await sse_broker.publish(
+                    "run.updated",
+                    {"run_id": gate.run_id, "status": "blocked", "control_id": gate.control_id, "stage": "REJECTED"},
+                )
+        else:
+            if body.decision == "approved":
+                from sim.audit_store import save_audit_step, upsert_audit_run
+                from api.routers.runs import _RUNS_STORE
+                save_audit_step(
+                    step_id=f"step-{gate.run_id}-4",
+                    run_id=gate.run_id,
+                    step_name="HUMAN_APPROVAL",
+                    status="completed",
+                    completed_at=now_iso,
+                    metadata_json={
+                        "certificate_id": gate.gate_id,
+                        "operator_id": user.user_id,
+                        "comment": body.comment,
+                    },
+                )
+                upsert_audit_run(
+                    run_id=gate.run_id,
+                    control_id=gate.control_id,
+                    status="running",
+                )
+                if gate.run_id in _RUNS_STORE:
+                    _RUNS_STORE[gate.run_id].status = "running"
+                await sse_broker.publish(
+                    "run.updated",
+                    {"run_id": gate.run_id, "status": "running", "control_id": gate.control_id, "stage": "APPROVED"},
+                )
+            elif body.decision == "rejected":
+                from sim.audit_store import upsert_audit_run, save_audit_step
+                from api.routers.runs import _RUNS_STORE
+                upsert_audit_run(
+                    run_id=gate.run_id,
+                    control_id=gate.control_id,
+                    status="blocked",
+                    error_message=f"Human approval rejected by {user.user_id}: {body.comment}",
+                )
+                save_audit_step(
+                    step_id=f"step-{gate.run_id}-4",
+                    run_id=gate.run_id,
+                    step_name="HUMAN_APPROVAL",
+                    status="rejected",
+                    completed_at=now_iso,
+                    error_message=body.comment,
+                    metadata_json={"reviewer": user.user_id, "decision": "rejected"},
+                )
+                if gate.run_id in _RUNS_STORE:
+                    _RUNS_STORE[gate.run_id].status = "blocked"
+                await sse_broker.publish(
+                    "run.updated",
+                    {"run_id": gate.run_id, "status": "blocked", "control_id": gate.control_id},
+                )
 
     return {"status": "ok", "gate": updated.model_dump()}

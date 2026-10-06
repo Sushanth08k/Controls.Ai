@@ -1,0 +1,190 @@
+{
+  "policy_name": "Vulnerability Management Standard v1.0",
+  "scope": "Core Banking & Subsidiary Database Systems",
+  "scope_targets": [
+    "vuln_target",
+    "core_banking_sim"
+  ],
+  "description": "Vulnerability remediation SLA: Critical (7d), High (30d), Medium (60d).",
+  "rule_summary": "Vulnerability remediation SLA: Critical (7d), High (30d), Medium (60d).",
+  "requirements": [
+    {
+      "requirement_id": "REQ-001",
+      "description": "Critical vulnerabilities must be remediated within 7 days."
+    },
+    {
+      "requirement_id": "REQ-002",
+      "description": "High vulnerabilities must be remediated within 30 days."
+    },
+    {
+      "requirement_id": "REQ-003",
+      "description": "Medium vulnerabilities must be remediated within 60 days."
+    },
+    {
+      "requirement_id": "REQ-004",
+      "description": "Vulnerabilities with status OPEN or IN_PROGRESS are considered unresolved."
+    },
+    {
+      "requirement_id": "REQ-005",
+      "description": "PATCHED or CLOSED vulnerabilities are considered remediated."
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "VULN-RULE-001",
+      "description": "Critical vulnerabilities must be remediated within 7 days of identification.",
+      "rule_type": "REMEDIATION_SLA",
+      "severity": "CRITICAL",
+      "max_age_days": 7,
+      "allowed_status": [
+        "PATCHED",
+        "CLOSED"
+      ]
+    },
+    {
+      "rule_id": "VULN-RULE-002",
+      "description": "High vulnerabilities must be remediated within 30 days of identification.",
+      "rule_type": "REMEDIATION_SLA",
+      "severity": "HIGH",
+      "max_age_days": 30,
+      "allowed_status": [
+        "PATCHED",
+        "CLOSED"
+      ]
+    },
+    {
+      "rule_id": "VULN-RULE-003",
+      "description": "Medium vulnerabilities must be remediated within 60 days of identification.",
+      "rule_type": "REMEDIATION_SLA",
+      "severity": "MEDIUM",
+      "max_age_days": 60,
+      "allowed_status": [
+        "PATCHED",
+        "CLOSED"
+      ]
+    }
+  ],
+  "structured_rules": [
+    {
+      "rule_id": "VULN-RULE-001",
+      "severity": "CRITICAL",
+      "max_age_days": 7,
+      "allowed_status": [
+        "PATCHED",
+        "CLOSED"
+      ]
+    },
+    {
+      "rule_id": "VULN-RULE-002",
+      "severity": "HIGH",
+      "max_age_days": 30,
+      "allowed_status": [
+        "PATCHED",
+        "CLOSED"
+      ]
+    },
+    {
+      "rule_id": "VULN-RULE-003",
+      "severity": "MEDIUM",
+      "max_age_days": 60,
+      "allowed_status": [
+        "PATCHED",
+        "CLOSED"
+      ]
+    }
+  ],
+  "exceptions": [],
+  "ambiguities": [],
+  "source_references": [
+    "VULNERABILITY MANAGEMENT STANDARD v1"
+  ],
+  "citation": "VULNERABILITY MANAGEMENT STANDARD v1",
+  "retention_years": 0,
+  "extracted_rules": {
+    "policy_type": "Vulnerability Remediation SLA",
+    "critical_sla_days": 7,
+    "high_sla_days": 30,
+    "medium_sla_days": 60,
+    "low_sla_days": 90,
+    "allowed_remediated_statuses": [
+      "PATCHED",
+      "CLOSED"
+    ],
+    "unresolved_statuses": [
+      "OPEN",
+      "IN_PROGRESS"
+    ],
+    "rules": [
+      {
+        "rule_id": "VULN-RULE-001",
+        "severity": "CRITICAL",
+        "max_age_days": 7,
+        "allowed_status": [
+          "PATCHED",
+          "CLOSED"
+        ]
+      },
+      {
+        "rule_id": "VULN-RULE-002",
+        "severity": "HIGH",
+        "max_age_days": 30,
+        "allowed_status": [
+          "PATCHED",
+          "CLOSED"
+        ]
+      },
+      {
+        "rule_id": "VULN-RULE-003",
+        "severity": "MEDIUM",
+        "max_age_days": 60,
+        "allowed_status": [
+          "PATCHED",
+          "CLOSED"
+        ]
+      }
+    ],
+    "rules_count": 3,
+    "exceptions_count": 0,
+    "ambiguities_count": 0,
+    "definition_patch": {
+      "severity_policy": {
+        "critical": 7,
+        "high": 30,
+        "medium": 60,
+        "low": 90
+      },
+      "scope": [
+        {
+          "type": "postgres_instance",
+          "ref": "vuln_target"
+        },
+        {
+          "type": "postgres_instance",
+          "ref": "core_banking_sim"
+        }
+      ]
+    },
+    "scope_targets": [
+      "vuln_target",
+      "core_banking_sim"
+    ]
+  },
+  "definition_patch": {
+    "severity_policy": {
+      "critical": 7,
+      "high": 30,
+      "medium": 60,
+      "low": 90
+    },
+    "scope": [
+      {
+        "type": "postgres_instance",
+        "ref": "vuln_target"
+      },
+      {
+        "type": "postgres_instance",
+        "ref": "core_banking_sim"
+      }
+    ]
+  }
+}
