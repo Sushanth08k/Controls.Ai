@@ -38,33 +38,34 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
 
   // Resolve user identifier to user email
   const resolveUserEmail = (userVal?: string): string => {
-    if (!userVal) return currentUser.email;
+    if (!userVal) return 'system@bank.internal';
+
+    const trimmed = userVal.trim();
+    if (!trimmed) return 'system@bank.internal';
 
     // Already an email address
-    if (userVal.includes('@')) return userVal;
+    if (trimmed.includes('@')) return trimmed;
 
-    // Matches current logged-in user or Firebase UID prefix
+    // Matches current logged-in user ID
     if (
-      userVal === currentUser.user_id ||
-      userVal.toLowerCase() === currentUser.user_id.toLowerCase() ||
-      (currentUser.email && userVal.length >= 10 && !userVal.includes(' ') && !userVal.includes('_'))
+      currentUser?.user_id &&
+      trimmed.toLowerCase() === currentUser.user_id.toLowerCase() &&
+      currentUser.email
     ) {
       return currentUser.email;
     }
 
     // Check localStorage cache
-    const stored = localStorage.getItem(`controls_user_email_${userVal}`);
+    const stored = localStorage.getItem(`controls_user_email_${trimmed}`);
     if (stored) return stored;
 
     // Known internal role personas
-    if (userVal === 'sec_reviewer_1') return 'reviewer@bank.internal';
-    if (userVal === 'sec_owner_1') return 'owner@bank.internal';
-    if (userVal === 'release_owner_1') return 'release@bank.internal';
-    if (userVal.toLowerCase() === 'operator' || userVal.toLowerCase() === 'sushanth') {
-      return currentUser.email || 'operator@bank.internal';
-    }
+    if (trimmed === 'sec_reviewer_1') return 'reviewer@bank.internal';
+    if (trimmed === 'sec_owner_1') return 'owner@bank.internal';
+    if (trimmed === 'release_owner_1') return 'release@bank.internal';
+    if (trimmed.toLowerCase() === 'system') return 'system@bank.internal';
 
-    return `${userVal.toLowerCase()}@bank.internal`;
+    return `${trimmed.toLowerCase()}@bank.internal`;
   };
 
   // Map control_id to title
@@ -87,7 +88,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
         events.push({
           id: `gate-created-${g.gate_id}`,
           time: g.created_at,
-          user: resolveUserEmail(g.maker_id || currentUser.user_id),
+          user: resolveUserEmail(g.maker_id),
           action: 'Requested approval',
           actionType: 'approval',
           target: `${g.control_id} · ${g.run_id}`,
@@ -116,7 +117,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
         events.push({
           id: `policy-uploaded-${p.policy_id}`,
           time: p.uploaded_at,
-          user: resolveUserEmail(p.uploaded_by || 'Sushanth'),
+          user: resolveUserEmail(p.uploaded_by),
           action: 'Uploaded policy',
           actionType: 'policy',
           target: p.control_id ? `${p.control_id}` : p.title,
@@ -132,7 +133,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
         events.push({
           id: `run-started-${r.run_id}`,
           time: r.started_at,
-          user: resolveUserEmail('Operator'),
+          user: resolveUserEmail(r.initiated_by),
           action: 'Started control test',
           actionType: 'run',
           target: `${r.control_id} · ${r.run_id}`,

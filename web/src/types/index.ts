@@ -62,6 +62,7 @@ export interface RunItemDTO {
     format?: string;
     file_size?: string;
   };
+  initiated_by?: string;
 }
 
 export interface FindingDTO {

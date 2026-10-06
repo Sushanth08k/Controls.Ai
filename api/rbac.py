@@ -12,7 +12,7 @@ def check_gate_authorization(
 ) -> None:
     """Enforce strict server-side maker-checker and role authorization for HITL gates."""
     # 1. Maker cannot be checker
-    if user.user_id == maker_id:
+    if user.user_id == maker_id or (user.email and user.email == maker_id):
         raise HTTPException(
             status_code=403,
             detail=f"Forbidden: Maker '{maker_id}' cannot approve their own gate",

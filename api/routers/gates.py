@@ -104,6 +104,7 @@ async def decide_gate(
 
     # Update gate state
     now_iso = datetime.now(timezone.utc).isoformat()
+    decider = user.email if (user.email and user.user_id not in ("sec_reviewer_1", "sec_owner_1", "release_owner_1") and "@" in user.email) else user.user_id
     updated = GateItem(
         gate_id=gate.gate_id,
         run_id=gate.run_id,
@@ -114,7 +115,7 @@ async def decide_gate(
         status=body.decision,
         created_at=gate.created_at,
         decided_at=now_iso,
-        decided_by=user.user_id,
+        decided_by=decider,
         comment=body.comment,
     )
     if gate_id in _GATE_STORE:
@@ -125,7 +126,7 @@ async def decide_gate(
         run_id=gate.run_id,
         control_id=gate.control_id,
         status=body.decision,
-        approved_by=user.user_id,
+        approved_by=decider,
         approved_at=now_iso,
         comment=body.comment,
         gate_name=gate.gate_name,
@@ -136,7 +137,7 @@ async def decide_gate(
     # Emit realtime event
     await sse_broker.publish(
         "gate.decided",
-        {"gate_id": gate_id, "decision": body.decision, "decided_by": user.user_id},
+        {"gate_id": gate_id, "decision": body.decision, "decided_by": decider},
     )
 
     # Resume/block the associated run after human approval.

@@ -1,9 +1,10 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 from core.definitions import default_registry
+from api.auth import UserSession, get_current_user
 from api.sse import sse_broker
 from sim.audit_store import (
     upsert_audit_run,
@@ -43,6 +44,7 @@ class RunItem(BaseModel):
     policy_id: str | None = None
     policy_filename: str | None = None
     policy_used: dict[str, Any] | None = None
+    initiated_by: str | None = None
 
 
 _RUNS_STORE: dict[str, RunItem] = {}
@@ -88,6 +90,13 @@ def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
     else:
         policy_used_summary = None
 
+    initiated_by = (
+        row.get("initiated_by")
+        or (meta.get("initiated_by") if isinstance(meta, dict) else None)
+        or (meta.get("user_email") if isinstance(meta, dict) else None)
+        or (meta.get("user_id") if isinstance(meta, dict) else None)
+    )
+
     return RunItem(
         run_id=row["run_id"],
         control_id=row["control_id"],
@@ -108,6 +117,7 @@ def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
         policy_id=pol_id,
         policy_filename=pol_fname,
         policy_used=policy_used_summary,
+        initiated_by=initiated_by,
     )
 
 
@@ -189,7 +199,10 @@ def get_run_approvals(run_id: str) -> list[dict[str, Any]]:
 
 
 @router.post("/trigger", response_model=RunItem)
-async def trigger_run(req: TriggerRunRequest) -> RunItem:
+async def trigger_run(
+    req: TriggerRunRequest,
+    user: UserSession = Depends(get_current_user),
+) -> RunItem:
     defn = default_registry.get_definition(req.control_id)
     version = defn.version if defn else "1.0.0"
     archetype = defn.archetype if defn else "A"
@@ -197,6 +210,7 @@ async def trigger_run(req: TriggerRunRequest) -> RunItem:
 
     new_id = f"run-{uuid.uuid4().hex[:8]}"
     now_iso = datetime.now(timezone.utc).isoformat()
+    initiated_actor = user.email or user.user_id
 
     item = RunItem(
         run_id=new_id,
@@ -206,6 +220,7 @@ async def trigger_run(req: TriggerRunRequest) -> RunItem:
         status="running",
         started_at=now_iso,
         targets=targets,
+        initiated_by=initiated_actor,
     )
 
     # For Archetype B, execute the automated API sanity test workflow
@@ -274,7 +289,8 @@ async def trigger_run(req: TriggerRunRequest) -> RunItem:
             records_evaluated=len(critical_endpoints),
             records_processed=len(critical_endpoints),
             records_affected=0,
-            metadata_json={"targets": targets, "overall_verdict": exec_res.get("overall_verdict", "verified")},
+            initiated_by=initiated_actor,
+            metadata_json={"targets": targets, "initiated_by": initiated_actor, "user_email": user.email, "overall_verdict": exec_res.get("overall_verdict", "verified")},
         )
     else:
         # Initial run registration for other controls
@@ -285,7 +301,8 @@ async def trigger_run(req: TriggerRunRequest) -> RunItem:
             archetype=archetype,
             status="running",
             started_at=now_iso,
-            metadata_json={"targets": targets},
+            initiated_by=initiated_actor,
+            metadata_json={"targets": targets, "initiated_by": initiated_actor, "user_email": user.email},
         )
 
     _RUNS_STORE[new_id] = item

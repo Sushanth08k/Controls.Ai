@@ -21,10 +21,13 @@ DEMO_USERS = {
 def get_current_user(
     x_user_id: str = Header(default="sec_reviewer_1"),
     x_user_roles: str | None = Header(default=None),
+    x_user_email: str | None = Header(default=None),
 ) -> UserSession:
     """Resolve current user session from headers."""
-    if x_user_id in DEMO_USERS and not x_user_roles:
+    if x_user_id in DEMO_USERS and not x_user_roles and not x_user_email:
         return DEMO_USERS[x_user_id]
 
     roles = [r.strip() for r in x_user_roles.split(",")] if x_user_roles else ["control_reviewer"]
-    return UserSession(user_id=x_user_id, roles=roles, email=f"{x_user_id}@bank.internal")
+    email = x_user_email or (x_user_id if "@" in x_user_id else f"{x_user_id}@bank.internal")
+    return UserSession(user_id=x_user_id, roles=roles, email=email)
+

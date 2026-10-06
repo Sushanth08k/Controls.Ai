@@ -16,7 +16,9 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isMaker = currentUser.user_id === gate.maker_id;
+  const isMaker =
+    currentUser.user_id === gate.maker_id ||
+    (Boolean(currentUser.email && gate.maker_id) && currentUser.email.toLowerCase() === gate.maker_id.toLowerCase());
   const hasRole = currentUser.roles.includes(gate.approver_role);
   const canApprove = !isMaker && hasRole && gate.status === 'pending';
 

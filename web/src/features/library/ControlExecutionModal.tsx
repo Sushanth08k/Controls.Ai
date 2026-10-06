@@ -125,6 +125,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     'Compliance review completed. 33 eligible records verified with SHA-256 Merkle match.'
   );
   const [activeGateId, setActiveGateId] = useState<string | null>(null);
+  const [makerId, setMakerId] = useState<string>('sec_owner_1');
   const [queueNotice, setQueueNotice] = useState<string | null>(null);
 
   // Load defaults on mount
@@ -222,6 +223,9 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
         }
         if (resumeRes?.gate?.gate_id) {
           setActiveGateId(resumeRes.gate.gate_id);
+        }
+        if (resumeRes?.gate?.maker_id) {
+          setMakerId(resumeRes.gate.maker_id);
         }
 
         // Hydrate Audit Certificate, Ledger Sequence, and Ledger Hash
@@ -390,6 +394,9 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       if (res.gate_id) {
         setActiveGateId(res.gate_id);
       }
+      if (res.maker_id) {
+        setMakerId(res.maker_id);
+      }
       setRunStage('VERIFIED');
       // Update rows to show verified = true
       setLiveRows((prev) =>
@@ -411,6 +418,9 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       if (res.gate_id) {
         setActiveGateId(res.gate_id);
       }
+      if (res.maker_id) {
+        setMakerId(res.maker_id);
+      }
       setQueueNotice(
         'Approval request sent to the Approval Queue. Source records have not been cleaned up.'
       );
@@ -421,11 +431,16 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     }
   };
 
+  const isMaker = Boolean(
+    (currentUser?.user_id && makerId && currentUser.user_id.toLowerCase() === makerId.toLowerCase()) ||
+    (currentUser?.email && makerId && currentUser.email.toLowerCase() === makerId.toLowerCase()) ||
+    (makerId === 'sec_owner_1' && currentUser?.user_id === 'sec_owner_1')
+  );
+
   // Action: Step 4 Button 2 — Quick Approve & Continue (advances to Step 5: Source Cleanup)
   const handleQuickApproveAndContinue = async () => {
-    const isMaker = currentUser.user_id === 'sec_owner_1';
     if (isMaker) {
-      setError("Maker-checker rule: Proposer 'sec_owner_1' cannot approve their own gate. Please send to Approval Queue for an independent reviewer.");
+      setError(`Maker-checker rule: Proposer '${makerId}' cannot approve their own gate. Please send to Approval Queue for an independent reviewer.`);
       return;
     }
 
@@ -1204,7 +1219,7 @@ AND legal_hold = 0;`,
                           <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-white border border-slate-200 text-[11px]">
                             <div>
                               <span className="text-slate-500 block font-medium">Maker (Proposer)</span>
-                              <span className="font-mono font-semibold text-slate-800">sec_owner_1</span>
+                              <span className="font-mono font-semibold text-slate-800">{makerId}</span>
                             </div>
                             <div>
                               <span className="text-slate-500 block font-medium">Required Approver Role</span>
@@ -1225,10 +1240,10 @@ AND legal_hold = 0;`,
                             />
                           </div>
 
-                          {currentUser.user_id === 'sec_owner_1' && (
+                          {isMaker && (
                             <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center gap-2">
                               <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-                              <span>Maker-checker rule: You are logged in as the maker ('sec_owner_1'). You must keep this in the Approval Queue for a reviewer.</span>
+                              <span>Maker-checker rule: You are logged in as the maker ('{makerId}'). You must keep this in the Approval Queue for a reviewer.</span>
                             </div>
                           )}
 
@@ -1244,7 +1259,7 @@ AND legal_hold = 0;`,
 
                             <button
                               onClick={handleQuickApproveAndContinue}
-                              disabled={loading || currentUser.user_id === 'sec_owner_1' || !operatorComment.trim()}
+                              disabled={loading || isMaker || !operatorComment.trim()}
                               className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-md shadow-amber-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                             >
                               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}

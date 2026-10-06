@@ -10,6 +10,19 @@ export const API_BASE =
     : '');
 
 
+export function getAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const email = localStorage.getItem('controls_current_user_email');
+    const userId = localStorage.getItem('controls_current_user_id');
+    const role = localStorage.getItem('controls_current_user_role');
+    if (userId) headers['X-User-Id'] = userId;
+    if (email) headers['X-User-Email'] = email;
+    if (role) headers['X-User-Roles'] = role;
+  }
+  return headers;
+}
+
 export async function fetchControls(): Promise<ControlDefinitionDTO[]> {
   const res = await fetch(`${API_BASE}/controls`);
   if (!res.ok) throw new Error(`Failed to fetch controls: ${res.statusText}`);
@@ -17,7 +30,7 @@ export async function fetchControls(): Promise<ControlDefinitionDTO[]> {
 }
 
 export async function fetchGates(userId?: string, roles?: string[]): Promise<GateItemDTO[]> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...getAuthHeaders() };
   if (userId) headers['X-User-Id'] = userId;
   if (roles) headers['X-User-Roles'] = roles.join(',');
 
@@ -30,16 +43,20 @@ export async function decideGate(
   gateId: string,
   decision: 'approved' | 'rejected',
   comment: string,
-  userId: string,
-  roles: string[]
+  userId?: string,
+  roles?: string[]
 ): Promise<any> {
+  const authHeaders = getAuthHeaders();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...authHeaders,
+  };
+  if (userId) headers['X-User-Id'] = userId;
+  if (roles) headers['X-User-Roles'] = roles.join(',');
+
   const res = await fetch(`${API_BASE}/gates/${gateId}/decision`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-User-Id': userId,
-      'X-User-Roles': roles.join(','),
-    },
+    headers,
     body: JSON.stringify({ decision, comment }),
   });
 
@@ -65,7 +82,7 @@ export async function fetchFindings(): Promise<FindingDTO[]> {
 export async function triggerRun(controlId: string): Promise<RunItemDTO> {
   const res = await fetch(`${API_BASE}/runs/trigger`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ control_id: controlId }),
   });
   if (!res.ok) throw new Error(`Failed to trigger run: ${res.statusText}`);
@@ -151,9 +168,14 @@ export async function uploadPolicyDocument(
   if (controlId) {
     formData.append('control_id', controlId);
   }
+  const userEmail = typeof window !== 'undefined' ? localStorage.getItem('controls_current_user_email') : null;
+  if (userEmail) {
+    formData.append('uploaded_by', userEmail);
+  }
 
   const res = await fetch(`${API_BASE}/interactive/upload_policy_file`, {
     method: 'POST',
+    headers: getAuthHeaders(),
     body: formData,
   });
   if (!res.ok) {
@@ -172,7 +194,7 @@ export async function interpretPolicy(
 ): Promise<any> {
   const res = await fetch(`${API_BASE}/interactive/interpret`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       control_id: controlId,
       document_text: documentText || null,
@@ -187,7 +209,7 @@ export async function interpretPolicy(
 export async function previewDatabase(controlId: string, approvedRules: any): Promise<any> {
   const res = await fetch(`${API_BASE}/interactive/preview`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ control_id: controlId, approved_rules: approvedRules }),
   });
   if (!res.ok) throw new Error(`Failed to preview database: ${res.statusText}`);
@@ -197,7 +219,7 @@ export async function previewDatabase(controlId: string, approvedRules: any): Pr
 export async function executeStep(controlId: string, runId: string): Promise<any> {
   const res = await fetch(`${API_BASE}/interactive/execute_step`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ control_id: controlId, run_id: runId }),
   });
   if (!res.ok) throw new Error(`Failed to execute step: ${res.statusText}`);
@@ -207,7 +229,7 @@ export async function executeStep(controlId: string, runId: string): Promise<any
 export async function verifyArchival(controlId: string, runId: string): Promise<any> {
   const res = await fetch(`${API_BASE}/interactive/verify_archival`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({ control_id: controlId, run_id: runId }),
   });
   if (!res.ok) throw new Error(`Failed to verify archival: ${res.statusText}`);
@@ -221,15 +243,19 @@ export async function approveGate(
   comment: string,
   operatorId?: string
 ): Promise<any> {
+  const currentEmail = typeof window !== 'undefined' ? localStorage.getItem('controls_current_user_email') : null;
+  const currentUserId = typeof window !== 'undefined' ? localStorage.getItem('controls_current_user_id') : null;
+  const effectiveOperatorId = operatorId || currentEmail || currentUserId || 'sec_reviewer_1';
+
   const res = await fetch(`${API_BASE}/interactive/approve_gate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       control_id: controlId,
       run_id: runId,
       attestation_token: attestationToken,
       operator_comment: comment,
-      operator_id: operatorId || 'sec_reviewer_1',
+      operator_id: effectiveOperatorId,
     }),
   });
   if (!res.ok) throw new Error(`Failed to record approval: ${res.statusText}`);
@@ -239,7 +265,7 @@ export async function approveGate(
 export async function reseedDatabase(): Promise<any> {
   const res = await fetch(`${API_BASE}/interactive/reseed`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
   });
   if (!res.ok) throw new Error(`Failed to reseed database: ${res.statusText}`);
   return res.json();
@@ -252,15 +278,19 @@ export async function commitCleanup(
   comment: string,
   operatorId?: string
 ): Promise<any> {
+  const currentEmail = typeof window !== 'undefined' ? localStorage.getItem('controls_current_user_email') : null;
+  const currentUserId = typeof window !== 'undefined' ? localStorage.getItem('controls_current_user_id') : null;
+  const effectiveOperatorId = operatorId || currentEmail || currentUserId || 'sec_reviewer_1';
+
   const res = await fetch(`${API_BASE}/interactive/cleanup`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       control_id: controlId,
       run_id: runId,
       attestation_token: attestationToken,
       operator_comment: comment,
-      operator_id: operatorId || 'sec_reviewer_1',
+      operator_id: effectiveOperatorId,
     }),
   });
   if (!res.ok) {
@@ -291,7 +321,7 @@ export async function interpretVulnerabilityPolicy(
 ): Promise<any> {
   const res = await fetch(`${API_BASE}/vulnerability/interpret`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       control_id: controlId,
       document_text: documentText || null,
@@ -306,7 +336,7 @@ export async function interpretVulnerabilityPolicy(
 export async function previewVulnerabilityTargets(controlId: string, approvedRules?: any): Promise<any> {
   const res = await fetch(`${API_BASE}/vulnerability/preview`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       control_id: controlId,
       approved_rules: approvedRules || null,
@@ -327,7 +357,7 @@ export async function executeVulnerabilityControl(
 ): Promise<any> {
   const res = await fetch(`${API_BASE}/vulnerability/execute`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       control_id: controlId,
       run_id: runId || null,

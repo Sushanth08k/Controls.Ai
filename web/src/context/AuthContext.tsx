@@ -42,19 +42,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (user.email) {
       localStorage.setItem(`controls_user_email_${user.uid}`, user.email);
       localStorage.setItem(`controls_user_email_${user.uid.substring(0, 16)}`, user.email);
+      localStorage.setItem('controls_current_user_email', user.email);
     }
+    localStorage.setItem('controls_current_user_id', user.uid.substring(0, 16));
+    localStorage.setItem('controls_current_user_role', savedRole);
 
     // Determine clean username
     const rawUsername =
       user.displayName ||
       localStorage.getItem(`controls_user_username_${user.uid}`) ||
-      (user.email?.toLowerCase().includes('sushanth') ? 'Sushanth' : '') ||
       (user.email ? user.email.split('@')[0].replace(/[0-9_.-]/g, '') : '') ||
-      'Sushanth';
+      'User';
 
     const cleanUsername = rawUsername
       ? rawUsername.charAt(0).toUpperCase() + rawUsername.slice(1)
-      : 'Sushanth';
+      : 'User';
 
     return {
       user_id: user.uid.substring(0, 16),
@@ -119,6 +121,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       setFirebaseUser(null);
       setCurrentUser(null);
+      localStorage.removeItem('controls_current_user_email');
+      localStorage.removeItem('controls_current_user_id');
+      localStorage.removeItem('controls_current_user_role');
     } catch (err: any) {
       setError(err.message);
     }
@@ -131,6 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         roles: [newRole],
       };
       setCurrentUser(updated);
+      localStorage.setItem('controls_current_user_role', newRole);
       if (firebaseUser) {
         localStorage.setItem(`${ROLE_STORAGE_KEY_PREFIX}${firebaseUser.uid}`, newRole);
       }

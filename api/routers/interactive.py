@@ -7,9 +7,10 @@ import uuid
 from typing import Any
 from pathlib import Path
 import re
-from fastapi import APIRouter, HTTPException, File, UploadFile
+from fastapi import APIRouter, HTTPException, File, UploadFile, Depends, Form
 from fastapi.responses import RedirectResponse, FileResponse, Response
 from pydantic import BaseModel, ConfigDict
+from api.auth import UserSession, get_current_user, DEMO_USERS
 from core.definitions import default_registry
 from core.merkle import build_merkle_root
 from core.ledger import Ledger
@@ -259,7 +260,7 @@ def _init_default_policies() -> list[dict[str, Any]]:
             "risk_rating": defn.risk_rating,
             "frequency": defn.frequency,
             "uploaded_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "uploaded_by": "Sushanth (Compliance Analyst)",
+            "uploaded_by": "system@bank.internal",
             "file_size": f"{max(12, len(defaults.get('policy_text', '')) // 50)} KB",
             "format": fmt,
             "rules_summary": rule_peek,
@@ -406,7 +407,9 @@ def delete_uploaded_policy(policy_id: str) -> dict[str, str]:
 @router.post("/upload_policy_file")
 async def upload_policy_file(
     file: UploadFile = File(...),
-    control_id: str | None = None,
+    control_id: str | None = Form(default=None),
+    uploaded_by: str | None = Form(default=None),
+    user: UserSession = Depends(get_current_user),
 ) -> dict[str, Any]:
     """
     Ingest uploaded compliance policy files (PDF, DOCX, TXT, MD),
@@ -541,6 +544,13 @@ async def upload_policy_file(
 
     # 5. Persist to SQLite compliance_policy_documents
     rules_summary = f"Ingested {len(extracted_text.splitlines())} lines. Ready for automated parsing and execution."
+    uploader = (
+        uploaded_by
+        or (user.email if user and user.email and user.email != "sec_reviewer_1@bank.internal" and user.user_id != "sec_reviewer_1" else None)
+        or user.email
+        or user.user_id
+    )
+
     doc_record = {
         "policy_id": policy_id,
         "filename": clean_filename,
@@ -556,7 +566,7 @@ async def upload_policy_file(
         "extracted_text": extracted_text,
         "rules_summary": rules_summary,
         "uploaded_at": uploaded_at,
-        "uploaded_by": "Sushanth (Compliance Analyst)",
+        "uploaded_by": uploader,
         "status": "Ready",
     }
 
@@ -587,6 +597,7 @@ async def upload_policy_file(
         _STORED_POLICIES.insert(0, new_policy)
 
     extracted["policy_id"] = policy_id
+    extracted["uploaded_by"] = uploader
     extracted["cloudinary_url"] = cloud_res.get("secure_url", "")
     extracted["file_sha256"] = file_sha256
     extracted["is_duplicate"] = False
@@ -594,7 +605,10 @@ async def upload_policy_file(
 
 
 @router.post("/interpret")
-async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
+async def interpret_document(
+    req: InterpretRequest,
+    user: UserSession = Depends(get_current_user),
+) -> dict[str, Any]:
     """Step 1: Dynamically extract policy rules and citations from user input or uploaded text."""
     defn = default_registry.get_definition(req.control_id)
     if not defn:
@@ -648,6 +662,11 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
     )
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    actor = (
+        user.email
+        if (user and user.email and user.user_id not in DEMO_USERS)
+        else (DEMO_USERS[user.user_id].email if user and user.user_id in DEMO_USERS and user.user_id != "sec_reviewer_1" else "sec_owner_1")
+    )
 
     policy_id = req.policy_id
     if not policy_id and filename:
@@ -675,6 +694,9 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         "status": "policy_extracted",
         "generated_sql": sql_scripts,
         "started_at": now_iso,
+        "initiated_by": actor,
+        "user_email": user.email,
+        "user_id": user.user_id,
     }
     _INTERACTIVE_SESSIONS[run_id] = session
 
@@ -689,7 +711,14 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         policy_info=parsed.get("policy_name", filename),
         source_db="bank_core.db [source_transactions]",
         archive_db="bank_archive.db [archive_transactions]",
-        metadata_json={"retention_years": ret_years, "filename": filename, "policy_id": policy_id},
+        initiated_by=actor,
+        metadata_json={
+            "retention_years": ret_years,
+            "filename": filename,
+            "policy_id": policy_id,
+            "initiated_by": actor,
+            "user_email": user.email,
+        },
     )
     save_audit_step(
         step_id=f"step-{run_id}-1",
@@ -1246,7 +1275,10 @@ async def execute_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
 
 
 @router.post("/verify_archival")
-async def verify_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
+async def verify_archival_step(
+    req: ExecuteStepRequest,
+    user: UserSession = Depends(get_current_user),
+) -> dict[str, Any]:
     """Step 3: Perform independent SHA-256 hash reconciliation before requesting human approval."""
     defn = default_registry.get_definition(req.control_id)
     if not defn:
@@ -1264,13 +1296,20 @@ async def verify_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
     else:
         gate_id = f"APPR-GATE-{uuid.uuid4().hex[:8].upper()}"
         gate_status = "pending"
+        maker = (
+            user.email
+            if (user and user.email and user.user_id not in DEMO_USERS)
+            else (session.get("initiated_by") if session.get("initiated_by") and session.get("initiated_by") not in ("sec_reviewer_1", "reviewer@bank.internal") else None)
+            or (user.email if user and user.user_id in DEMO_USERS and user.user_id != "sec_reviewer_1" else None)
+            or "sec_owner_1"
+        )
         save_audit_approval(
             gate_id=gate_id,
             run_id=req.run_id,
             control_id=req.control_id,
             status="pending",
             gate_name="archival_signoff",
-            maker_id="sec_owner_1",
+            maker_id=maker,
             approver_role="control_reviewer",
             comment="Independent SHA-256 dual-root Merkle reconciliation passed. Human authorization required prior to source record cleanup.",
         )
@@ -1296,6 +1335,7 @@ async def verify_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
         "status": "VERIFIED",
         "gate_id": gate_id,
         "gate_status": gate_status,
+        "maker_id": existing_gate["maker_id"] if existing_gate else maker,
         "records_verified": records_count,
         "merkle_roots_match": True,
         "attestation_token": attestation_token,
@@ -1305,7 +1345,10 @@ async def verify_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
 
 
 @router.post("/approve_gate")
-async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
+async def approve_human_gate(
+    req: CleanupRequest,
+    user: UserSession = Depends(get_current_user),
+) -> dict[str, Any]:
     """Step 4: Record maker-checker human approval before source cleanup."""
     defn = default_registry.get_definition(req.control_id)
     if not defn:
@@ -1323,8 +1366,14 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
     raw_role = existing_gate.get("approver_role") if existing_gate else None
     approver_role: str = raw_role if isinstance(raw_role, str) and raw_role else "control_reviewer"
 
+    approver = (
+        user.email
+        if (user and user.email and user.user_id not in DEMO_USERS)
+        else (req.operator_id or user.user_id or "sec_reviewer_1")
+    )
+
     # Enforce maker-checker: Maker cannot approve their own gate
-    if req.operator_id == maker_id:
+    if approver == maker_id or (user.user_id == maker_id) or (user.email and user.email == maker_id):
         raise HTTPException(
             status_code=403,
             detail=f"Forbidden: Maker '{maker_id}' cannot approve their own gate",
@@ -1336,7 +1385,7 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
         run_id=req.run_id,
         control_id=req.control_id,
         status="approved",
-        approved_by=req.operator_id,
+        approved_by=approver,
         approved_at=now.isoformat(),
         comment=req.operator_comment,
         gate_name="archival_signoff",
@@ -1352,7 +1401,7 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
         completed_at=now.isoformat(),
         metadata_json={
             "certificate_id": gate_id,
-            "operator_id": req.operator_id,
+            "operator_id": approver,
             "comment": req.operator_comment,
         },
     )
@@ -1364,7 +1413,7 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
 
     await sse_broker.publish(
         "gate.decided",
-        {"gate_id": gate_id, "decision": "approved", "decided_by": req.operator_id},
+        {"gate_id": gate_id, "decision": "approved", "decided_by": approver},
     )
     await sse_broker.publish(
         "run.updated",
@@ -1376,10 +1425,10 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
         "control_id": req.control_id,
         "status": "APPROVED",
         "approval_certificate": gate_id,
-        "approver_id": req.operator_id,
+        "approver_id": approver,
         "comment": req.operator_comment,
         "timestamp": now.isoformat(),
-        "summary_message": f"Human approval verified on record by {req.operator_id}. Source cleanup authorization granted. Ready for Step 5: Source Cleanup.",
+        "summary_message": f"Human approval verified on record by {approver}. Source cleanup authorization granted. Ready for Step 5: Source Cleanup.",
         "next_action_label": "Step 5: Execute Controlled Source Cleanup (DELETE)",
     }
 

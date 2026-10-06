@@ -45,6 +45,7 @@ def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:
             merkle_verified INTEGER DEFAULT 0,
             attestation_token TEXT,
             metadata_json TEXT,
+            initiated_by TEXT,
             created_at TEXT NOT NULL
         );
 
@@ -126,11 +127,13 @@ def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:
         CREATE INDEX IF NOT EXISTS idx_policy_documents_sha256 ON compliance_policy_documents(file_sha256);
         """)
 
-        # Ensure policy_id column exists on existing control_audit_runs table
+        # Ensure policy_id and initiated_by columns exist on existing control_audit_runs table
         cur.execute("PRAGMA table_info(control_audit_runs)")
         col_names = [col[1] for col in cur.fetchall()]
         if "policy_id" not in col_names:
             cur.execute("ALTER TABLE control_audit_runs ADD COLUMN policy_id TEXT")
+        if "initiated_by" not in col_names:
+            cur.execute("ALTER TABLE control_audit_runs ADD COLUMN initiated_by TEXT")
 
         # Ensure gate_name, maker_id, approver_role columns exist on existing control_approvals table
         cur.execute("PRAGMA table_info(control_approvals)")
@@ -181,11 +184,18 @@ def upsert_audit_run(
     merkle_verified: int | bool | None = None,
     attestation_token: str | None = None,
     metadata_json: str | dict[str, Any] | None = None,
+    initiated_by: str | None = None,
 ) -> dict[str, Any]:
     """Insert or update a control run record in SQLite."""
     init_audit_tables()
     conn = get_connection()
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    if initiated_by:
+        if metadata_json is None:
+            metadata_json = {"initiated_by": initiated_by}
+        elif isinstance(metadata_json, dict) and "initiated_by" not in metadata_json:
+            metadata_json["initiated_by"] = initiated_by
 
     metadata_str = _safe_json_dumps(metadata_json) if metadata_json is not None else None
 
@@ -223,7 +233,8 @@ def upsert_audit_run(
                 archive_merkle_root = COALESCE(?, archive_merkle_root),
                 merkle_verified = CASE WHEN ? IS NOT NULL THEN ? ELSE merkle_verified END,
                 attestation_token = COALESCE(?, attestation_token),
-                metadata_json = COALESCE(?, metadata_json)
+                metadata_json = COALESCE(?, metadata_json),
+                initiated_by = COALESCE(?, initiated_by)
             WHERE run_id = ?
             """, (
                 control_id, version, archetype, status, started_at, completed_at,
@@ -235,6 +246,7 @@ def upsert_audit_run(
                 source_merkle_root, archive_merkle_root,
                 merkle_verified_int, merkle_verified_int,
                 attestation_token, metadata_str,
+                initiated_by,
                 run_id,
             ))
         else:
@@ -244,8 +256,8 @@ def upsert_audit_run(
                 records_evaluated, records_eligible, records_processed, records_affected,
                 policy_id, policy_info, error_message, source_db, archive_db,
                 source_merkle_root, archive_merkle_root, merkle_verified, attestation_token,
-                metadata_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                metadata_json, initiated_by, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 run_id,
                 control_id or "UNKNOWN",
@@ -268,6 +280,7 @@ def upsert_audit_run(
                 merkle_verified_int or 0,
                 attestation_token,
                 metadata_str,
+                initiated_by,
                 now_iso,
             ))
         conn.commit()
