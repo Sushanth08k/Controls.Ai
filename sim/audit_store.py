@@ -4,14 +4,13 @@ import sqlite3
 from typing import Any
 from pathlib import Path
 
-DB_DIR = Path(__file__).resolve().parent
-CORE_DB_PATH = DB_DIR / "bank_core.db"
+from sim.db_connection import (
+    DATABASE_DIR,
+    CORE_DB_PATH,
+    get_core_connection as get_connection,
+)
 
-
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(CORE_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+DB_DIR = DATABASE_DIR
 
 
 def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:

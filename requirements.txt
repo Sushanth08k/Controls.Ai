@@ -146,6 +146,8 @@ langgraph-sdk==0.4.5
     # via langgraph
 langsmith==0.14.1
     # via langchain-core
+libsql==0.1.11
+    # via agentic-control-automation (pyproject.toml)
 litellm==1.103.0
     # via agentic-control-automation (pyproject.toml)
 markupsafe==3.0.3

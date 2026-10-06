@@ -17,38 +17,52 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-DB_DIR = Path(__file__).resolve().parent.parent / "sim"
-CORE_DB_PATH = DB_DIR / "bank_core.db"
-ARCHIVE_DB_PATH = DB_DIR / "bank_archive.db"
+from sim.db_connection import (
+    DATABASE_DIR,
+    CORE_DB_PATH,
+    ARCHIVE_DB_PATH,
+    get_core_connection,
+    get_archive_connection,
+    is_turso_enabled,
+)
+DB_DIR = DATABASE_DIR
 
 
 def get_live_database_schema_ddl(target_tables: list[str] | None = None) -> str:
     """
-    Query the real SQLite database catalog (sqlite_master) to extract
+    Query the real SQLite/Turso database catalog (sqlite_master) to extract
     exact CREATE TABLE statements and column definitions.
     """
     ddl_statements: list[str] = []
 
     try:
-        if CORE_DB_PATH.exists():
-            with sqlite3.connect(CORE_DB_PATH) as conn:
+        if is_turso_enabled() or CORE_DB_PATH.exists():
+            conn = get_core_connection()
+            try:
                 cur = conn.cursor()
                 query = "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
                 cur.execute(query)
-                for name, sql in cur.fetchall():
+                for r in cur.fetchall():
+                    name, sql = r[0], r[1]
                     if sql and (target_tables is None or name in target_tables):
                         ddl_statements.append(f"-- Source Table: {name}\n{sql};")
+            finally:
+                conn.close()
 
-        if ARCHIVE_DB_PATH.exists():
-            with sqlite3.connect(ARCHIVE_DB_PATH) as conn:
-                cur = conn.cursor()
+        if is_turso_enabled() or ARCHIVE_DB_PATH.exists():
+            conn_arc = get_archive_connection()
+            try:
+                cur = conn_arc.cursor()
                 query = "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
                 cur.execute(query)
-                for name, sql in cur.fetchall():
+                for r in cur.fetchall():
+                    name, sql = r[0], r[1]
                     if sql and (target_tables is None or name in target_tables):
                         ddl_statements.append(f"-- Archive Table: {name}\n{sql};")
+            finally:
+                conn_arc.close()
     except Exception as e:
-        logger.warning(f"Could not read live SQLite catalog: {e}")
+        logger.warning(f"Could not read live database catalog: {e}")
 
     if not ddl_statements:
         # Canonical baseline fallback schema

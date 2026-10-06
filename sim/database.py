@@ -7,22 +7,16 @@ from typing import Any
 from core.hashing import compute_row_hash
 from core.merkle import build_merkle_root
 
-DB_DIR = Path(__file__).resolve().parent
+from sim.db_connection import (
+    DATABASE_DIR,
+    CORE_DB_PATH,
+    ARCHIVE_DB_PATH,
+    get_core_connection,
+    get_archive_connection,
+    is_turso_enabled,
+)
 
-CORE_DB_PATH = DB_DIR / "bank_core.db"
-ARCHIVE_DB_PATH = DB_DIR / "bank_archive.db"
-
-
-def get_core_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(CORE_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def get_archive_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(ARCHIVE_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+DB_DIR = DATABASE_DIR
 
 
 # Canonical seed matching user's compliance screenshots (54 total, 33 clean eligible > 5yr, holds & active investigations, 18 recent)
@@ -175,7 +169,22 @@ def ensure_vulnerabilities_table(conn: sqlite3.Connection | None = None) -> None
 
 def init_real_databases(force_recreate: bool = False) -> None:
     """Initialize real SQLite banking databases on disk with real relational tables and records."""
-    if not force_recreate and CORE_DB_PATH.exists() and ARCHIVE_DB_PATH.exists():
+    if is_turso_enabled():
+        if not force_recreate:
+            conn_check = get_core_connection()
+            try:
+                cur = conn_check.cursor()
+                cur.execute("SELECT COUNT(*) FROM source_transactions")
+                cnt = cur.fetchone()[0]
+                if cnt > 0:
+                    ensure_vulnerabilities_table(conn_check)
+                    return
+            except Exception:
+                # Tables do not exist yet in Turso, proceed with creation and seeding
+                pass
+            finally:
+                conn_check.close()
+    elif not force_recreate and CORE_DB_PATH.exists() and ARCHIVE_DB_PATH.exists():
         conn_check = get_core_connection()
         try:
             cur = conn_check.cursor()
@@ -188,9 +197,9 @@ def init_real_databases(force_recreate: bool = False) -> None:
         finally:
             conn_check.close()
 
-    if not force_recreate and CORE_DB_PATH.exists() and ARCHIVE_DB_PATH.exists():
-        ensure_vulnerabilities_table()
-        return
+        if not force_recreate:
+            ensure_vulnerabilities_table()
+            return
 
     # 1. Initialize Core Database (Source)
     conn_core = get_core_connection()

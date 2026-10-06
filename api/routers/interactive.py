@@ -27,6 +27,7 @@ from sim.database import (
     execute_real_source_purge,
     reseed_compliance_databases,
     get_live_table_rows,
+    get_core_connection,
     CORE_DB_PATH,
     ARCHIVE_DB_PATH,
 )
@@ -776,7 +777,7 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
         # Apply generated selection SQL directly to live bank_core.db to determine truly eligible records
         eligible_ids: set[str] = set()
         sel_sql = sql_scripts.get("selection_sql", "")
-        with sqlite3.connect(CORE_DB_PATH) as conn:
+        with get_core_connection() as conn:
             cur = conn.cursor()
             for q in sel_sql.split(";"):
                 clean_q = "\n".join(l for l in q.splitlines() if not l.strip().startswith("--")).strip()

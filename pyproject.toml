@@ -23,6 +23,7 @@ dependencies = [
     "pypdf>=4.0.0",
     "pymupdf>=1.24.0",
     "cloudinary>=1.40.0",
+    "libsql>=0.1.11",
 ]
 
 [project.optional-dependencies]
