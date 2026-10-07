@@ -166,43 +166,79 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
                 const beforeCount = attr.data?.counts?.before ?? 0;
                 const afterCount = attr.data?.counts?.after ?? 0;
                 const isFixed = afterCount === 0;
+                const isImproved = !isFixed && afterCount < beforeCount;
+
+                const excCovered = attr.data?.covered_by_exception ?? exceptionsApproved ?? 0;
+                const escOpen = attr.data?.escalated_still_open ?? escalationsRecorded ?? 0;
+                const slaBreakdown =
+                  attr.data?.breakdown ||
+                  `${excCovered} covered by approved exception, ${escOpen} escalated and still open`;
 
                 return (
-                  <tr key={attr.key} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="p-3 font-bold text-slate-900">{attr.name}</td>
-                    <td className="p-3 text-center font-mono font-semibold text-slate-600">
-                      {beforeCount}
-                    </td>
-                    <td className="p-3 text-center font-mono font-bold">
-                      <span className={afterCount === 0 ? 'text-emerald-700' : 'text-amber-700'}>
-                        {afterCount}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                          isFixed
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-amber-100 text-amber-800'
-                        }`}
-                      >
-                        {isFixed ? (
-                          <>
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            Fixed
-                          </>
-                        ) : (
-                          <>
-                            <AlertTriangle className="w-3 h-3 text-amber-600" />
-                            Still failing
-                          </>
+                  <React.Fragment key={attr.key}>
+                    <tr className="hover:bg-slate-50/70 transition-colors">
+                      <td className="p-3">
+                        <div className="font-bold text-slate-900">{attr.name}</div>
+                        {attr.key === 'sla_compliance' && (
+                          <div className="text-[11px] text-slate-500 font-normal mt-0.5">
+                            {slaBreakdown}
+                          </div>
                         )}
-                      </span>
-                    </td>
-                    <td className="p-3 text-slate-600 text-[11px]">
-                      {attr.data?.details || '-'}
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="p-3 text-center font-mono font-semibold text-slate-600">
+                        {beforeCount}
+                      </td>
+                      <td className="p-3 text-center font-mono font-bold">
+                        <span className={afterCount === 0 ? 'text-emerald-700' : 'text-amber-700'}>
+                          {afterCount}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            isFixed
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : isImproved
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                              : 'bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          {isFixed ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Fixed
+                            </>
+                          ) : isImproved ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-blue-600" />
+                              Improved
+                            </>
+                          ) : (
+                            <>
+                              <AlertTriangle className="w-3 h-3 text-amber-600" />
+                              Still failing
+                            </>
+                          )}
+                        </span>
+                      </td>
+                      <td className="p-3 text-slate-600 text-[11px]">
+                        <div>{attr.data?.details || '-'}</div>
+                        {attr.key === 'sla_compliance' && (
+                          <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                            Breakdown: {slaBreakdown}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                    {attr.key === 'sla_compliance' && (
+                      <tr className="bg-slate-50/60 border-b border-slate-100">
+                        <td colSpan={5} className="px-3 py-1.5 text-[11px] text-slate-600">
+                          <span className="font-semibold text-slate-700">SLA Breakdown: </span>
+                          {slaBreakdown}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -246,7 +282,9 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
           </div>
           <div className="bg-white p-2.5 rounded-lg border border-slate-200">
             <div className="text-[10px] text-slate-400 font-semibold uppercase">Approver</div>
-            <div className="font-mono font-bold text-slate-800 truncate" title={approver}>{approver}</div>
+            <div className="font-mono font-bold text-slate-800 truncate" title={approver || 'n/a'}>
+              {approver || 'n/a'}
+            </div>
           </div>
         </div>
       </div>

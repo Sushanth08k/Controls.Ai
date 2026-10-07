@@ -60,7 +60,7 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
       id: 'Q2' as const,
       num: 'Q2',
       title: 'Ticket Coverage',
-      description: 'Open Critical/High/KEV findings lacking Jira/ServiceNow tracking tickets or tickets with missing owner or due date.',
+      description: 'Open Critical/High/KEV findings lacking tracking tickets or tickets with missing owner or due date.',
       data: q2,
       sqlKey: 'Q2_TICKET_COVERAGE',
       count: q2?.row_count,
@@ -86,6 +86,17 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   ];
 
   const currentCheck = checks.find((c) => c.id === selectedCheck) || checks[0];
+
+  const q2Untracked =
+    q2?.candidate_count ??
+    q2?.candidate_rows?.length ??
+    reviewSnapshot?.summary?.ticket_candidate_count ??
+    0;
+  const q2Defective =
+    q2?.defective_count ??
+    q2?.defective_rows?.length ??
+    reviewSnapshot?.summary?.defective_tickets_count ??
+    0;
 
   const handleRerun = async () => {
     setErrorMsg(null);
@@ -187,13 +198,24 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {checks.map((chk) => {
           const isSelected = selectedCheck === chk.id;
+          const isQ2 = chk.id === 'Q2';
           const displayCount = loading ? (
             <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
           ) : isExecuted ? (
-            chk.count !== undefined ? chk.count : 0
+            isQ2 ? (
+              `${q2Untracked} untracked, ${q2Defective} defective tickets`
+            ) : chk.count !== undefined ? (
+              chk.count
+            ) : (
+              0
+            )
           ) : (
             '-'
           );
+
+          const hasDefects = isQ2
+            ? q2Untracked + q2Defective > 0
+            : Boolean(chk.count && chk.count > 0);
 
           return (
             <div
@@ -205,13 +227,13 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
                   : 'bg-white border-slate-200 hover:bg-slate-50/80 hover:border-slate-300'
               }`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-1">
                 <span className="text-[11px] font-mono font-bold text-slate-500 uppercase">{chk.num}</span>
                 <span
                   className={`text-xs font-bold px-2 py-0.5 rounded-full ${
                     !isExecuted
                       ? 'bg-slate-100 text-slate-500'
-                      : chk.count && chk.count > 0
+                      : hasDefects
                       ? 'bg-amber-100 text-amber-800'
                       : 'bg-emerald-100 text-emerald-800'
                   }`}
@@ -236,7 +258,9 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
               </span>
               <h4 className="text-sm font-bold text-slate-900">{currentCheck.title}</h4>
               <span className="text-xs text-slate-500">
-                ({currentCheck.data?.row_count ?? 0} {currentCheck.data?.row_count === 1 ? 'row' : 'rows'} detected)
+                {currentCheck.id === 'Q2' && isExecuted
+                  ? `(${q2Untracked} untracked, ${q2Defective} defective tickets)`
+                  : `(${currentCheck.data?.row_count ?? 0} ${currentCheck.data?.row_count === 1 ? 'row' : 'rows'} detected)`}
               </span>
             </div>
             <p className="text-xs text-slate-600 mt-1">{currentCheck.description}</p>

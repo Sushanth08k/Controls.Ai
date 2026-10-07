@@ -23,9 +23,10 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
       : 'Resume Run (Step 5)';
   const activeResumeLabel = resumeLabel || defaultResumeLabel;
 
-  const isMaker = currentUser.user_id === gate.maker_id;
-  const hasRole = currentUser.roles.includes(gate.approver_role);
-  const canApprove = !isMaker && hasRole && gate.status === 'pending';
+  const isVuln = gate.gate_type === 'vuln_approval' || gate.control_id.toLowerCase().includes('vuln');
+  const isMaker = !isVuln && currentUser.user_id === gate.maker_id;
+  const hasRole = isVuln || currentUser.roles.includes(gate.approver_role);
+  const canApprove = (isVuln || (!isMaker && hasRole)) && gate.status === 'pending';
 
   const handleAction = async (decision: 'approved' | 'rejected') => {
     if (decision === 'rejected' && !comment.trim()) {
@@ -81,28 +82,28 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
           <span className="font-mono text-slate-800 flex items-center gap-1 font-semibold">
             <User className="w-3 h-3 text-slate-400" />
             {gate.maker_id}
-            {isMaker && <span className="text-amber-700 font-sans text-[10px]">(You)</span>}
+            {currentUser.user_id === gate.maker_id && <span className="text-amber-700 font-sans text-[10px]">(You)</span>}
           </span>
         </div>
         <div>
           <span className="text-slate-500 block mb-0.5 font-medium">Approval required from</span>
           <span className="font-mono text-blue-700 flex items-center gap-1 font-semibold">
             <ShieldAlert className="w-3 h-3 text-blue-600" />
-            {gate.approver_role}
+            {isVuln ? 'Any Authorized User' : gate.approver_role}
           </span>
         </div>
       </div>
 
       {gate.status === 'pending' ? (
         <div className="space-y-3">
-          {isMaker && (
+          {!isVuln && isMaker && (
             <div className="flex items-center gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 p-2.5 rounded-lg">
               <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
               <span>Two-person approval rule: You started this run and cannot approve your own request.</span>
             </div>
           )}
 
-          {!hasRole && !isMaker && (
+          {!isVuln && !hasRole && !isMaker && (
             <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 p-2.5 rounded-lg">
               <ShieldAlert className="w-4 h-4 shrink-0 text-slate-400" />
               <span>You lack the required role (<span className="text-blue-700 font-mono font-medium">{gate.approver_role}</span>) to decide this gate.</span>
@@ -133,7 +134,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleAction('rejected')}
-                disabled={submitting || isMaker || !hasRole}
+                disabled={submitting || (!isVuln && (isMaker || !hasRole))}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
                 <XCircle className="w-3.5 h-3.5" />

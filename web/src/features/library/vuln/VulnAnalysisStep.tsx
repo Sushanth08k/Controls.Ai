@@ -211,7 +211,7 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
       <div>
         <h3 className="text-sm font-bold text-slate-900">Extracted Remediation SLA Rules</h3>
         <p className="text-xs text-slate-500 mt-0.5">
-          AI parser extracted deterministic remediation deadlines from approved policy text.
+          Rules extracted from the approved policy text.
         </p>
       </div>
 
@@ -233,7 +233,9 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
           <span className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
             Ambiguous Items
           </span>
-          <span className="text-2xl font-bold font-mono text-slate-700">{rawAmbiguities.length}</span>
+          <span className="text-2xl font-bold font-mono text-slate-700">
+            {Array.isArray(rawAmbiguities) ? rawAmbiguities.length : 0}
+          </span>
         </div>
       </div>
 

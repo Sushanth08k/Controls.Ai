@@ -181,8 +181,10 @@ export interface VulnQueryOutput {
   total_row_count: number;
   rows: any[];
   candidate_tickets?: VulnTicketCandidate[];
+  candidate_rows?: any[];
   candidate_count?: number;
   defective_tickets?: VulnDefectiveTicket[];
+  defective_rows?: any[];
   defective_count?: number;
   critical_overdue_count?: number;
   pending_count?: number;
@@ -244,6 +246,11 @@ export interface AttributeResult {
   };
   details: string;
   fixed?: boolean;
+  covered_by_exception?: number;
+  escalated_still_open?: number;
+  breakdown?: string;
+  resolution_label?: string;
+  fixed_label?: string;
 }
 
 export interface ControlAssessment {
