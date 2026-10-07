@@ -71,7 +71,7 @@ def test_zero_candidate_ticketing_lifecycle():
     assert resp2.status_code == 200
     run2_id = resp2.json()["run_id"]
     snap2 = resp2.json()["review_snapshot"]
-    assert snap2["q4_ticket_coverage"]["candidate_count"] == 0
+    assert snap2["q2_ticket_coverage"]["candidate_count"] == 0
 
     # Execute ticketing on zero candidates -> should return 200, created_count 0, stage TICKETED
     ticket2_resp = client.post("/vulnerability/run/ticket", json={"run_id": run2_id})
@@ -102,7 +102,7 @@ def test_zero_candidate_ticketing_lifecycle():
             json={"run_id": run2_id, "approver_id": "test_approver", "notes": "Approved in test"},
         )
         assert approve_resp.status_code == 200
-        assert approve_resp.json()["stage"] == "APPROVED"
+        assert approve_resp.json()["stage"] == "APPLIED"
 
         apply_resp = client.post("/vulnerability/run/apply", json={"run_id": run2_id})
         assert apply_resp.status_code == 200

@@ -9,7 +9,8 @@ interface SqlTab {
 }
 
 interface VulnSqlViewerProps {
-  tabs: SqlTab[];
+  tabs?: SqlTab[];
+  sql?: string;
   activeTabId?: string;
   onTabChange?: (tabId: string) => void;
   title?: string;
@@ -17,15 +18,17 @@ interface VulnSqlViewerProps {
 
 export const VulnSqlViewer: React.FC<VulnSqlViewerProps> = ({
   tabs,
+  sql,
   activeTabId,
   onTabChange,
   title = 'Parameterised SQL Statements',
 }) => {
-  const [localActiveTab, setLocalActiveTab] = useState<string>(tabs[0]?.id || '');
+  const effectiveTabs: SqlTab[] = tabs && tabs.length > 0 ? tabs : [{ id: 'sql', label: title || 'SQL', sql: sql || '' }];
+  const [localActiveTab, setLocalActiveTab] = useState<string>(effectiveTabs[0]?.id || '');
   const [copied, setCopied] = useState<boolean>(false);
 
   const currentTabId = activeTabId || localActiveTab;
-  const currentTab = tabs.find((t) => t.id === currentTabId) || tabs[0];
+  const currentTab = effectiveTabs.find((t) => t.id === currentTabId) || effectiveTabs[0];
 
   const handleCopy = () => {
     if (!currentTab?.sql) return;
@@ -65,9 +68,9 @@ export const VulnSqlViewer: React.FC<VulnSqlViewerProps> = ({
         </button>
       </div>
 
-      {tabs.length > 1 && (
+      {effectiveTabs.length > 1 && (
         <div className="flex border-b border-slate-800/80 bg-slate-950/40 px-3 pt-2 gap-1 overflow-x-auto">
-          {tabs.map((tab) => (
+          {effectiveTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => handleSelect(tab.id)}

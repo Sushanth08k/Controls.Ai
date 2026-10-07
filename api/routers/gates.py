@@ -192,7 +192,22 @@ async def decide_gate(
             meta = db_run.get("metadata") or {} if db_run else {}
 
             if body.decision == "approved":
-                meta["stage"] = "APPROVED"
+                from core.vulnerability_pipeline import apply_outcomes, get_as_of_date
+                from sim.audit_store import get_connection
+                conn = get_connection()
+                try:
+                    as_of = get_as_of_date(meta.get("as_of_date") or meta.get("as_of"))
+                    apply_res = apply_outcomes(conn, gate.run_id, user.user_id, as_of)
+                finally:
+                    conn.close()
+
+                meta["stage"] = "APPLIED"
+                meta["approved_gate"] = {
+                    "gate_id": gate.gate_id,
+                    "operator_id": user.user_id,
+                    "comment": body.comment,
+                }
+                meta["apply_results"] = apply_res
                 save_audit_step(
                     step_id=f"step-{gate.run_id}-vuln-approval",
                     run_id=gate.run_id,
@@ -203,7 +218,18 @@ async def decide_gate(
                         "certificate_id": gate.gate_id,
                         "operator_id": user.user_id,
                         "comment": body.comment,
+                        "applied": apply_res,
                     },
+                )
+                save_audit_step(
+                    step_id=f"step-{gate.run_id}-5",
+                    run_id=gate.run_id,
+                    step_name="APPLY_OUTCOMES",
+                    status="completed",
+                    started_at=now_iso,
+                    completed_at=now_iso,
+                    records_processed=apply_res["approved_exceptions_applied"] + apply_res["escalated_tickets_applied"],
+                    metadata_json=apply_res,
                 )
                 upsert_audit_run(
                     run_id=gate.run_id,
@@ -215,7 +241,7 @@ async def decide_gate(
                     _RUNS_STORE[gate.run_id].status = "running"
                 await sse_broker.publish(
                     "run.updated",
-                    {"run_id": gate.run_id, "status": "running", "control_id": gate.control_id, "stage": "APPROVED"},
+                    {"run_id": gate.run_id, "status": "running", "control_id": gate.control_id, "stage": "APPLIED"},
                 )
             elif body.decision == "rejected":
                 meta["stage"] = "REJECTED"

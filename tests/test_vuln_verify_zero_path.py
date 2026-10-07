@@ -31,7 +31,7 @@ def test_zero_candidate_verify_returns_passed_and_request_approval_transitions()
     res2 = client.post("/vulnerability/run/start", json={"control_id": VULN_CONTROL_ID})
     assert res2.status_code == 200
     run2_id = res2.json()["run_id"]
-    assert res2.json()["review_snapshot"]["q4_ticket_coverage"]["candidate_count"] == 0
+    assert res2.json()["review_snapshot"]["q2_ticket_coverage"]["candidate_count"] == 0
 
     # 3. Ticket second run -> 0 tickets provisioned
     tkt2_res = client.post("/vulnerability/run/ticket", json={"run_id": run2_id})

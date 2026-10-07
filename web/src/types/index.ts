@@ -110,8 +110,6 @@ export interface VulnScopeAsset {
 export interface VulnScopeCounts {
   assets_total: number;
   assets_in_scope: number;
-  scan_runs_in_window: number;
-  scan_runs_failed_or_partial: number;
   tickets_existing: number;
   exceptions_total: number;
   exceptions_by_status: Record<string, number>;
@@ -143,6 +141,7 @@ export interface VulnFindingsReconciliation {
 export interface VulnScopeSummary {
   assets: VulnScopeAsset[];
   assets_out_of_scope: VulnOutOfScopeAsset[];
+  reconciliation_message?: string;
   counts: VulnScopeCounts;
   findings_reconciliation: VulnFindingsReconciliation;
 }
@@ -185,18 +184,12 @@ export interface VulnQueryOutput {
   candidate_count?: number;
   defective_tickets?: VulnDefectiveTicket[];
   defective_count?: number;
-  total_in_scope?: number;
-  covered_count?: number;
-  missed_count?: number;
-  coverage_pct?: number;
   critical_overdue_count?: number;
   pending_count?: number;
   expired_count?: number;
 }
 
 export interface VulnReviewSummary {
-  scan_health_unhealthy_count: number;
-  coverage_percentage: number;
   sla_breach_count: number;
   critical_overdue_count: number;
   ticket_candidate_count: number;
@@ -212,12 +205,10 @@ export interface VulnReviewSnapshot {
   as_of_date?: string;
   review_executed: boolean;
   executed_at?: string;
-  q1_scan_health: VulnQueryOutput;
-  q2_coverage: VulnQueryOutput;
-  q3_sla_breach: VulnQueryOutput;
-  q4_ticket_coverage: VulnQueryOutput;
-  q5_closure_validity: VulnQueryOutput;
-  q6_exception_governance: VulnQueryOutput;
+  q1_sla_breach: VulnQueryOutput;
+  q2_ticket_coverage: VulnQueryOutput;
+  q3_closure_validity: VulnQueryOutput;
+  q4_exception_governance: VulnQueryOutput;
   summary: VulnReviewSummary;
   reconciliation?: any;
 }
@@ -232,12 +223,6 @@ export interface VulnVerificationResult {
   created_count?: number;
   mismatch_count?: number;
   mismatches?: string[];
-  coverage_pct?: number;
-  coverage?: {
-    in_scope_assets: number;
-    scanned_assets: number;
-    coverage_pct: number;
-  };
   verification_banner?: string;
   reconciliation?: {
     required_count: number;
@@ -246,12 +231,25 @@ export interface VulnVerificationResult {
     mismatches: string[];
     findings_with_tickets?: number;
     open_critical_high_count?: number;
-    coverage?: {
-      in_scope_assets: number;
-      scanned_assets: number;
-      coverage_pct: number;
-    };
   };
+}
+
+export interface AttributeResult {
+  attribute_name: string;
+  status: 'Pass' | 'Fail' | 'Not Testable';
+  defect_type?: 'Design' | 'Operating' | 'None';
+  counts: {
+    before?: number;
+    after?: number;
+  };
+  details: string;
+  fixed?: boolean;
+}
+
+export interface ControlAssessment {
+  overall_grade: 'Effective' | 'Needs Improvement' | 'Ineffective';
+  rationale: string;
+  attributes: Record<string, AttributeResult>;
 }
 
 

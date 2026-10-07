@@ -39,9 +39,10 @@ def test_vuln_gate_decision_never_writes_archival_step_names():
     assert f"step-{run_id}-vuln-approval" in step_ids
     assert f"step-{run_id}-4" not in step_ids
 
-    # Verify run stage is updated to APPROVED
+    # Verify run stage is updated to APPLIED upon gate decision
     db_run = get_audit_run(run_id)
-    assert db_run["metadata"]["stage"] == "APPROVED"
+    assert db_run["metadata"]["stage"] == "APPLIED"
+    assert "SOURCE_CLEANUP" not in step_names
 
 
 def test_vuln_maker_checker_bypass():
