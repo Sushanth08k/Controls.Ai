@@ -396,6 +396,19 @@ export async function startVulnerabilityRun(payload: {
   return res.json();
 }
 
+export async function rerunVulnerabilityReview(runId: string, asOf?: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/rerun_review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId, as_of: asOf }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to re-run review queries: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function ticketVulnerabilityRun(runId: string): Promise<any> {
   const res = await fetch(`${API_BASE}/vulnerability/run/ticket`, {
     method: 'POST',

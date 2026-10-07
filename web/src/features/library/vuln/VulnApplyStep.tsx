@@ -119,14 +119,21 @@ export const VulnApplyStep: React.FC<VulnApplyStepProps> = ({
           <ArrowLeft className="w-4 h-4" />
           Back to Approval
         </button>
-        <button
-          onClick={onProceed}
-          disabled={loading || !isApplied}
-          className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all"
-        >
-          Proceed to Control Assessment
-          <ArrowRight className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-3">
+          {!isApplied && (
+            <span className="text-xs text-rose-600 font-medium">
+              Click "Apply Approved Outcomes" to commit changes before proceeding.
+            </span>
+          )}
+          <button
+            onClick={onProceed}
+            disabled={loading || !isApplied}
+            className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all cursor-pointer"
+          >
+            Proceed to Control Assessment
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

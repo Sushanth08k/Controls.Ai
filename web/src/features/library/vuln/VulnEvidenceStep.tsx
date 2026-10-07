@@ -197,11 +197,11 @@ export const VulnEvidenceStep: React.FC<VulnEvidenceStepProps> = ({
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">EXCEPTIONS AUTHORIZED:</span>
-              <strong className="text-slate-800">{applyData?.applied_exceptions ?? 1}</strong>
+              <strong className="text-slate-800">{applyData?.applied_exceptions ?? 0}</strong>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-500">ESCALATIONS COMMITTED:</span>
-              <strong className="text-slate-800">{applyData?.applied_escalations ?? 1}</strong>
+              <strong className="text-slate-800">{applyData?.applied_escalations ?? 0}</strong>
             </div>
           </div>
         </div>
