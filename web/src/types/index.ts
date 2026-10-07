@@ -254,9 +254,10 @@ export interface AttributeResult {
 }
 
 export interface ControlAssessment {
-  overall_grade: 'Effective' | 'Needs Improvement' | 'Ineffective';
+  overall_grade: 'Effective' | 'Effective with follow-ups' | 'Needs Improvement' | 'Ineffective';
   rationale: string;
   attributes: Record<string, AttributeResult>;
+  remaining_followups?: any[];
 }
 
 

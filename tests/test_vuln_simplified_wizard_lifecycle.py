@@ -59,7 +59,15 @@ def test_fresh_seed_full_lifecycle_with_before_not_equal_after():
     app_res = client.post("/vulnerability/run/request_approval", json={"run_id": run_id})
     assert app_res.status_code == 200
     assert app_res.json()["stage"] == "APPROVAL_PENDING"
-    gate_id = app_res.json()["gate"]["gate_id"]
+    gate = app_res.json()["gate"]
+    gate_id = gate["gate_id"]
+
+    escalation_fids = sorted([e["finding_id"] for e in gate["payload"]["escalations"]])
+    q1_fids = sorted([r["vulnerability_id"] for r in snap["q1_sla_breach"]["rows"]])
+    print(f"\n[TEST INFO] Escalation finding IDs: {escalation_fids}")
+    print(f"[TEST INFO] Review Q1 finding IDs: {q1_fids}")
+    # Escalation list equals SLA-breach findings (open, past SLA, not covered by approved exception) that have a ticket
+    assert escalation_fids == q1_fids
 
     # Quick approve auto-applies outcomes atomically and moves stage to APPLIED
     quick_res = client.post(
@@ -81,7 +89,8 @@ def test_fresh_seed_full_lifecycle_with_before_not_equal_after():
     assert final_data["status"] == "completed"
 
     assessment = final_data["control_assessment"]
-    assert assessment["overall_grade"] in ("Effective", "Needs Improvement", "Ineffective")
+    assert assessment["overall_grade"] in ("Effective", "Effective with follow-ups", "Ineffective")
+    assert assessment["overall_grade"] == "Effective with follow-ups"
     assert len(assessment["attributes"]) == 4
 
     # Real change on fresh seed: ticket_coverage, sla_compliance, exception_governance before != after
@@ -91,6 +100,19 @@ def test_fresh_seed_full_lifecycle_with_before_not_equal_after():
 
     assert attrs["sla_compliance"]["counts"]["before"] != attrs["sla_compliance"]["counts"]["after"]
     assert attrs["sla_compliance"]["counts"]["after"] < attrs["sla_compliance"]["counts"]["before"]
+
+    # SLA Breakdown verification & printing
+    before_sla_list = [r["vulnerability_id"] for r in snap["q1_sla_breach"]["rows"]]
+    after_sla_list = [r["vulnerability_id"] for r in final_data["after_snapshot"]["q1_sla_breach"]["rows"]]
+    print(f"\n[TEST INFO] SLA before list: {before_sla_list} (count: {len(before_sla_list)})")
+    print(f"[TEST INFO] SLA after list: {after_sla_list} (count: {len(after_sla_list)})")
+    print(f"[TEST INFO] covered_by_exception: {attrs['sla_compliance']['covered_by_exception']}")
+    print(f"[TEST INFO] escalated_still_open: {attrs['sla_compliance']['escalated_still_open']}")
+    print(f"[TEST INFO] breakdown: {attrs['sla_compliance']['breakdown']}")
+
+    assert attrs["sla_compliance"]["covered_by_exception"] == 1
+    assert attrs["sla_compliance"]["escalated_still_open"] == 2
+    assert "1 covered by approved exception, 2 escalated and still open" in attrs["sla_compliance"]["breakdown"]
 
     assert attrs["exception_governance"]["counts"]["before"] != attrs["exception_governance"]["counts"]["after"]
     assert attrs["exception_governance"]["counts"]["after"] < attrs["exception_governance"]["counts"]["before"]

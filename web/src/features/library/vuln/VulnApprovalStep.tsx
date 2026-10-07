@@ -131,35 +131,101 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
       {/* Applied View (After Approval) */}
       {isApplied ? (
         <div className="space-y-4">
-          <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-emerald-950 shadow-2xs">
-            <div className="flex items-center gap-3">
+          <div className="bg-emerald-50/70 border border-emerald-300 rounded-xl p-5 shadow-2xs space-y-4">
+            <div className="flex items-center gap-2.5 pb-2 border-b border-emerald-200">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              <div>
-                <div className="text-xs font-bold uppercase tracking-wider">
-                  Outcomes Successfully Applied (Stage: APPLIED)
-                </div>
-                <div className="text-xs mt-0.5 text-emerald-900">
-                  {appliedExceptions} exception(s) approved and mirrored; {appliedEscalations} ticket(s) escalated to management.
-                </div>
-              </div>
+              <h4 className="text-sm font-bold text-slate-900">
+                Approval recorded: changes applied
+              </h4>
             </div>
-            <button
-              onClick={() => setShowAppliedSql(!showAppliedSql)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer"
-            >
-              <Code className="w-3.5 h-3.5" />
-              <span>{showAppliedSql ? 'Hide SQL' : 'View Applied UPDATE SQL'}</span>
-            </button>
-          </div>
 
-          {showAppliedSql && (
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
-              <div className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2">
-                Executed UPDATE Statements (Backend Database Writes)
+            {/* Section: Exceptions approved (N) */}
+            <div className="space-y-2">
+              <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <ShieldAlert className="w-4 h-4 text-emerald-700" />
+                Exceptions approved ({appliedExceptions || exceptions.length})
               </div>
-              <VulnSqlViewer sql={executedSql} title="Applied UPDATE SQL" />
+              {exceptions.length > 0 ? (
+                <div className="space-y-2">
+                  {exceptions.map((ex: any, idx: number) => (
+                    <div
+                      key={ex.exception_id || ex.finding_id || idx}
+                      className="p-3 bg-white border border-emerald-200 rounded-lg text-xs space-y-1 shadow-2xs"
+                    >
+                      <div className="font-mono font-bold text-slate-900 flex items-center justify-between">
+                        <span>{ex.finding_id || ex.exception_id}</span>
+                        <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          risk accepted until {ex.expires_at || '90 days'}
+                        </span>
+                      </div>
+                      <div className="text-slate-600 text-[11px]">
+                        <strong>Compensating Control:</strong> {ex.compensating_control || 'Applied per policy'}
+                      </div>
+                      <div className="text-emerald-700 font-semibold text-[11px]">
+                        Effect: removed from SLA breach list
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic">No exceptions were approved.</p>
+              )}
             </div>
-          )}
+
+            {/* Section: Escalated to management (M) */}
+            <div className="space-y-2 pt-2 border-t border-emerald-200">
+              <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                Escalated to management ({appliedEscalations || escalations.length})
+              </div>
+              {escalations.length > 0 ? (
+                <div className="space-y-2">
+                  {escalations.map((esc: any, idx: number) => (
+                    <div
+                      key={esc.finding_id || esc.ticket_id || idx}
+                      className="p-3 bg-white border border-amber-200 rounded-lg text-xs space-y-1 shadow-2xs"
+                    >
+                      <div className="font-mono font-bold text-slate-900 flex items-center justify-between">
+                        <span>{esc.finding_id} {esc.ticket_id ? `(${esc.ticket_id})` : ''}</span>
+                        <span className="text-[10px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-semibold">
+                          Escalated
+                        </span>
+                      </div>
+                      <div className="text-slate-600 text-[11px]">
+                        Escalated to: <strong className="text-slate-900">{esc.owner_manager || 'VP Engineering'}</strong> (Asset Owner: {esc.owner})
+                      </div>
+                      <div className="text-amber-800 font-semibold text-[11px]">
+                        Effect: still open, now visible to management
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic">No findings were escalated.</p>
+              )}
+            </div>
+
+            {/* Collapsed View database changes (SQL) section, closed by default */}
+            <div className="pt-2 border-t border-emerald-200">
+              <button
+                onClick={() => setShowAppliedSql(!showAppliedSql)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 transition-colors cursor-pointer"
+              >
+                <Code className="w-3.5 h-3.5 text-slate-500" />
+                <span>View database changes (SQL)</span>
+                <span className="text-[10px] text-slate-400">({showAppliedSql ? 'Hide' : 'Expand'})</span>
+              </button>
+
+              {showAppliedSql && (
+                <div className="mt-2.5 bg-white rounded-lg border border-slate-200 p-3 shadow-2xs">
+                  <div className="text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Executed UPDATE Statements (Backend Database Writes)
+                  </div>
+                  <VulnSqlViewer sql={executedSql} title="Applied UPDATE SQL" />
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       ) : totalItems === 0 ? (
         /* Zero Items View */

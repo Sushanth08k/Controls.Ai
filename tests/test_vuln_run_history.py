@@ -75,7 +75,7 @@ def test_stateful_vuln_run_in_runs_list_and_audit():
     # Stateful keys
     assert "control_assessment" in res
     assert "review_snapshot" in res
-    assert res["control_assessment"]["overall_grade"] in ("Effective", "Needs Improvement", "Ineffective")
+    assert res["control_assessment"]["overall_grade"] in ("Effective", "Effective with follow-ups", "Needs Improvement", "Ineffective")
 
 
 def test_legacy_vulnerability_results_fallback():

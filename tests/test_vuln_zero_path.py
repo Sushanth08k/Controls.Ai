@@ -113,7 +113,7 @@ def test_zero_candidate_ticketing_lifecycle():
     assert fin_resp.status_code == 200
     fin_data = fin_resp.json()
     assert fin_data["stage"] == "FINALIZED"
-    assert fin_data["control_assessment"]["overall_grade"] in ("Effective", "Ineffective", "Needs Improvement")
+    assert fin_data["control_assessment"]["overall_grade"] in ("Effective", "Ineffective", "Effective with follow-ups", "Needs Improvement")
 
 
 def test_zero_approval_items_skips_directly_to_applied():
