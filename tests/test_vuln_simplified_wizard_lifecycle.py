@@ -276,3 +276,104 @@ def test_no_archival_step_names_written_for_vuln_gates():
     ]
     for prohibited in archival_prohibited_names:
         assert prohibited not in step_names
+
+
+def test_approve_and_resume_contain_per_finding_details():
+    """Assert POST /vulnerability/run/approve and GET /vulnerability/run/resume/{run_id}
+    both contain per-finding detail:
+    - Exceptions: finding_id, expiry, compensating_control
+    - Escalations: finding_id, ticket_id, escalated_to
+    """
+    start_res = client.post("/vulnerability/run/start", json={"control_id": VULN_CONTROL_ID})
+    assert start_res.status_code == 200
+    run_id = start_res.json()["run_id"]
+
+    client.post("/vulnerability/run/ticket", json={"run_id": run_id})
+    client.post("/vulnerability/run/verify", json={"run_id": run_id})
+    client.post("/vulnerability/run/request_approval", json={"run_id": run_id})
+
+    # 1. Test POST /vulnerability/run/approve response
+    approve_res = client.post(
+        "/vulnerability/run/approve",
+        json={"run_id": run_id, "approver_id": "sec_reviewer_1"},
+    )
+    assert approve_res.status_code == 200
+    app_data = approve_res.json()
+
+    for target in [app_data, app_data.get("apply_results", {})]:
+        exceptions = target.get("exceptions", [])
+        assert len(exceptions) >= 1
+        for exc in exceptions:
+            assert exc.get("finding_id") is not None
+            assert exc.get("expiry") is not None
+            assert exc.get("compensating_control") is not None
+
+        escalations = target.get("escalations", [])
+        assert len(escalations) >= 1
+        for esc in escalations:
+            assert esc.get("finding_id") is not None
+            assert esc.get("ticket_id") is not None
+            assert esc.get("escalated_to") is not None
+
+    # 2. Test GET /vulnerability/run/resume/{run_id} response after approval
+    resume_res = client.get(f"/vulnerability/run/resume/{run_id}")
+    assert resume_res.status_code == 200
+    resume_data = resume_res.json()
+
+    for target in [resume_data, resume_data.get("apply_results", {})]:
+        exceptions = target.get("exceptions", [])
+        assert len(exceptions) >= 1
+        for exc in exceptions:
+            assert exc.get("finding_id") is not None
+            assert exc.get("expiry") is not None
+            assert exc.get("compensating_control") is not None
+
+        escalations = target.get("escalations", [])
+        assert len(escalations) >= 1
+        for esc in escalations:
+            assert esc.get("finding_id") is not None
+            assert esc.get("ticket_id") is not None
+            assert esc.get("escalated_to") is not None
+
+
+def test_keep_in_queue_then_approval_page_decision_resume_contains_per_finding_details():
+    """Assert approving via the Approvals page (/gates/{gate_id}/decision) then resuming
+    via GET /vulnerability/run/resume/{run_id} contains per-finding detail from stored run state.
+    """
+    start_res = client.post("/vulnerability/run/start", json={"control_id": VULN_CONTROL_ID})
+    assert start_res.status_code == 200
+    run_id = start_res.json()["run_id"]
+
+    client.post("/vulnerability/run/ticket", json={"run_id": run_id})
+    client.post("/vulnerability/run/verify", json={"run_id": run_id})
+    app_res = client.post("/vulnerability/run/request_approval", json={"run_id": run_id})
+    gate_id = app_res.json()["gate"]["gate_id"]
+
+    # Keep in queue, then approve from Approvals page
+    dec_res = client.post(
+        f"/gates/{gate_id}/decision",
+        json={"decision": "approved", "comment": "Approved from Approvals page"},
+        headers={"X-User-Roles": "security_reviewer"},
+    )
+    assert dec_res.status_code == 200
+
+    # Resume the run
+    resume_res = client.get(f"/vulnerability/run/resume/{run_id}")
+    assert resume_res.status_code == 200
+    resume_data = resume_res.json()
+    assert resume_data["stage"] == "APPLIED"
+
+    exceptions = resume_data.get("exceptions", [])
+    assert len(exceptions) >= 1
+    for exc in exceptions:
+        assert exc.get("finding_id") is not None
+        assert exc.get("expiry") is not None
+        assert exc.get("compensating_control") is not None
+
+    escalations = resume_data.get("escalations", [])
+    assert len(escalations) >= 1
+    for esc in escalations:
+        assert esc.get("finding_id") is not None
+        assert esc.get("ticket_id") is not None
+        assert esc.get("escalated_to") is not None
+

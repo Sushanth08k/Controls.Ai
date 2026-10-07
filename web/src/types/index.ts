@@ -35,9 +35,14 @@ export interface GateItemDTO {
   decided_by?: string;
   comment?: string;
   gate_type?: string;
+  payload?: any;
+  exceptions?: any[];
+  escalations?: any[];
   payload_summary?: {
     exceptions_count?: number;
     escalations_count?: number;
+    exceptions?: any[];
+    escalations?: any[];
     [key: string]: any;
   };
 }

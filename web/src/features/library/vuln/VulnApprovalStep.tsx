@@ -16,20 +16,26 @@ interface VulnApprovalStepProps {
   gateData: {
     gate_id?: string;
     payload_summary?: {
-      exception_count: number;
-      escalation_count: number;
-      exceptions: any[];
-      escalations: any[];
+      exception_count?: number;
+      escalation_count?: number;
+      exceptions?: any[];
+      escalations?: any[];
+      [key: string]: any;
     };
     payload?: {
       summary?: {
-        exceptions_count: number;
-        escalations_count: number;
+        exceptions_count?: number;
+        escalations_count?: number;
       };
       exceptions?: any[];
       escalations?: any[];
+      [key: string]: any;
     };
     gate?: any;
+    exceptions?: any[];
+    escalations?: any[];
+    payload_json?: string;
+    [key: string]: any;
   } | null;
   applyData: {
     applied?: boolean;
@@ -39,6 +45,9 @@ interface VulnApprovalStepProps {
     escalated_tickets_applied?: number;
     expired_mirrors_cleared?: number;
     sql?: string;
+    exceptions?: any[];
+    escalations?: any[];
+    [key: string]: any;
   } | null;
   onKeepInQueue: () => void;
   onQuickApprove: () => Promise<void>;
@@ -61,17 +70,47 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
   const [showAppliedSql, setShowAppliedSql] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Extract exceptions and escalations
-  const exceptions =
+  // Safely parse gate payload if it is a string
+  let parsedPayload: any = gateData?.payload;
+  if (typeof parsedPayload === 'string') {
+    try {
+      parsedPayload = JSON.parse(parsedPayload);
+    } catch {
+      parsedPayload = null;
+    }
+  }
+  let parsedPayloadJson: any = null;
+  if (typeof (gateData as any)?.payload_json === 'string') {
+    try {
+      parsedPayloadJson = JSON.parse((gateData as any).payload_json);
+    } catch {
+      parsedPayloadJson = null;
+    }
+  }
+
+  // Extract exceptions and escalations with comprehensive fallback
+  const exceptions: any[] =
+    (applyData?.exceptions && applyData.exceptions.length > 0 ? applyData.exceptions : null) ??
+    (gateData?.payload_summary?.exceptions && gateData.payload_summary.exceptions.length > 0 ? gateData.payload_summary.exceptions : null) ??
+    (parsedPayload?.exceptions && parsedPayload.exceptions.length > 0 ? parsedPayload.exceptions : null) ??
+    (gateData?.gate?.payload?.exceptions && gateData.gate.payload.exceptions.length > 0 ? gateData.gate.payload.exceptions : null) ??
+    (parsedPayloadJson?.exceptions && parsedPayloadJson.exceptions.length > 0 ? parsedPayloadJson.exceptions : null) ??
+    (gateData?.exceptions && gateData.exceptions.length > 0 ? gateData.exceptions : null) ??
+    applyData?.exceptions ??
     gateData?.payload_summary?.exceptions ??
-    gateData?.payload?.exceptions ??
-    gateData?.gate?.payload?.exceptions ??
+    parsedPayload?.exceptions ??
     [];
 
-  const escalations =
+  const escalations: any[] =
+    (applyData?.escalations && applyData.escalations.length > 0 ? applyData.escalations : null) ??
+    (gateData?.payload_summary?.escalations && gateData.payload_summary.escalations.length > 0 ? gateData.payload_summary.escalations : null) ??
+    (parsedPayload?.escalations && parsedPayload.escalations.length > 0 ? parsedPayload.escalations : null) ??
+    (gateData?.gate?.payload?.escalations && gateData.gate.payload.escalations.length > 0 ? gateData.gate.payload.escalations : null) ??
+    (parsedPayloadJson?.escalations && parsedPayloadJson.escalations.length > 0 ? parsedPayloadJson.escalations : null) ??
+    (gateData?.escalations && gateData.escalations.length > 0 ? gateData.escalations : null) ??
+    applyData?.escalations ??
     gateData?.payload_summary?.escalations ??
-    gateData?.payload?.escalations ??
-    gateData?.gate?.payload?.escalations ??
+    parsedPayload?.escalations ??
     [];
 
   const totalItems = exceptions.length + escalations.length;
@@ -155,7 +194,7 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
                       <div className="font-mono font-bold text-slate-900 flex items-center justify-between">
                         <span>{ex.finding_id || ex.exception_id}</span>
                         <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          risk accepted until {ex.expires_at || '90 days'}
+                          risk accepted until {ex.expiry || ex.expires_at || '90 days'}
                         </span>
                       </div>
                       <div className="text-slate-600 text-[11px]">
@@ -192,7 +231,7 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
                         </span>
                       </div>
                       <div className="text-slate-600 text-[11px]">
-                        Escalated to: <strong className="text-slate-900">{esc.owner_manager || 'VP Engineering'}</strong> (Asset Owner: {esc.owner})
+                        Escalated to: <strong className="text-slate-900">{esc.escalated_to || esc.owner_manager || 'VP Engineering'}</strong> (Asset Owner: {esc.owner || 'sec_ops_team'})
                       </div>
                       <div className="text-amber-800 font-semibold text-[11px]">
                         Effect: still open, now visible to management
@@ -258,7 +297,7 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
                     <div className="flex items-center justify-between font-mono font-bold text-slate-800">
                       <span>{ex.finding_id || ex.exception_id}</span>
                       <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
-                        Expires: {ex.expires_at || '90 days'}
+                        Expires: {ex.expiry || ex.expires_at || '90 days'}
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-600">
@@ -298,7 +337,7 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-600 font-mono">
-                      Owner: <strong>{esc.owner}</strong> &rarr; Escalating to: <strong className="text-slate-900">{esc.owner_manager || 'VP Engineering'}</strong>
+                      Owner: <strong>{esc.owner || 'sec_ops_team'}</strong> &rarr; Escalating to: <strong className="text-slate-900">{esc.escalated_to || esc.owner_manager || 'VP Engineering'}</strong>
                     </p>
                   </div>
                 ))
