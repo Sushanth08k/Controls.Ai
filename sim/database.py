@@ -163,7 +163,9 @@ def ensure_vulnerabilities_table(conn: sqlite3.Connection | None = None) -> None
         cur.execute("SELECT COUNT(*) FROM db_vulnerabilities")
         if cur.fetchone()[0] == 0:
             cur.executemany(
-                "INSERT OR REPLACE INTO db_vulnerabilities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                """INSERT OR REPLACE INTO db_vulnerabilities
+                (vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description, asset_criticality, is_kev, epss_score, exception_status, exception_id, exception_reason, exception_approved_by, exception_expires_at, compensating_control, remediation_verified, verification_evidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 generate_vulnerability_seed(),
             )
             conn.commit()
@@ -190,6 +192,12 @@ def init_real_databases(force_recreate: bool = False) -> None:
 
     if not force_recreate and CORE_DB_PATH.exists() and ARCHIVE_DB_PATH.exists():
         ensure_vulnerabilities_table()
+        try:
+            from sim.vuln_schema import init_vuln_tables
+            init_vuln_tables()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Failed to initialize vuln tables: {e}", exc_info=True)
         return
 
     # 1. Initialize Core Database (Source)
@@ -283,6 +291,12 @@ def init_real_databases(force_recreate: bool = False) -> None:
     ensure_vulnerabilities_table(conn_core)
     from sim.audit_store import init_audit_tables
     init_audit_tables(conn_core)
+    try:
+        from sim.vuln_schema import init_vuln_tables
+        init_vuln_tables(conn_core)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to initialize vuln tables: {e}", exc_info=True)
 
     # Populate customers and accounts
     customers = [
@@ -442,13 +456,22 @@ def reseed_compliance_databases() -> dict[str, Any]:
 
         cur_core.execute("DELETE FROM db_vulnerabilities")
         cur_core.executemany(
-            "INSERT OR REPLACE INTO db_vulnerabilities VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            """INSERT OR REPLACE INTO db_vulnerabilities
+            (vulnerability_id, database_name, cve_id, severity, discovered_at, status, patched_at, cvss_score, description, asset_criticality, is_kev, epss_score, exception_status, exception_id, exception_reason, exception_approved_by, exception_expires_at, compensating_control, remediation_verified, verification_evidence)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             generate_vulnerability_seed(),
         )
         conn_core.commit()
     finally:
         conn_core.close()
         conn_arc.close()
+
+    try:
+        from sim.vuln_schema import reseed_vulnerability_tables
+        reseed_vulnerability_tables()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to reseed vulnerability tables: {e}", exc_info=True)
 
     return {"status": "reseeded", "total_records": len(COMPLIANCE_TRANSACTIONS_SEED)}
 

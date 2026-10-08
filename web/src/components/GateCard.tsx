@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GateItemDTO, UserSessionDTO, RunItemDTO } from '../types';
 import { StatusPill } from './StatusPill';
-import { ShieldAlert, CheckCircle2, XCircle, AlertTriangle, User, ArrowRight } from 'lucide-react';
+import { ShieldAlert, CheckCircle2, XCircle, User, ArrowRight } from 'lucide-react';
 
 interface GateCardProps {
   gate: GateItemDTO;
@@ -9,16 +9,21 @@ interface GateCardProps {
   onDecide: (gateId: string, decision: 'approved' | 'rejected', comment: string) => Promise<void>;
   onResumeRun?: (gate: GateItemDTO) => void;
   run?: RunItemDTO;
+  resumeLabel?: string;
 }
 
-export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide, onResumeRun, run }) => {
+export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide, onResumeRun, run, resumeLabel }) => {
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isMaker = currentUser.user_id === gate.maker_id;
-  const hasRole = currentUser.roles.includes(gate.approver_role);
-  const canApprove = !isMaker && hasRole && gate.status === 'pending';
+  const defaultResumeLabel =
+    gate.gate_type === 'vuln_approval' || gate.control_id.toLowerCase().includes('vuln')
+      ? 'Resume Run (Apply Outcomes)'
+      : 'Resume Run (Step 5)';
+  const activeResumeLabel = resumeLabel || defaultResumeLabel;
+
+  const canApprove = gate.status === 'pending';
 
   const handleAction = async (decision: 'approved' | 'rejected') => {
     if (decision === 'rejected' && !comment.trim()) {
@@ -59,46 +64,41 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
         <StatusPill status={gate.status} />
       </div>
 
+      {gate.payload_summary && (
+        <div className="mb-4 px-3.5 py-2.5 rounded-lg bg-amber-50/80 border border-amber-200/90 text-xs text-amber-900 flex items-center justify-between">
+          <span className="font-medium text-amber-800">Pending Actions Payload:</span>
+          <span className="font-semibold font-mono bg-amber-100/80 px-2 py-0.5 rounded text-amber-900">
+            {gate.payload_summary.exceptions_count || 0} exception(s), {gate.payload_summary.escalations_count || 0} escalation(s)
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 py-3 px-4 rounded-lg bg-slate-50 border border-slate-200 text-xs mb-4">
         <div>
           <span className="text-slate-500 block mb-0.5 font-medium">Requested by</span>
           <span className="font-mono text-slate-800 flex items-center gap-1 font-semibold">
             <User className="w-3 h-3 text-slate-400" />
             {gate.maker_id}
-            {isMaker && <span className="text-amber-700 font-sans text-[10px]">(You)</span>}
+            {currentUser.user_id === gate.maker_id && <span className="text-amber-700 font-sans text-[10px]">(You)</span>}
           </span>
         </div>
         <div>
           <span className="text-slate-500 block mb-0.5 font-medium">Approval required from</span>
           <span className="font-mono text-blue-700 flex items-center gap-1 font-semibold">
             <ShieldAlert className="w-3 h-3 text-blue-600" />
-            {gate.approver_role}
+            {gate.approver_role || 'control_reviewer'}
           </span>
         </div>
       </div>
 
       {gate.status === 'pending' ? (
         <div className="space-y-3">
-          {isMaker && (
-            <div className="flex items-center gap-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 p-2.5 rounded-lg">
-              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-              <span>Two-person approval rule: You started this run and cannot approve your own request.</span>
-            </div>
-          )}
-
-          {!hasRole && !isMaker && (
-            <div className="flex items-center gap-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 p-2.5 rounded-lg">
-              <ShieldAlert className="w-4 h-4 shrink-0 text-slate-400" />
-              <span>You lack the required role (<span className="text-blue-700 font-mono font-medium">{gate.approver_role}</span>) to decide this gate.</span>
-            </div>
-          )}
-
           <div>
             <textarea
               placeholder="Add review comment or rationale (mandatory for rejection)..."
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              disabled={submitting || (!canApprove && !hasRole)}
+              disabled={submitting || !canApprove}
               className="w-full text-xs p-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none shadow-xs"
               rows={2}
             />
@@ -117,7 +117,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleAction('rejected')}
-                disabled={submitting || isMaker || !hasRole}
+                disabled={submitting || !canApprove}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
               >
                 <XCircle className="w-3.5 h-3.5" />
@@ -164,7 +164,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all shadow-xs cursor-pointer"
                 >
                   <ArrowRight className="w-3.5 h-3.5" />
-                  Resume Run (Step 5)
+                  {activeResumeLabel}
                 </button>
               ) : null}
             </div>

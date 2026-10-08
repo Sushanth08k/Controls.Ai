@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from api.routers import controls, evidence, findings, gates, health, interactive, runs, vulnerability
+from api.routers import controls, evidence, findings, gates, health, interactive, runs, vulnerability, vulnerability_execution
 from api.sse import sse_broker
 from sim.database import init_real_databases, seed_databases
 
@@ -45,6 +45,7 @@ app.include_router(findings.router)
 app.include_router(evidence.router)
 app.include_router(interactive.router)
 app.include_router(vulnerability.router)
+app.include_router(vulnerability_execution.router)
 
 # Also expose under /api prefix for proxy resilience
 app.include_router(health.router, prefix="/api")
@@ -55,6 +56,7 @@ app.include_router(findings.router, prefix="/api")
 app.include_router(evidence.router, prefix="/api")
 app.include_router(interactive.router, prefix="/api")
 app.include_router(vulnerability.router, prefix="/api")
+app.include_router(vulnerability_execution.router, prefix="/api")
 
 
 @app.get("/events")

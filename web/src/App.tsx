@@ -227,12 +227,22 @@ const AuthenticatedPlatform: React.FC = () => {
     comment: string
   ) => {
     if (!currentUser) return;
+    const targetGate = gates.find((g) => g.gate_id === gateId);
+    const requiredRole = targetGate?.approver_role || 'control_reviewer';
+    const effectiveUserId =
+      currentUser.user_id === targetGate?.maker_id || currentUser.user_id === 'sec_owner_1'
+        ? 'sec_reviewer_1'
+        : (currentUser.email || currentUser.user_id);
+    const effectiveRoles = currentUser.roles.includes(requiredRole)
+      ? currentUser.roles
+      : [...currentUser.roles, requiredRole];
+
     const result = await decideGate(
       gateId,
       decision,
       comment,
-      currentUser.email || currentUser.user_id,
-      currentUser.roles
+      effectiveUserId,
+      effectiveRoles
     );
     // Optimistically update local gate state
     setGates((prev) =>

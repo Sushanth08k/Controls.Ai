@@ -418,5 +418,134 @@ export async function resumeInteractiveRun(runId: string): Promise<any> {
   return res.json();
 }
 
+// Stateful Vulnerability Execution Pipeline APIs
+export async function startVulnerabilityRun(payload: {
+  control_id?: string;
+  policy_text?: string;
+  filename?: string;
+  policy_id?: string;
+  as_of_date?: string;
+  confirmed_ambiguities?: string[];
+}): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to start vulnerability run: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function rerunVulnerabilityReview(runId: string, asOf?: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/rerun_review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId, as_of: asOf }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to re-run review queries: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function ticketVulnerabilityRun(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/ticket`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to ticket vulnerabilities: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function verifyVulnerabilityRun(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to verify vulnerability run: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function requestVulnerabilityApproval(runId: string, requestedBy: string = 'sec_reviewer_1'): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/request_approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId, requested_by: requestedBy }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to request approval: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function approveVulnerabilityRun(runId: string, approverId: string = 'risk_officer_1', notes: string = ''): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId, approver_id: approverId, notes }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to approve vulnerability gate: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function applyVulnerabilityRun(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to apply vulnerability outcomes: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function finalizeVulnerabilityRun(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/finalize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ run_id: runId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to finalize vulnerability run: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function resumeVulnerabilityRun(runId: string): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/run/resume/${encodeURIComponent(runId)}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || `Failed to resume vulnerability run: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function reseedVulnerabilityData(): Promise<any> {
+  const res = await fetch(`${API_BASE}/vulnerability/reseed`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to reseed vulnerability data: ${res.statusText}`);
+  return res.json();
+}
+
 
 
