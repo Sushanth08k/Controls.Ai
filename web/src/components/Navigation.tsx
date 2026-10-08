@@ -25,17 +25,17 @@ const AVAILABLE_USERS: UserSessionDTO[] = [
   {
     user_id: 'sec_reviewer_1',
     roles: ['control_reviewer'],
-    email: 'sushanth@bank.internal',
+    email: 'ksushanth9030@gmail.com',
   },
   {
     user_id: 'sec_owner_1',
     roles: ['db_security_owner', 'control_owner'],
-    email: 'owner@bank.internal',
+    email: 'ksushanth9030@gmail.com',
   },
   {
     user_id: 'release_owner_1',
     roles: ['release_owner'],
-    email: 'release@bank.internal',
+    email: 'ksushanth9030@gmail.com',
   },
 ];
 
@@ -145,7 +145,11 @@ export const Navigation: React.FC<NavigationProps> = ({
                 key={u.user_id}
                 type="button"
                 onClick={() => {
-                  onSwitchUser(u);
+                  const targetEmail =
+                    currentUser.email && !currentUser.email.includes('@bank.internal')
+                      ? currentUser.email
+                      : u.email;
+                  onSwitchUser({ ...u, email: targetEmail });
                   setShowRoleSwitcher(false);
                 }}
                 className={`w-full text-left px-2 py-1.5 rounded text-[11px] font-medium transition-colors ${

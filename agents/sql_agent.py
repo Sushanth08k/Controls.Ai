@@ -17,9 +17,12 @@ from core.sql_generator import (
     get_live_database_schema_ddl,
 )
 
+import time
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
+_QUOTA_EXHAUSTED_UNTIL = 0.0
 
 
 class ComplianceSQLAgent:
@@ -62,6 +65,10 @@ class ComplianceSQLAgent:
         gemini_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
         if gemini_api_key and not os.environ.get("GOOGLE_API_KEY"):
             os.environ["GOOGLE_API_KEY"] = gemini_api_key
+
+        if gemini_api_key and time.time() < _QUOTA_EXHAUSTED_UNTIL:
+            logger.info("ComplianceSQLAgent: Gemini quota cooldown active. Skipping API call to prevent delay.")
+            gemini_api_key = None
 
         # 1. Specialized handling for non-archival control archetypes (Vulnerability, IAM)
         if "vuln" in cid_lower:
@@ -173,7 +180,8 @@ REQUIREMENTS:
                 model=DEFAULT_GEMINI_MODEL,
                 api_key=gemini_api_key,
                 temperature=0.0,
-                timeout=30.0,
+                timeout=10.0,
+                max_retries=0,
             )
 
             chain = prompt | llm | parser
@@ -206,7 +214,13 @@ REQUIREMENTS:
                     "schema_used": schema_ddl,
                 }
         except Exception as e:
-            logger.warning(f"ComplianceSQLAgent: LangChain LCEL Gemini synthesis failed ({e}). Falling back.")
+            err_str = str(e)
+            global _QUOTA_EXHAUSTED_UNTIL
+            _QUOTA_EXHAUSTED_UNTIL = time.time() + 600.0  # 10 minute cooldown
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                logger.warning("ComplianceSQLAgent: Gemini API quota exceeded (429). Activating instant deterministic fallback compiler.")
+            else:
+                logger.warning(f"ComplianceSQLAgent: LangChain LCEL Gemini synthesis failed ({e}). Falling back.")
         return None
 
     def _synthesize_vulnerability_control(
@@ -236,7 +250,8 @@ Generate 3 distinct SQL scripts for a Database Security & Vulnerability Control 
                     model=DEFAULT_GEMINI_MODEL,
                     api_key=gemini_api_key,
                     temperature=0.0,
-                    timeout=30.0,
+                    timeout=10.0,
+                    max_retries=0,
                 )
                 chain = prompt | llm | parser
                 parsed = chain.invoke({})
@@ -253,6 +268,8 @@ Generate 3 distinct SQL scripts for a Database Security & Vulnerability Control 
                         "schema_used": schema_ddl,
                     }
             except Exception as e:
+                global _QUOTA_EXHAUSTED_UNTIL
+                _QUOTA_EXHAUSTED_UNTIL = time.time() + 600.0
                 logger.warning(f"ComplianceSQLAgent: Vulnerability LangChain synthesis failed ({e}). Falling back.")
 
         # Deterministic CIS benchmark fallback

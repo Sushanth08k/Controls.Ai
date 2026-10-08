@@ -72,10 +72,15 @@ export async function fetchFindings(): Promise<FindingDTO[]> {
   return data.filter((f) => !f.control_id || isTargetControl(f.control_id));
 }
 
-export async function triggerRun(controlId: string): Promise<RunItemDTO> {
+export async function triggerRun(controlId: string, userEmail?: string): Promise<RunItemDTO> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (userEmail) {
+    headers['X-User-Email'] = userEmail;
+    headers['X-User-Id'] = userEmail;
+  }
   const res = await fetch(`${API_BASE}/runs/trigger`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ control_id: controlId }),
   });
   if (!res.ok) throw new Error(`Failed to trigger run: ${res.statusText}`);
@@ -155,16 +160,27 @@ export async function deleteUploadedPolicy(policyId: string): Promise<any> {
 
 export async function uploadPolicyDocument(
   file: File,
-  controlId?: string
+  controlId?: string,
+  userEmail?: string
 ): Promise<UploadPolicyResponse> {
   const formData = new FormData();
   formData.append('file', file);
   if (controlId) {
     formData.append('control_id', controlId);
   }
+  if (userEmail) {
+    formData.append('uploaded_by', userEmail);
+  }
+
+  const headers: Record<string, string> = {};
+  if (userEmail) {
+    headers['X-User-Email'] = userEmail;
+    headers['X-User-Id'] = userEmail;
+  }
 
   const res = await fetch(`${API_BASE}/interactive/upload_policy_file`, {
     method: 'POST',
+    headers,
     body: formData,
   });
   if (!res.ok) {
@@ -179,16 +195,22 @@ export async function interpretPolicy(
   controlId: string,
   documentText?: string,
   filename?: string,
-  policyId?: string
+  policyId?: string,
+  operatorEmail?: string
 ): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (operatorEmail) {
+    headers['X-User-Email'] = operatorEmail;
+  }
   const res = await fetch(`${API_BASE}/interactive/interpret`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       control_id: controlId,
       document_text: documentText || null,
       filename: filename || null,
       policy_id: policyId || null,
+      operator_email: operatorEmail || null,
     }),
   });
   if (!res.ok) throw new Error(`Failed to interpret policy: ${res.statusText}`);
@@ -215,10 +237,14 @@ export async function executeStep(controlId: string, runId: string): Promise<any
   return res.json();
 }
 
-export async function verifyArchival(controlId: string, runId: string): Promise<any> {
+export async function verifyArchival(controlId: string, runId: string, userEmail?: string): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (userEmail) {
+    headers['X-User-Email'] = userEmail;
+  }
   const res = await fetch(`${API_BASE}/interactive/verify_archival`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ control_id: controlId, run_id: runId }),
   });
   if (!res.ok) throw new Error(`Failed to verify archival: ${res.statusText}`);
@@ -334,11 +360,17 @@ export async function executeVulnerabilityControl(
   customRules?: any,
   querySql?: string,
   policyId?: string,
-  filename?: string
+  filename?: string,
+  userEmail?: string
 ): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (userEmail) {
+    headers['X-User-Email'] = userEmail;
+    headers['X-User-Id'] = userEmail;
+  }
   const res = await fetch(`${API_BASE}/vulnerability/execute`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       control_id: controlId,
       run_id: runId || null,

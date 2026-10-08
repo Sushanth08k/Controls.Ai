@@ -28,6 +28,7 @@ export interface GateItemDTO {
   control_id: string;
   gate_name: string;
   maker_id: string;
+  maker_email?: string;
   approver_role: string;
   status: GateStatus;
   created_at: string;
@@ -52,6 +53,7 @@ export interface RunItemDTO {
   table?: string;
   policy_id?: string;
   policy_filename?: string;
+  operator_email?: string;
   policy_used?: {
     policy_id: string;
     filename: string;

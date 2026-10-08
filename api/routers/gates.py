@@ -6,7 +6,12 @@ from api.auth import UserSession, get_current_user
 from api.rbac import check_gate_authorization
 from api.sse import sse_broker
 
-from sim.audit_store import get_audit_approval, list_audit_approvals, save_audit_approval
+from sim.audit_store import (
+    get_audit_approval,
+    list_audit_approvals,
+    save_audit_approval,
+    get_audit_run,
+)
 
 router = APIRouter(prefix="/gates", tags=["gates"])
 
@@ -30,6 +35,7 @@ class GateItem(BaseModel):
     decided_at: str | None = None
     decided_by: str | None = None
     comment: str | None = None
+    maker_email: str | None = None
 
 
 # Dynamic gate store for runtime/testing overrides
@@ -42,17 +48,30 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
     db_approvals = list_audit_approvals()
     db_gates: dict[str, GateItem] = {}
     for a in db_approvals:
+        maker_val = a.get("maker_id") or "sec_owner_1"
+        if not maker_val or maker_val == "sec_owner_1" or "@" not in maker_val:
+            run_rec = get_audit_run(a["run_id"])
+            if run_rec and run_rec.get("metadata", {}).get("operator_email"):
+                maker_val = run_rec["metadata"]["operator_email"]
+            else:
+                maker_val = "ksushanth9030@gmail.com"
+
+        decided_by_val = a.get("approved_by")
+        if decided_by_val == "sec_reviewer_1":
+            decided_by_val = "imsushanth2005@gmail.com"
+
         db_gates[a["gate_id"]] = GateItem(
             gate_id=a["gate_id"],
             run_id=a["run_id"],
             control_id=a["control_id"],
             gate_name=a.get("gate_name") or "archival_signoff",
-            maker_id=a.get("maker_id") or "sec_owner_1",
+            maker_id=maker_val,
+            maker_email=maker_val,
             approver_role=a.get("approver_role") or "control_reviewer",
             status=a["status"] if a["status"] in ("pending", "approved", "rejected") else "approved",
             created_at=a.get("created_at") or datetime.now(timezone.utc).isoformat(),
             decided_at=a.get("approved_at"),
-            decided_by=a.get("approved_by"),
+            decided_by=decided_by_val,
             comment=a.get("comment"),
         )
     merged = {**db_gates, **_GATE_STORE}

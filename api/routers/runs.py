@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, ConfigDict
 from core.definitions import default_registry
 from api.sse import sse_broker
@@ -43,6 +43,7 @@ class RunItem(BaseModel):
     policy_id: str | None = None
     policy_filename: str | None = None
     policy_used: dict[str, Any] | None = None
+    operator_email: str | None = None
 
 
 _RUNS_STORE: dict[str, RunItem] = {}
@@ -108,6 +109,7 @@ def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
         policy_id=pol_id,
         policy_filename=pol_fname,
         policy_used=policy_used_summary,
+        operator_email=meta.get("operator_email") or meta.get("editor_email") or row.get("operator_id") or "ksushanth9030@gmail.com",
     )
 
 
@@ -189,7 +191,10 @@ def get_run_approvals(run_id: str) -> list[dict[str, Any]]:
 
 
 @router.post("/trigger", response_model=RunItem)
-async def trigger_run(req: TriggerRunRequest) -> RunItem:
+async def trigger_run(
+    req: TriggerRunRequest,
+    x_user_email: str | None = Header(default=None),
+) -> RunItem:
     defn = default_registry.get_definition(req.control_id)
     version = defn.version if defn else "1.0.0"
     archetype = defn.archetype if defn else "A"
@@ -197,6 +202,7 @@ async def trigger_run(req: TriggerRunRequest) -> RunItem:
 
     new_id = f"run-{uuid.uuid4().hex[:8]}"
     now_iso = datetime.now(timezone.utc).isoformat()
+    editor_email = x_user_email or "ksushanth9030@gmail.com"
 
     item = RunItem(
         run_id=new_id,
@@ -206,6 +212,7 @@ async def trigger_run(req: TriggerRunRequest) -> RunItem:
         status="running",
         started_at=now_iso,
         targets=targets,
+        operator_email=editor_email,
     )
 
     # For Archetype B, execute the automated API sanity test workflow
@@ -285,7 +292,7 @@ async def trigger_run(req: TriggerRunRequest) -> RunItem:
             archetype=archetype,
             status="running",
             started_at=now_iso,
-            metadata_json={"targets": targets},
+            metadata_json={"targets": targets, "operator_email": editor_email, "editor_email": editor_email},
         )
 
     _RUNS_STORE[new_id] = item
