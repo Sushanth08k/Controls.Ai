@@ -189,7 +189,7 @@ async def decide_gate(
             from api.routers.runs import _RUNS_STORE
 
             db_run = get_audit_run(gate.run_id)
-            meta = db_run.get("metadata") or {} if db_run else {}
+            meta: dict[str, Any] = db_run.get("metadata") or {} if db_run else {}
 
             if body.decision == "approved":
                 from core.vulnerability_pipeline import apply_outcomes, get_as_of_date
