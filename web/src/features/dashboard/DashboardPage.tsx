@@ -258,7 +258,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {controls.slice(0, 4).map((c) => (
+          {controls.map((c) => (
             <div
               key={c.control_id}
               className="bg-white p-5 rounded-xl border border-slate-200/90 hover:border-emerald-300 transition-all shadow-xs hover:shadow-md flex flex-col justify-between"

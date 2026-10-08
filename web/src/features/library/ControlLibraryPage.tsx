@@ -86,7 +86,11 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
     setUploadSuccess(null);
     setDuplicateInfo(null);
     try {
-      const res = await uploadPolicyDocument(file);
+      const editorEmail = currentUser.email || 'ksushanth9030@gmail.com';
+      const res = await uploadPolicyDocument(file, undefined, editorEmail);
+      if (res.policy_id) {
+        localStorage.setItem(`controls_policy_editor_${res.policy_id}`, editorEmail);
+      }
       if (res.is_duplicate) {
         const allPolicies = await fetchUploadedPolicies();
         setPolicies(allPolicies);

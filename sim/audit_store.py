@@ -203,6 +203,14 @@ def upsert_audit_run(
         existing = cur.fetchone()
 
         if existing:
+            if metadata_str is not None:
+                try:
+                    old_meta = json.loads(existing["metadata_json"]) if existing["metadata_json"] else {}
+                    new_meta = json.loads(metadata_str)
+                    merged_meta = {**old_meta, **new_meta}
+                    metadata_str = json.dumps(merged_meta)
+                except Exception:
+                    pass
             cur.execute("""
             UPDATE control_audit_runs SET
                 control_id = COALESCE(?, control_id),

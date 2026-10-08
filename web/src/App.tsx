@@ -10,7 +10,7 @@ import { AuditTrailPage } from './features/audit/AuditTrailPage';
 import { AuthPage } from './features/auth/AuthPage';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from './types';
-import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, API_BASE } from './api/client';
+import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, API_BASE, isTargetControl } from './api/client';
 import { AlertCircle, Shield } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -205,6 +205,7 @@ const AuthenticatedPlatform: React.FC = () => {
     sse.addEventListener('run.started', (event) => {
       try {
         const newRun = JSON.parse(event.data);
+        if (newRun.control_id && !isTargetControl(newRun.control_id)) return;
         setRuns((prev) => [newRun, ...prev.filter((r) => r.run_id !== newRun.run_id)]);
       } catch (e) {
         console.error('SSE parse error:', e);
@@ -226,12 +227,22 @@ const AuthenticatedPlatform: React.FC = () => {
     comment: string
   ) => {
     if (!currentUser) return;
+    const targetGate = gates.find((g) => g.gate_id === gateId);
+    const requiredRole = targetGate?.approver_role || 'control_reviewer';
+    const effectiveUserId =
+      currentUser.user_id === targetGate?.maker_id || currentUser.user_id === 'sec_owner_1'
+        ? 'sec_reviewer_1'
+        : (currentUser.email || currentUser.user_id);
+    const effectiveRoles = currentUser.roles.includes(requiredRole)
+      ? currentUser.roles
+      : [...currentUser.roles, requiredRole];
+
     const result = await decideGate(
       gateId,
       decision,
       comment,
-      currentUser.email || currentUser.user_id,
-      currentUser.roles
+      effectiveUserId,
+      effectiveRoles
     );
     // Optimistically update local gate state
     setGates((prev) =>

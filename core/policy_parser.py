@@ -701,6 +701,171 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             {"requirement_id": "REQ-005", "description": "PATCHED or CLOSED vulnerabilities are considered remediated."},
         ]
 
+        # KEV SLA rule
+        kev_m = re.search(r"(?:known\s+exploited\s+vulnerabilit(?:y|ies)|kev)[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        if kev_m:
+            kev_days = int(kev_m.group(1))
+            structured_rules.append({
+                "rule_id": "VULN-RULE-KEV",
+                "rule_type": "KEV_SLA",
+                "severity": "CRITICAL",
+                "is_kev": True,
+                "max_age_days": kev_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            })
+            rules_list.append({
+                "rule_id": "VULN-RULE-KEV",
+                "description": f"Known Exploited Vulnerabilities (KEV) must be remediated within {kev_days} days of identification.",
+                "rule_type": "KEV_SLA",
+                "severity": "CRITICAL",
+                "is_kev": True,
+                "max_age_days": kev_days,
+                "allowed_status": ["PATCHED", "CLOSED"],
+            })
+            requirements_list.append({
+                "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
+                "description": f"Known Exploited Vulnerabilities (KEV) must be remediated within {kev_days} days.",
+            })
+
+        # Closure verification rule
+        closure_m = re.search(r"closure\s+requires\s+(?:a\s+)?verification\s+rescan", text_clean, re.IGNORECASE) or (
+            "closure" in text_clean.lower() and "verification rescan" in text_clean.lower()
+        )
+        if closure_m:
+            structured_rules.append({
+                "rule_id": "VULN-RULE-CLOSURE",
+                "rule_type": "CLOSURE_VERIFICATION",
+                "requires_rescan": True,
+            })
+            rules_list.append({
+                "rule_id": "VULN-RULE-CLOSURE",
+                "description": "Vulnerability closure requires a verification rescan before being marked resolved.",
+                "rule_type": "CLOSURE_VERIFICATION",
+                "requires_rescan": True,
+            })
+            requirements_list.append({
+                "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
+                "description": "Closure requires an independent verification rescan.",
+            })
+
+        # Exception governance rule
+        exc_m = re.search(r"exceptions?\s+require.*?compensating\s+control.*?expire.*?(\d+)\s*days?", text_clean, re.IGNORECASE) or (
+            "exception" in text_clean.lower() and "compensating control" in text_clean.lower()
+        )
+        exceptions_list: list[dict[str, Any]] = []
+        if exc_m:
+            exp_match = re.search(r"expire[^\n\d]*?(\d+)\s*days?", text_clean, re.I)
+            exc_days = int(exp_match.group(1)) if exp_match else 90
+            structured_rules.append({
+                "rule_id": "VULN-RULE-EXCEPTION",
+                "rule_type": "EXCEPTION_GOVERNANCE",
+                "requires_approval": True,
+                "requires_compensating_control": True,
+                "max_expiry_days": exc_days,
+            })
+            rules_list.append({
+                "rule_id": "VULN-RULE-EXCEPTION",
+                "description": f"Exceptions require approval and a compensating control and expire within {exc_days} days.",
+                "rule_type": "EXCEPTION_GOVERNANCE",
+                "requires_approval": True,
+                "requires_compensating_control": True,
+                "max_expiry_days": exc_days,
+            })
+            requirements_list.append({
+                "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
+                "description": f"Exceptions require approval, compensating control, and maximum duration of {exc_days} days.",
+            })
+            exceptions_list.append({
+                "exception_id": "EXC-VULN-001",
+                "title": "Documented Vulnerability Exception",
+                "description": f"Exceptions require approval and a compensating control and expire within {exc_days} days.",
+                "requires_approval": True,
+                "requires_compensating_control": True,
+                "max_expiry_days": exc_days,
+            })
+
+        # Scan cadence rule
+        scan_m = re.search(r"tier\s*1\s*(?:assets\s*)?(?:scanned\s*)?daily[,\s]+(?:others|other\s*tiers?)\s*(?:scanned\s*)?weekly", text_clean, re.IGNORECASE) or (
+            "tier 1" in text_clean.lower() and "daily" in text_clean.lower() and "weekly" in text_clean.lower()
+        )
+        if scan_m:
+            structured_rules.append({
+                "rule_id": "VULN-RULE-SCAN",
+                "rule_type": "SCAN_CADENCE",
+                "tier1_cadence": "DAILY",
+                "other_cadence": "WEEKLY",
+            })
+            rules_list.append({
+                "rule_id": "VULN-RULE-SCAN",
+                "description": "Tier 1 assets scanned daily, others weekly.",
+                "rule_type": "SCAN_CADENCE",
+                "tier1_cadence": "DAILY",
+                "other_cadence": "WEEKLY",
+            })
+            requirements_list.append({
+                "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
+                "description": "Scan frequency requires Daily for Tier 1 assets and Weekly for other tiers.",
+            })
+
+        # Escalation rule
+        esc_m = re.search(r"(?:breach(?:es)?|sla\s+breach(?:es)?)[^\n\d]*?escalat[^\n\d]*?(?:manager|owner)[^\n\d]*?(\d+)\s*(?:business\s*)?days?", text_clean, re.IGNORECASE) or (
+            "escalat" in text_clean.lower() and "manager" in text_clean.lower()
+        )
+        if esc_m:
+            esc_days_m = re.search(r"escalat[^\n\d]*?(\d+)\s*(?:business\s*)?days?", text_clean, re.IGNORECASE)
+            esc_days = int(esc_days_m.group(1)) if esc_days_m else 1
+            structured_rules.append({
+                "rule_id": "VULN-RULE-ESCALATION",
+                "rule_type": "ESCALATION",
+                "escalation_days": esc_days,
+                "escalate_to": "OWNER_MANAGER",
+            })
+            rules_list.append({
+                "rule_id": "VULN-RULE-ESCALATION",
+                "description": f"SLA breaches escalated to the asset owner's manager within {esc_days} business day(s).",
+                "rule_type": "ESCALATION",
+                "escalation_days": esc_days,
+                "escalate_to": "OWNER_MANAGER",
+            })
+            requirements_list.append({
+                "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
+                "description": f"SLA breaches must be escalated to the asset owner's manager within {esc_days} business day(s).",
+            })
+
+        # Ambiguities detection
+        hedge_words = ["promptly", "where feasible", "as soon as possible", "reasonable", "appropriate"]
+        ambiguities_list: list[dict[str, Any]] = []
+        raw_lines = [s.strip() for s in re.split(r"[\n\r]+", text_clean) if s.strip()]
+        for line in raw_lines:
+            line_body = re.sub(r"^\d+[\.\)]\s*", "", line).strip()
+            line_lower = line_body.lower()
+            if not line_body or len(line_body) < 10:
+                continue
+
+            matches_known_rule = (
+                bool(re.search(r"\b(critical|high|medium|low|kev)\b[^\n\d]*?\d+\s*days?", line_lower))
+                or bool(re.search(r"\b(open|in_progress|patched|closed)\b.*?considered", line_lower))
+                or ("closure" in line_lower and "rescan" in line_lower)
+                or ("exception" in line_lower and "compensating" in line_lower)
+                or ("tier 1" in line_lower and ("daily" in line_lower or "weekly" in line_lower))
+                or ("escalat" in line_lower and "manager" in line_lower)
+                or line_lower.startswith("vulnerability management standard")
+                or line_lower.startswith("scope:")
+            )
+
+            if not matches_known_rule:
+                found_hedges = [hw for hw in hedge_words if hw in line_lower]
+                if found_hedges:
+                    ambiguities_list.append({
+                        "ambiguity_id": f"AMB-{len(ambiguities_list) + 1:03d}",
+                        "type": "VAGUE_SPECIFICATION",
+                        "severity": "MEDIUM",
+                        "description": line_body,
+                        "hedge_words": found_hedges,
+                        "requires_human_review": True,
+                        "status": "unconfirmed",
+                    })
+
         citation = sentences[0] if sentences else text_clean[:120]
         summary = f"Vulnerability remediation SLA: Critical ({crit_days}d), High ({high_days}d), Medium ({med_days}d)."
 
@@ -779,8 +944,8 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             "unresolved_statuses": ["OPEN", "IN_PROGRESS"],
             "rules": structured_rules,
             "rules_count": len(structured_rules),
-            "exceptions_count": 0,
-            "ambiguities_count": 0,
+            "exceptions_count": len(exceptions_list),
+            "ambiguities_count": len(ambiguities_list),
             "definition_patch": definition_patch,
             "scope_targets": final_scope_refs,
         }
@@ -794,8 +959,8 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             "requirements": requirements_list,
             "rules": rules_list,
             "structured_rules": structured_rules,
-            "exceptions": [],
-            "ambiguities": [],
+            "exceptions": exceptions_list,
+            "ambiguities": ambiguities_list,
             "source_references": [citation],
             "citation": citation,
             "retention_years": 0,
