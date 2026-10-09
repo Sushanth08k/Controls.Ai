@@ -273,11 +273,10 @@ export const FindingsPage: React.FC<FindingsPageProps> = ({ findings, controls }
                     {group.findings.map((f, idx) => {
                       const ctrl = controls?.find((c) => c.control_id === f.control_id);
                       const cleanTitle = f.title
-                        .replace(/^(Critical|High|Medium|Low)\s+vulnerability\s+/i, 'Vulnerability ')
-                        .replace(/SLA/g, 'deadline');
+                        .replace(/^(Critical|High|Medium|Low)\s+vulnerability\s+/i, 'Vulnerability ');
 
                       const cveMatch = f.title.match(/(CVE-\d{4}-\d+)/i);
-                      const cveId = cveMatch ? cveMatch[1] : null;
+                      const cveId = f.cve_id || (cveMatch ? cveMatch[1] : null);
 
                       return (
                         <div
@@ -316,9 +315,17 @@ export const FindingsPage: React.FC<FindingsPageProps> = ({ findings, controls }
                           </div>
 
                           <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
-                            {f.evidence_ids && f.evidence_ids.length > 0 && (
+                            {f.target && (
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] text-slate-500 font-medium">Affected System:</span>
+                                <span className="font-mono text-[11px] font-medium text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                                  {f.target}
+                                </span>
+                              </div>
+                            )}
+                            {f.evidence_ids && f.evidence_ids.length > 0 && (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] text-slate-500 font-medium">Evidence:</span>
                                 {f.evidence_ids.map((id) => (
                                   <EvidenceChip key={id} evidenceId={id} />
                                 ))}

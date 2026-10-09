@@ -352,8 +352,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               const ctrlTitle = ctrl ? ctrl.title : f.control_id;
 
               const cleanTitle = f.title
-                .replace(/^(Critical|High|Medium|Low)\s+vulnerability\s+/i, 'Vulnerability ')
-                .replace(/SLA/g, 'deadline');
+                .replace(/^(Critical|High|Medium|Low)\s+vulnerability\s+/i, 'Vulnerability ');
 
               const cveMatch = f.title.match(/(CVE-\d{4}-\d+)/i);
               const cveId = cveMatch ? cveMatch[1] : null;

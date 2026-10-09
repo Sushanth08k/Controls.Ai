@@ -85,6 +85,8 @@ export interface FindingDTO {
   severity: RiskRating;
   status: string;
   evidence_ids: string[];
+  target?: string;
+  cve_id?: string;
 }
 
 export interface UserSessionDTO {

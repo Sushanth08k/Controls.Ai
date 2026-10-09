@@ -27,7 +27,11 @@ def test_vuln_legacy_golden_snapshot():
 
 def test_vuln_extended_policy_parsing():
     """Verify extended vuln policy parses KEV, exceptions, scan cadence, escalation, and ambiguities."""
-    parsed = parse_policy_specification(DEFAULT_VULNERABILITY_POLICY, default_archetype="A")
+    policy_text = (
+        DEFAULT_VULNERABILITY_POLICY
+        + "\n11. All identified defects should be remediated promptly where feasible."
+    )
+    parsed = parse_policy_specification(policy_text, default_archetype="A")
 
     rules_by_id = {r["rule_id"]: r for r in parsed["rules"]}
     assert "VULN-RULE-001" in rules_by_id
