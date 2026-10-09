@@ -87,17 +87,9 @@ def test_review_snapshot_q1_to_q4_counts_and_planted_defects():
     defective_ids = {d["finding_id"] for d in q2["defective_tickets"]}
     assert defective_ids == {"VULN-003", "VULN-012"}
 
-    # Q3: Closure Validity (expected 1 row: VULN-008 closed without verification)
-    q3 = snap["q3_closure_validity"]
-    assert q3["row_count"] == 1
-    assert q3["rows"][0]["vulnerability_id"] == "VULN-008"
-    assert q3["rows"][0]["closure_defect"] == "CLOSED_WITHOUT_RESCAN_VERIFICATION"
-    q3_ids = {r["vulnerability_id"] for r in q3["rows"]}
-    assert "VULN-004" not in q3_ids
-    assert "VULN-005" not in q3_ids
-
-    # Q4: Exception Governance (expected 3 rows: EXC-2026-0002, EXC-2026-0003, EXC-2026-0004)
-    q4 = snap["q4_exception_governance"]
-    assert q4["row_count"] == 3
-    exc_ids = {r["exception_id"] for r in q4["rows"]}
+    # Q3: Exception Governance (expected 3 rows: EXC-2026-0002, EXC-2026-0003, EXC-2026-0004)
+    q3 = snap["q3_exception_governance"]
+    assert q3["row_count"] == 3
+    exc_ids = {r["exception_id"] for r in q3["rows"]}
     assert exc_ids == {"EXC-2026-0002", "EXC-2026-0003", "EXC-2026-0004"}
+

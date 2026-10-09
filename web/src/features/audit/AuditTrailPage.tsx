@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { RunItemDTO, GateItemDTO, UserSessionDTO, ControlDefinitionDTO } from '../../types';
 import { fetchUploadedPolicies, UploadedPolicyDTO } from '../../api/client';
 import { Search, Mail, CheckCircle2, XCircle, FileUp, Play, Clock } from 'lucide-react';
+import { canApproveGates } from '../../utils/rbac';
 
 interface AuditEvent {
   id: string;
@@ -39,7 +40,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
   // Resolve user identifier to the true editor's email
   const resolveEditorEmail = (userVal?: string | null, specificEditor?: string | null): string => {
     // 1. Direct explicit editor email passed from run / policy / gate
-    if (specificEditor && specificEditor.includes('@')) {
+    if (specificEditor && specificEditor.includes('@') && !specificEditor.includes('@bank.internal')) {
       return specificEditor;
     }
 
@@ -47,8 +48,8 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
       return currentUser?.email || 'operator@bank.internal';
     }
 
-    // 2. Already an email address
-    if (userVal.includes('@')) {
+    // 2. Explicit authentic email address (not internal placeholder)
+    if (userVal.includes('@') && !userVal.includes('@bank.internal')) {
       return userVal;
     }
 
@@ -68,9 +69,23 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
       return currentUser.email;
     }
 
-    // 5. Canonical persona mappings for test / demo seeds
+    // 5. If userVal is reviewer placeholder, and current user has approver access
+    if (
+      (userVal === 'reviewer@bank.internal' || userVal === 'sec_reviewer_1') &&
+      currentUser?.email &&
+      canApproveGates(currentUser)
+    ) {
+      return currentUser.email;
+    }
+
+    // 6. Generic email address
+    if (userVal.includes('@')) {
+      return userVal;
+    }
+
+    // 7. Canonical persona mappings for test / demo seeds
     const personaMap: Record<string, string> = {
-      sec_reviewer_1: 'reviewer@bank.internal',
+      sec_reviewer_1: currentUser?.email && canApproveGates(currentUser) ? currentUser.email : 'reviewer@bank.internal',
       sec_owner_1: 'owner@bank.internal',
       release_owner_1: 'release@bank.internal',
       operator_1: 'operator@bank.internal',
@@ -85,7 +100,7 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
       return personaMap[userVal];
     }
 
-    // 6. Generic or slug string without @: format as corporate internal email
+    // 8. Generic or slug string without @: format as corporate internal email
     if (!userVal.includes(' ')) {
       return `${userVal}@bank.internal`;
     }
@@ -119,12 +134,16 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
     gates.forEach((g) => {
       // Maker request: who requested approval?
       if (g.created_at) {
-        const rawMakerCandidate =
-          (g.maker_email && g.maker_email.includes('@') ? g.maker_email : null) ||
-          (g.maker_id && g.maker_id.includes('@') ? g.maker_id : null) ||
+        const storedMaker =
           localStorage.getItem(`controls_gate_maker_${g.gate_id}`) ||
           runEditorMap.get(g.run_id) ||
-          localStorage.getItem(`controls_run_editor_${g.run_id}`) ||
+          localStorage.getItem(`controls_run_editor_${g.run_id}`);
+
+        const rawMakerCandidate =
+          (storedMaker && storedMaker.includes('@') && !storedMaker.includes('@bank.internal') ? storedMaker : null) ||
+          (g.maker_email && g.maker_email.includes('@') && !g.maker_email.includes('@bank.internal') ? g.maker_email : null) ||
+          (g.maker_id && g.maker_id.includes('@') && !g.maker_id.includes('@bank.internal') ? g.maker_id : null) ||
+          storedMaker ||
           g.maker_email ||
           g.maker_id;
         const makerEditor = resolveEditorEmail(rawMakerCandidate);
@@ -143,9 +162,16 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
       // Reviewer decision: who approved/rejected the gate?
       if (g.decided_at && g.decided_by) {
         const isApproved = g.status === 'approved';
-        const rawDeciderCandidate =
-          (g.decided_by && g.decided_by.includes('@') ? g.decided_by : null) ||
+        const storedDecider =
           localStorage.getItem(`controls_gate_decided_${g.gate_id}`) ||
+          localStorage.getItem(`controls_gate_decided_${g.run_id}`) ||
+          (g.run_id ? localStorage.getItem(`controls_gate_decided_gate-${g.run_id}-vuln`) : null) ||
+          (g.run_id && g.run_id.startsWith('run-') ? localStorage.getItem(`controls_gate_decided_APPR-GATE-${g.run_id.slice(4)}`) : null);
+
+        const rawDeciderCandidate =
+          (storedDecider && storedDecider.includes('@') && !storedDecider.includes('@bank.internal') ? storedDecider : null) ||
+          (g.decided_by && g.decided_by.includes('@') && !g.decided_by.includes('@bank.internal') ? g.decided_by : null) ||
+          storedDecider ||
           g.decided_by;
         const deciderEditor = resolveEditorEmail(rawDeciderCandidate);
 

@@ -39,15 +39,21 @@ export async function decideGate(
   decision: 'approved' | 'rejected',
   comment: string,
   userId: string,
-  roles: string[]
+  roles: string[],
+  userEmail?: string
 ): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-User-Id': userId,
+    'X-User-Roles': roles.join(','),
+  };
+  const effectiveEmail = userEmail || (userId.includes('@') ? userId : undefined);
+  if (effectiveEmail) {
+    headers['X-User-Email'] = effectiveEmail;
+  }
   const res = await fetch(`${API_BASE}/gates/${gateId}/decision`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-User-Id': userId,
-      'X-User-Roles': roles.join(','),
-    },
+    headers,
     body: JSON.stringify({ decision, comment }),
   });
 

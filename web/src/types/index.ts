@@ -203,7 +203,6 @@ export interface VulnReviewSummary {
   critical_overdue_count: number;
   ticket_candidate_count: number;
   defective_tickets_count: number;
-  closure_defects_count: number;
   exception_defects_count: number;
   pending_exceptions_count: number;
   expired_exceptions_count: number;
@@ -216,8 +215,8 @@ export interface VulnReviewSnapshot {
   executed_at?: string;
   q1_sla_breach: VulnQueryOutput;
   q2_ticket_coverage: VulnQueryOutput;
-  q3_closure_validity: VulnQueryOutput;
-  q4_exception_governance: VulnQueryOutput;
+  q3_exception_governance?: VulnQueryOutput;
+  q4_exception_governance?: VulnQueryOutput;
   summary: VulnReviewSummary;
   reconciliation?: any;
 }

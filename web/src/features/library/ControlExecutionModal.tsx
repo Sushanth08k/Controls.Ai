@@ -450,15 +450,8 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const makerEmail =
-        localStorage.getItem(`controls_gate_maker_${activeGateId}`) ||
-        localStorage.getItem(`controls_run_editor_${runId}`) ||
-        'operator@bank.internal';
-      // In quick simulation, ensure approver is an authorized reviewer distinct from the maker
-      const approverEmail =
-        currentUser.email && currentUser.email.toLowerCase() !== makerEmail.toLowerCase()
-          ? currentUser.email
-          : 'reviewer@bank.internal';
+      // Use the actual logged-in user's email who clicked Approve
+      const approverEmail = currentUser.email || 'approver@bank.internal';
 
       const countForComment = verifiedCount || archivedCount || eligibleCount;
       const effectiveComment =
@@ -472,8 +465,9 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
         effectiveComment,
         approverEmail
       );
-      if (apprRes.gate_id || activeGateId) {
-        localStorage.setItem(`controls_gate_decided_${apprRes.gate_id || activeGateId}`, approverEmail);
+      const effectiveGateId = apprRes.gate_id || activeGateId || `APPR-GATE-${runId.slice(4)}`;
+      if (effectiveGateId) {
+        localStorage.setItem(`controls_gate_decided_${effectiveGateId}`, approverEmail);
       }
       setApprovalCert(apprRes.approval_certificate || `APPR-GATE-${runId.slice(4)}`);
       setRunStage('APPROVED');

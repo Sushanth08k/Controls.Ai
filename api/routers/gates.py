@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Any, Literal
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 from api.auth import UserSession, get_current_user
 from api.rbac import check_gate_authorization
@@ -116,6 +116,7 @@ async def decide_gate(
     gate_id: str,
     body: GateDecisionRequest,
     user: UserSession = Depends(get_current_user),
+    x_user_email: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Approve or reject a gate with strict RBAC enforcement, resuming control execution on approval."""
     # Lookup gate: first in database, then in _GATE_STORE
@@ -179,6 +180,11 @@ async def decide_gate(
 
     # Update gate state
     now_iso = datetime.now(timezone.utc).isoformat()
+    effective_approver = (
+        x_user_email
+        if (x_user_email and "@" in x_user_email)
+        else (user.email if (user.email and "@" in user.email and not user.email.endswith("@bank.internal")) else user.user_id)
+    )
     updated = GateItem(
         gate_id=gate.gate_id,
         run_id=gate.run_id,
@@ -189,7 +195,7 @@ async def decide_gate(
         status=body.decision,
         created_at=gate.created_at,
         decided_at=now_iso,
-        decided_by=user.user_id,
+        decided_by=effective_approver,
         comment=body.comment,
         gate_type=gate.gate_type,
         payload_summary=gate.payload_summary,
@@ -202,7 +208,7 @@ async def decide_gate(
         run_id=gate.run_id,
         control_id=gate.control_id,
         status=body.decision,
-        approved_by=user.user_id,
+        approved_by=effective_approver,
         approved_at=now_iso,
         comment=body.comment,
         gate_name=gate.gate_name,
@@ -213,7 +219,7 @@ async def decide_gate(
     # Emit realtime event
     await sse_broker.publish(
         "gate.decided",
-        {"gate_id": gate_id, "decision": body.decision, "decided_by": user.user_id},
+        {"gate_id": gate_id, "decision": body.decision, "decided_by": effective_approver},
     )
 
     # Resume/block the associated run after human approval.

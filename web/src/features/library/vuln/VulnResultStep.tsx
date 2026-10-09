@@ -92,11 +92,6 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
       data: attributes['ticket_coverage'],
     },
     {
-      key: 'closure_validity',
-      name: 'Closure Validity',
-      data: attributes['closure_validity'],
-    },
-    {
       key: 'exception_governance',
       name: 'Exception Governance',
       data: attributes['exception_governance'],
@@ -109,18 +104,7 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
       return assessment.remaining_followups;
     }
     const items: any[] = [];
-    // 1. Closures without rescan proof (Q3)
-    const closureRows = afterSnapshot?.q3_closure_validity?.rows || [];
-    closureRows.forEach((r: any) => {
-      items.push({
-        type: 'Closure Defect',
-        finding_id: r.vulnerability_id,
-        cve_id: r.cve_id,
-        ticket_id: r.ticket_id,
-        description: `Finding ${r.vulnerability_id} (${r.cve_id}) closed without verified rescan evidence.`,
-      });
-    });
-    // 2. Tickets missing owner or due date (Q2 defective tickets)
+    // 1. Tickets missing owner or due date (Q2 defective tickets)
     const defectiveTickets =
       afterSnapshot?.q2_ticket_coverage?.defective_tickets || [];
     defectiveTickets.forEach((r: any) => {
@@ -134,8 +118,8 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
         description: `Ticket ${r.ticket_id} for ${r.finding_id}: ${issueDesc}.`,
       });
     });
-    // 3. Expired or ungoverned exceptions (Q4)
-    const exceptionRows = afterSnapshot?.q4_exception_governance?.rows || [];
+    // 2. Expired or ungoverned exceptions (Q3)
+    const exceptionRows = afterSnapshot?.q3_exception_governance?.rows || afterSnapshot?.q4_exception_governance?.rows || [];
     exceptionRows.forEach((r: any) => {
       items.push({
         type: 'Exception Defect',
@@ -151,8 +135,7 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
   const sqlItems = [
     { key: 'Q1_SLA_BREACH', label: 'Q1: SLA Breaches', sql: namedQueries['Q1_SLA_BREACH'] || '' },
     { key: 'Q2_TICKET_COVERAGE', label: 'Q2: Ticket Coverage', sql: namedQueries['Q2_TICKET_COVERAGE'] || '' },
-    { key: 'Q3_CLOSURE_VALIDITY', label: 'Q3: Closure Validity', sql: namedQueries['Q3_CLOSURE_VALIDITY'] || '' },
-    { key: 'Q4_EXCEPTION_GOVERNANCE', label: 'Q4: Exception Governance', sql: namedQueries['Q4_EXCEPTION_GOVERNANCE'] || '' },
+    { key: 'Q3_EXCEPTION_GOVERNANCE', label: 'Q3: Exception Governance', sql: namedQueries['Q3_EXCEPTION_GOVERNANCE'] || namedQueries['Q4_EXCEPTION_GOVERNANCE'] || '' },
     { key: 'TICKETING_INSERT', label: 'Ticketing INSERT', sql: ticketSql || namedQueries['TICKETING_INSERT'] || '' },
     { key: 'APPLY_UPDATE', label: 'Apply UPDATEs', sql: applySql || namedQueries['APPLY_UPDATE'] || '' },
   ];
@@ -160,19 +143,19 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
   return (
     <div className="space-y-5">
       {/* (a) Headline: Review complete: X tickets raised, Y exceptions approved, Z escalations recorded */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-xl p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-slate-800 shadow-md">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-700">
+            <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
               STAGE: {stage}
             </span>
-            <span className="text-xs font-mono text-slate-400">{'CTL' + '-VULN-001'}</span>
+            <span className="text-xs font-mono text-slate-500 font-medium">{'CTL' + '-VULN-001'}</span>
           </div>
-          <h2 className="text-base font-bold text-white tracking-wide">
+          <h2 className="text-base font-bold text-slate-900 tracking-wide">
             Review complete: {ticketsRaised} tickets raised, {exceptionsApproved} exceptions approved, {escalationsRecorded} escalations recorded
           </h2>
-          <p className="text-xs text-slate-300">
-            Persisted to <code className="font-mono text-emerald-300">control_audit_runs</code> and <code className="font-mono text-emerald-300">control_evidence</code>.
+          <p className="text-xs text-slate-500">
+            Persisted to <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">control_audit_runs</code> and <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">control_evidence</code>.
           </p>
         </div>
       </div>
@@ -183,7 +166,7 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
           <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
             Control Attributes Before vs After Run
           </h4>
-          <span className="text-[11px] text-slate-500 font-mono">4 Deterministic Attributes</span>
+          <span className="text-[11px] text-slate-500 font-mono">3 Deterministic Attributes</span>
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-slate-200">

@@ -242,8 +242,12 @@ const AuthenticatedPlatform: React.FC = () => {
       decision,
       comment,
       effectiveUserId,
-      effectiveRoles
+      effectiveRoles,
+      currentUser.email
     );
+    if (currentUser.email) {
+      localStorage.setItem(`controls_gate_decided_${gateId}`, currentUser.email);
+    }
     // Optimistically update local gate state
     setGates((prev) =>
       prev.map((g) => (g.gate_id === gateId ? result.gate : g))

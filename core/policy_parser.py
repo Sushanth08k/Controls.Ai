@@ -727,27 +727,6 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "description": f"Known Exploited Vulnerabilities (KEV) must be remediated within {kev_days} days.",
             })
 
-        # Closure verification rule
-        closure_m = re.search(r"closure\s+requires\s+(?:a\s+)?verification\s+rescan", text_clean, re.IGNORECASE) or (
-            "closure" in text_clean.lower() and "verification rescan" in text_clean.lower()
-        )
-        if closure_m:
-            structured_rules.append({
-                "rule_id": "VULN-RULE-CLOSURE",
-                "rule_type": "CLOSURE_VERIFICATION",
-                "requires_rescan": True,
-            })
-            rules_list.append({
-                "rule_id": "VULN-RULE-CLOSURE",
-                "description": "Vulnerability closure requires a verification rescan before being marked resolved.",
-                "rule_type": "CLOSURE_VERIFICATION",
-                "requires_rescan": True,
-            })
-            requirements_list.append({
-                "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
-                "description": "Closure requires an independent verification rescan.",
-            })
-
         # Exception governance rule
         exc_m = re.search(r"exceptions?\s+require.*?compensating\s+control.*?expire.*?(\d+)\s*days?", text_clean, re.IGNORECASE) or (
             "exception" in text_clean.lower() and "compensating control" in text_clean.lower()
@@ -845,7 +824,6 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             matches_known_rule = (
                 bool(re.search(r"\b(critical|high|medium|low|kev)\b[^\n\d]*?\d+\s*days?", line_lower))
                 or bool(re.search(r"\b(open|in_progress|patched|closed)\b.*?considered", line_lower))
-                or ("closure" in line_lower and "rescan" in line_lower)
                 or ("exception" in line_lower and "compensating" in line_lower)
                 or ("tier 1" in line_lower and ("daily" in line_lower or "weekly" in line_lower))
                 or ("escalat" in line_lower and "manager" in line_lower)

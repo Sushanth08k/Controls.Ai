@@ -30,12 +30,12 @@ def test_fresh_seed_full_lifecycle_with_before_not_equal_after():
     run_id = start_data["run_id"]
     assert start_data["stage"] == "EVALUATED"
 
-    # Verify Screen 3 Review response contract has 4 checks (no scan health / scan coverage)
+    # Verify Screen 3 Review response contract has 3 checks (no scan health / scan coverage / closure validity)
     snap = start_data["review_snapshot"]
     assert "q1_sla_breach" in snap
     assert "q2_ticket_coverage" in snap
-    assert "q3_closure_validity" in snap
-    assert "q4_exception_governance" in snap
+    assert "q3_exception_governance" in snap
+    assert "q3_closure_validity" not in snap
     assert "q1_scan_health" not in snap
     assert "q2_coverage" not in snap
 
@@ -91,7 +91,7 @@ def test_fresh_seed_full_lifecycle_with_before_not_equal_after():
     assessment = final_data["control_assessment"]
     assert assessment["overall_grade"] in ("Effective", "Effective with follow-ups", "Ineffective")
     assert assessment["overall_grade"] == "Effective with follow-ups"
-    assert len(assessment["attributes"]) == 4
+    assert len(assessment["attributes"]) == 3
 
     # Real change on fresh seed: ticket_coverage, sla_compliance, exception_governance before != after
     attrs = assessment["attributes"]
@@ -117,9 +117,6 @@ def test_fresh_seed_full_lifecycle_with_before_not_equal_after():
     assert attrs["exception_governance"]["counts"]["before"] != attrs["exception_governance"]["counts"]["after"]
     assert attrs["exception_governance"]["counts"]["after"] < attrs["exception_governance"]["counts"]["before"]
 
-    # Closure defect cannot be fixed by this run
-    assert attrs["closure_validity"]["counts"]["after"] == 1
-    assert attrs["closure_validity"]["status"] == "FAIL"
 
 
 def test_zero_defect_lifecycle():

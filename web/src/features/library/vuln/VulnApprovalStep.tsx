@@ -146,22 +146,22 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 rounded-xl p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-amber-800/80 shadow-md">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-700">
+            <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
               STAGE: {stage}
             </span>
-            <h3 className="text-sm font-bold">Screen 5: Exception & Escalation Governance Gate</h3>
+            <h3 className="text-sm font-bold text-slate-900">Exception & Escalation Governance Gate</h3>
           </div>
-          <p className="text-xs text-slate-300">
+          <p className="text-xs text-slate-500">
             Composite approval gate for exception requests and management escalations. Approval immediately applies verified changes and advances stage to APPLIED.
           </p>
         </div>
 
         {gateData?.gate_id && (
-          <div className="font-mono text-xs bg-slate-950/80 border border-slate-700 px-3 py-1.5 rounded-lg text-slate-300 shrink-0">
-            Gate ID: <strong className="text-amber-400">{gateData.gate_id}</strong>
+          <div className="font-mono text-xs bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-slate-600 shrink-0">
+            Gate ID: <strong className="text-slate-900 font-bold">{gateData.gate_id}</strong>
           </div>
         )}
       </div>
