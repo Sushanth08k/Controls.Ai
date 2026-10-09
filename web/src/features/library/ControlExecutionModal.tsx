@@ -239,8 +239,8 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
         const runMeta = typeof audit?.run?.metadata === 'object' && audit?.run?.metadata
           ? audit.run.metadata
           : (typeof audit?.run?.metadata_json === 'string'
-              ? (() => { try { return JSON.parse(audit.run.metadata_json); } catch { return {}; } })()
-              : {});
+            ? (() => { try { return JSON.parse(audit.run.metadata_json); } catch { return {}; } })()
+            : {});
 
         const finalEv = audit?.evidence?.find((e: any) => e.evidence_type === 'final_signoff');
         const finalEvPayload = typeof finalEv?.evidence_payload === 'string'
@@ -600,8 +600,8 @@ AND legal_hold = 0;`,
     activeSqlTab === 1
       ? sqlScripts.selection_sql
       : activeSqlTab === 2
-      ? sqlScripts.archival_sql
-      : sqlScripts.cleanup_sql;
+        ? sqlScripts.archival_sql
+        : sqlScripts.cleanup_sql;
 
   const breadcrumbs = [
     { name: 'Upload', active: viewMode === 1 },
@@ -619,7 +619,7 @@ AND legal_hold = 0;`,
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
       <div className="bg-[#f8fafc] w-full max-w-6xl rounded-2xl border border-slate-200 shadow-2xl overflow-hidden my-4 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
-        
+
         {/* Top Dark Forest Green Banner (Matching User Screenshots) */}
         <div className="bg-[#064e3b] text-white px-6 py-2.5 flex items-center justify-between text-xs font-medium tracking-wide">
           <div>
@@ -641,20 +641,18 @@ AND legal_hold = 0;`,
           {breadcrumbs.map((b, idx) => (
             <React.Fragment key={b.name}>
               <span
-                className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-all ${
-                  b.active
+                className={`px-2.5 py-1 rounded-full whitespace-nowrap transition-all ${b.active
                     ? 'bg-emerald-100 text-emerald-900 font-bold border border-emerald-300'
                     : 'bg-slate-100 text-slate-500 border border-slate-200'
-                }`}
+                  }`}
               >
                 {b.active && '✓ '}
                 {b.name}
               </span>
               {idx < breadcrumbs.length - 1 && (
                 <ChevronRight
-                  className={`w-3.5 h-3.5 shrink-0 transition-colors ${
-                    b.active ? 'text-emerald-600 stroke-[2.5]' : 'text-slate-400 stroke-[2]'
-                  }`}
+                  className={`w-3.5 h-3.5 shrink-0 transition-colors ${b.active ? 'text-emerald-600 stroke-[2.5]' : 'text-slate-400 stroke-[2]'
+                    }`}
                 />
               )}
             </React.Fragment>
@@ -784,7 +782,7 @@ AND legal_hold = 0;`,
                   {loading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Extracting with AI Interpreter Agent...</span>
+                      <span>Extracting ...</span>
                     </>
                   ) : (
                     <span>Extract Policies & Rules</span>
@@ -868,7 +866,7 @@ AND legal_hold = 0;`,
                         </span>
                       </div>
                       <p className="text-xs text-slate-800 font-medium">{rule.description}</p>
-                      
+
                       {rule.condition && (
                         <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 font-mono text-xs space-y-1">
                           <span className="text-[10px] text-slate-500 uppercase block font-semibold">condition</span>
@@ -1019,7 +1017,7 @@ AND legal_hold = 0;`,
           {/* ============================================================== */}
           {viewMode === 3 && previewData && (
             <div className="space-y-6">
-              
+
               {/* Header with Reseed & Start New Buttons */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
@@ -1069,7 +1067,7 @@ AND legal_hold = 0;`,
 
               {/* Selected Run Details Main Container */}
               <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
-                
+
                 {/* Run Title & Status Header */}
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-4">
                   <div>
@@ -1078,26 +1076,25 @@ AND legal_hold = 0;`,
                         {runId}: {extractedData?.policy_name || control.title}
                       </h3>
                       <span
-                        className={`px-2.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${
-                          runStage === 'COMPLETED'
+                        className={`px-2.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${runStage === 'COMPLETED'
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                             : runStage === 'CLEANED'
-                            ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                            : runStage === 'APPROVED'
-                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                            : runStage === 'VERIFIED'
-                            ? 'bg-teal-100 text-teal-800 border border-teal-300'
-                            : runStage === 'ARCHIVED'
-                            ? 'bg-blue-100 text-blue-800 border border-blue-300'
-                            : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
-                        }`}
+                              ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                              : runStage === 'APPROVED'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                : runStage === 'VERIFIED'
+                                  ? 'bg-teal-100 text-teal-800 border border-teal-300'
+                                  : runStage === 'ARCHIVED'
+                                    ? 'bg-blue-100 text-blue-800 border border-blue-300'
+                                    : 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                          }`}
                       >
                         {runStage === 'COMPLETED' ? 'COMPLETED' : runStage}
                       </span>
                     </div>
                     <span className="text-xs text-slate-500 font-mono mt-1 block">
-                      Created 30/9/2026, 4:45:16 am &nbsp;•&nbsp; 
-                      <span className="text-emerald-700 font-bold ml-1">DEFAULT COMPLIANCE DB (SQLITE) (SQLITE)</span> &nbsp;•&nbsp; 
+                      Created 30/9/2026, 4:45:16 am &nbsp;•&nbsp;
+                      <span className="text-emerald-700 font-bold ml-1">DEFAULT COMPLIANCE DB (SQLITE) (SQLITE)</span> &nbsp;•&nbsp;
                       Active Table: <span className="font-semibold text-slate-700">source_transactions</span>
                     </span>
                   </div>
@@ -1116,11 +1113,10 @@ AND legal_hold = 0;`,
                   ].map((s) => (
                     <span
                       key={s.num}
-                      className={`px-3 py-1 rounded-lg whitespace-nowrap transition-all ${
-                        s.active
+                      className={`px-3 py-1 rounded-lg whitespace-nowrap transition-all ${s.active
                           ? 'bg-[#064e3b] text-white shadow-xs'
                           : 'bg-slate-100 text-slate-400 border border-slate-200'
-                      }`}
+                        }`}
                     >
                       {s.num}. {s.name}
                     </span>
@@ -1291,11 +1287,10 @@ AND legal_hold = 0;`,
                             <button
                               onClick={handleKeepInQueue}
                               disabled={loading}
-                              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-xs transition-all shadow-xs ${
-                                !isApprover(currentUser)
+                              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-xs transition-all shadow-xs ${!isApprover(currentUser)
                                   ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20'
                                   : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
-                              }`}
+                                }`}
                             >
                               <Clock className="w-3.5 h-3.5" />
                               <span>Keep in Approval Queue</span>
@@ -1417,25 +1412,22 @@ AND legal_hold = 0;`,
                       <div className="flex items-center gap-1 bg-slate-200 p-0.5 rounded-lg text-[11px] font-medium">
                         <button
                           onClick={() => setActiveSqlTab(1)}
-                          className={`px-2.5 py-1 rounded-md transition-all ${
-                            activeSqlTab === 1 ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                          }`}
+                          className={`px-2.5 py-1 rounded-md transition-all ${activeSqlTab === 1 ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                         >
                           1. Active Selection SQL (SELECT)
                         </button>
                         <button
                           onClick={() => setActiveSqlTab(2)}
-                          className={`px-2.5 py-1 rounded-md transition-all ${
-                            activeSqlTab === 2 ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                          }`}
+                          className={`px-2.5 py-1 rounded-md transition-all ${activeSqlTab === 2 ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                         >
                           2. Archival SQL (INSERT)
                         </button>
                         <button
                           onClick={() => setActiveSqlTab(3)}
-                          className={`px-2.5 py-1 rounded-md transition-all ${
-                            activeSqlTab === 3 ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                          }`}
+                          className={`px-2.5 py-1 rounded-md transition-all ${activeSqlTab === 3 ? 'bg-white text-slate-900 font-bold shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                            }`}
                         >
                           3. Source Cleanup SQL (DELETE)
                         </button>
@@ -1499,31 +1491,28 @@ AND legal_hold = 0;`,
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setLiveDbTab('evaluation')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                              liveDbTab === 'evaluation'
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${liveDbTab === 'evaluation'
                                 ? 'bg-[#064e3b] text-white shadow-xs'
                                 : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                            }`}
+                              }`}
                           >
                             Control Run Evaluation ({liveRows.length})
                           </button>
                           <button
                             onClick={() => setLiveDbTab('source')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                              liveDbTab === 'source'
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${liveDbTab === 'source'
                                 ? 'bg-[#064e3b] text-white shadow-xs'
                                 : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                            }`}
+                              }`}
                           >
                             Active DB (source_transactions) ({sourceRows.length})
                           </button>
                           <button
                             onClick={() => setLiveDbTab('archive')}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                              liveDbTab === 'archive'
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${liveDbTab === 'archive'
                                 ? 'bg-[#064e3b] text-white shadow-xs'
                                 : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-                            }`}
+                              }`}
                           >
                             Archive DB (archive_transactions) ({archiveRows.length})
                           </button>
