@@ -22,6 +22,7 @@ interface VulnReviewStepProps {
   onProceed: () => void;
   loading: boolean;
   stage: string;
+  defaultsUsed?: string[];
 }
 
 export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
@@ -33,6 +34,7 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   onProceed,
   loading,
   stage,
+  defaultsUsed,
 }) => {
   const [selectedCheck, setSelectedCheck] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>('Q1');
   const [showSqlModal, setShowSqlModal] = useState<string | null>(null);
@@ -46,12 +48,23 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   const q3 = reviewSnapshot?.q3_closure_validity;
   const q4 = reviewSnapshot?.q4_exception_governance;
 
+  const rules: any = (reviewSnapshot as any)?.rules || {};
+  const slaKev = rules.sla_kev ?? 3;
+  const slaCrit = rules.sla_critical ?? 7;
+  const slaHigh = rules.sla_high ?? 30;
+  const slaMed = rules.sla_medium ?? 60;
+  const slaLow = rules.sla_low ?? 90;
+  const excMax = rules.exception_max_days ?? 90;
+
+  const q1Description = q1?.description || `Findings exceeding remediation SLA timeframes (KEV ${slaKev}d, Critical ${slaCrit}d, High ${slaHigh}d, Medium ${slaMed}d, Low ${slaLow}d) without approved exception.`;
+  const q4Description = q4?.description || `Exception requests audited for pending approvals, expiration (> ${excMax}d), and compensating control verification.`;
+
   const checks = [
     {
       id: 'Q1' as const,
       num: 'Q1',
       title: 'SLA Breaches',
-      description: 'Findings exceeding remediation SLA timeframes (KEV 3d, Critical 7d, High 30d, Medium 60d) without approved exception.',
+      description: q1Description,
       data: q1,
       sqlKey: 'Q1_SLA_BREACH',
       count: q1?.row_count,
@@ -78,7 +91,7 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
       id: 'Q4' as const,
       num: 'Q4',
       title: 'Exception Governance',
-      description: 'Exception requests audited for pending approvals, expiration, and compensating control verification.',
+      description: q4Description,
       data: q4,
       sqlKey: 'Q4_EXCEPTION_GOVERNANCE',
       count: q4?.row_count,
@@ -116,6 +129,21 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
 
   return (
     <div className="space-y-5">
+      {/* Defaults Used Banner */}
+      {((defaultsUsed && defaultsUsed.length > 0) || ((reviewSnapshot as any)?.defaults_used && (reviewSnapshot as any).defaults_used.length > 0)) && (
+        <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col gap-1 shadow-2xs">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Policy Defaults Used</span>
+          </div>
+          <div className="pl-6 space-y-0.5 text-[11px] text-amber-800">
+            {(defaultsUsed || (reviewSnapshot as any)?.defaults_used || []).map((msg: string, idx: number) => (
+              <div key={idx}>{msg}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Scope Strip */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 shadow-2xs">
         <div className="flex items-center justify-between gap-3 text-xs">

@@ -615,19 +615,67 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
 
     # Vulnerability Remediation SLA Standard
     is_vuln_sla = (
-        "remediat" in text_clean.lower()
+        default_archetype == "A"
+        or "remediat" in text_clean.lower()
         or "vulnerability" in text_clean.lower()
         or ("critical" in text_clean.lower() and "day" in text_clean.lower())
     )
     if is_vuln_sla:
-        crit_m = re.search(r"critical[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
-        crit_days = int(crit_m.group(1)) if crit_m else 7
-        high_m = re.search(r"high[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
-        high_days = int(high_m.group(1)) if high_m else 30
-        med_m = re.search(r"medium[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
-        med_days = int(med_m.group(1)) if med_m else 60
-        low_m = re.search(r"low[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
-        low_days = int(low_m.group(1)) if low_m else 90
+        crit_matches = re.findall(r"\bcritical\b[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        high_matches = re.findall(r"\bhigh\b[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        med_matches = re.findall(r"\bmedium\b[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        low_matches = re.findall(r"\blow\b[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+        kev_matches = re.findall(r"(?:known\s+exploited\s+vulnerabilit(?:y|ies)|\bkev\b)[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
+
+        has_any_sla = bool(crit_matches or high_matches or med_matches or low_matches or kev_matches)
+        if not has_any_sla:
+            return {
+                "has_sla_rules": False,
+                "error": "Policy contains no recognisable vulnerability SLA rules. Please provide a policy with defined remediation timeframes.",
+                "policy_name": "Unrecognised Policy",
+                "scope": "None",
+                "scope_targets": [],
+                "description": "Policy contains no recognisable vulnerability SLA rules.",
+                "rule_summary": "No recognisable SLA rules.",
+                "requirements": [],
+                "rules": [],
+                "structured_rules": [],
+                "exceptions": [],
+                "ambiguities": [],
+                "defaults_used": [],
+                "rules_object": {},
+                "extracted_rules": {"rules": [], "rules_count": 0},
+                "source_references": [],
+                "citation": "",
+                "retention_years": 0,
+            }
+
+        ambiguities_list: list[dict[str, Any]] = []
+        defaults_used: list[str] = []
+
+        def process_sev_matches(sev_label: str, matches: list[str], default_val: int) -> tuple[int, bool]:
+            if not matches:
+                defaults_used.append(f"Using default: {sev_label} {default_val}d, not in policy")
+                return default_val, False
+            nums = [int(m) for m in matches]
+            unique_nums = list(dict.fromkeys(nums))
+            if len(unique_nums) > 1:
+                ambiguities_list.append({
+                    "ambiguity_id": f"AMB-{len(ambiguities_list) + 1:03d}",
+                    "type": "CONFLICTING_SPECIFICATION",
+                    "severity": "HIGH",
+                    "description": f"Conflicting rules for {sev_label} severity: found {', '.join(str(n)+'d' for n in unique_nums)}. Using {unique_nums[0]}d.",
+                    "hedge_words": [],
+                    "requires_human_review": True,
+                    "status": "unconfirmed",
+                })
+            return unique_nums[0], True
+
+        crit_days, crit_found = process_sev_matches("Critical", crit_matches, 7)
+        high_days, high_found = process_sev_matches("High", high_matches, 30)
+        med_days, med_found = process_sev_matches("Medium", med_matches, 60)
+        low_days, low_found = process_sev_matches("Low", low_matches, 90)
+        kev_days, kev_found = process_sev_matches("KEV", kev_matches, 3)
 
         structured_rules = [
             {
@@ -649,7 +697,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "allowed_status": ["PATCHED", "CLOSED"],
             },
         ]
-        if low_m:
+        if low_found or low_matches:
             structured_rules.append({
                 "rule_id": "VULN-RULE-004",
                 "severity": "LOW",
@@ -683,7 +731,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "allowed_status": ["PATCHED", "CLOSED"],
             },
         ]
-        if low_m:
+        if low_found or low_matches:
             rules_list.append({
                 "rule_id": "VULN-RULE-004",
                 "description": f"Low vulnerabilities must be remediated within {low_days} days of identification.",
@@ -702,9 +750,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
         ]
 
         # KEV SLA rule
-        kev_m = re.search(r"(?:known\s+exploited\s+vulnerabilit(?:y|ies)|kev)[^\n\d]*?(\d+)\s*days?", text_clean, re.IGNORECASE)
-        if kev_m:
-            kev_days = int(kev_m.group(1))
+        if kev_found or kev_matches:
             structured_rules.append({
                 "rule_id": "VULN-RULE-KEV",
                 "rule_type": "KEV_SLA",
@@ -731,6 +777,7 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
         closure_m = re.search(r"closure\s+requires\s+(?:a\s+)?verification\s+rescan", text_clean, re.IGNORECASE) or (
             "closure" in text_clean.lower() and "verification rescan" in text_clean.lower()
         )
+        requires_rescan = True
         if closure_m:
             structured_rules.append({
                 "rule_id": "VULN-RULE-CLOSURE",
@@ -747,6 +794,8 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
                 "description": "Closure requires an independent verification rescan.",
             })
+        else:
+            defaults_used.append("Using default: Closure verification rescan required, not in policy")
 
         # Exception governance rule
         exc_m = re.search(r"exceptions?\s+require.*?compensating\s+control.*?expire.*?(\d+)\s*days?", text_clean, re.IGNORECASE) or (
@@ -834,7 +883,8 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
 
         # Ambiguities detection
         hedge_words = ["promptly", "where feasible", "as soon as possible", "reasonable", "appropriate"]
-        ambiguities_list: list[dict[str, Any]] = []
+        if "ambiguities_list" not in locals():
+            ambiguities_list: list[dict[str, Any]] = []
         raw_lines = [s.strip() for s in re.split(r"[\n\r]+", text_clean) if s.strip()]
         for line in raw_lines:
             line_body = re.sub(r"^\d+[\.\)]\s*", "", line).strip()
@@ -934,6 +984,17 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             "scope": scope_objects,
         }
 
+        rules_object = {
+            "sla_critical": crit_days,
+            "sla_high": high_days,
+            "sla_medium": med_days,
+            "sla_low": low_days,
+            "sla_kev": kev_days,
+            "exception_max_days": exc_days,
+            "closure_requires_rescan": requires_rescan,
+            "escalation_business_days": esc_days,
+        }
+
         extracted_rules = {
             "policy_type": "Vulnerability Remediation SLA",
             "critical_sla_days": crit_days,
@@ -948,9 +1009,12 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             "ambiguities_count": len(ambiguities_list),
             "definition_patch": definition_patch,
             "scope_targets": final_scope_refs,
+            "rules_object": rules_object,
+            "defaults_used": defaults_used,
         }
 
         return {
+            "has_sla_rules": True,
             "policy_name": "Vulnerability Management Standard v1.0" if "standard" in text_clean.lower() else (sentences[0] if sentences else "Vulnerability Management Standard"),
             "scope": ", ".join(final_scope_refs) if extracted_targets else "Core Banking & Subsidiary Database Systems",
             "scope_targets": final_scope_refs,
@@ -966,6 +1030,8 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
             "retention_years": 0,
             "extracted_rules": extracted_rules,
             "definition_patch": definition_patch,
+            "rules_object": rules_object,
+            "defaults_used": defaults_used,
         }
 
     if "vulnerability" in text_clean.lower() or "cve" in text_clean.lower() or "hardening" in text_clean.lower():

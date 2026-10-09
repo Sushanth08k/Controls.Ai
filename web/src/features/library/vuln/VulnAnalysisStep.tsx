@@ -339,6 +339,17 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
         </div>
       )}
 
+      {/* Block message if no recognizable SLA rules */}
+      {analysisData?.has_sla_rules === false && (
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600" />
+          <div>
+            <span className="font-bold">Policy Blocked: </span>
+            <span>No recognizable vulnerability remediation SLA rules found in this policy. Please upload or specify a valid policy with defined SLA thresholds.</span>
+          </div>
+        </div>
+      )}
+
       {/* Bottom Actions (Matching Earlier UI) */}
       <div className="flex items-center justify-between pt-4 border-t border-slate-200">
         <button
@@ -350,8 +361,8 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
         </button>
         <button
           onClick={onProceed}
-          disabled={loading}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-blue-500/25 transition-all cursor-pointer disabled:opacity-50"
+          disabled={loading || analysisData?.has_sla_rules === false}
+          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-blue-500/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
             <>

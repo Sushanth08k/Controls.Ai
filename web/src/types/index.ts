@@ -233,6 +233,9 @@ export interface VulnVerificationResult {
   mismatch_count?: number;
   mismatches?: string[];
   verification_banner?: string;
+  source_root?: string;
+  target_root?: string;
+  roots_match?: boolean;
   reconciliation?: {
     required_count: number;
     created_count: number;

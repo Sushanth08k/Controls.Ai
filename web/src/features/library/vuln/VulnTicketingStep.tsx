@@ -138,38 +138,77 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
       {/* Reconciliation Result Banner (Pass / Fail on Same Screen) */}
       {isTicketed && verificationData && (
         <div
-          className={`p-4 rounded-xl border flex items-center justify-between gap-3 shadow-2xs ${
+          className={`p-4 rounded-xl border flex flex-col gap-2.5 shadow-2xs ${
             isVerifiedSuccess
               ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
               : 'bg-rose-50 border-rose-300 text-rose-950'
           }`}
         >
-          <div className="flex items-center gap-3">
-            {isVerifiedSuccess ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            ) : (
-              <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
-            )}
-            <div>
-              <div className="text-xs font-bold uppercase tracking-wider">
-                {isVerifiedSuccess ? 'Reconciliation Verification Passed' : 'Reconciliation Verification Failed'}
-              </div>
-              <div className="text-xs mt-0.5">
-                {verificationData.reconciliation?.mismatch_count === 0 || verificationData.mismatch_count === 0
-                  ? candidateCount === 0 && createdCount === 0
-                    ? 'Nothing to reconcile: zero ticket candidates identified.'
-                    : `Successfully verified: ${verificationData.required_count ?? createdCount} required findings reconciled with ${verificationData.created_count ?? createdCount} provisioned tickets (0 mismatches).`
-                  : `Mismatch detected: ${verificationData.mismatch_count ?? 0} tickets failed reconciliation.`}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              {isVerifiedSuccess ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              ) : (
+                <XCircle className="w-5 h-5 text-rose-600 shrink-0" />
+              )}
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                  <span>Integrity verification (SHA-256 Merkle roots)</span>
+                  <span
+                    className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${
+                      verificationData.roots_match !== false ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+                    }`}
+                  >
+                    {verificationData.roots_match !== false ? 'MATCH' : 'MISMATCH'}
+                  </span>
+                </div>
+                <div className="text-xs mt-0.5">
+                  {verificationData.reconciliation?.mismatch_count === 0 || verificationData.mismatch_count === 0
+                    ? candidateCount === 0 && createdCount === 0
+                      ? 'Nothing to reconcile: zero ticket candidates identified.'
+                      : `Successfully verified: ${verificationData.required_count ?? createdCount} required findings reconciled with ${verificationData.created_count ?? createdCount} provisioned tickets (0 mismatches).`
+                    : `Mismatch detected: ${verificationData.mismatch_count ?? 0} discrepancies between findings and tickets.`}
+                </div>
               </div>
             </div>
+            <span
+              className={`px-2.5 py-1 text-xs font-bold rounded uppercase tracking-wider ${
+                isVerifiedSuccess ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+              }`}
+            >
+              {isVerifiedSuccess ? 'PASS' : 'FAIL'}
+            </span>
           </div>
-          <span
-            className={`px-2.5 py-1 text-xs font-bold rounded uppercase tracking-wider ${
-              isVerifiedSuccess ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
-            }`}
-          >
-            {isVerifiedSuccess ? 'PASS' : 'FAIL'}
-          </span>
+
+          {/* Merkle Roots Display */}
+          {(verificationData.source_root || verificationData.target_root) && (
+            <div className="pt-2 border-t border-slate-200/60 font-mono text-[11px] grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="flex items-center gap-1.5 bg-white/70 px-2.5 py-1.5 rounded border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold uppercase">Source Root:</span>
+                <span className="font-semibold text-slate-800" title={verificationData.source_root}>
+                  {verificationData.source_root ? `${verificationData.source_root.slice(0, 16)}...` : 'n/a'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-white/70 px-2.5 py-1.5 rounded border border-slate-200">
+                <span className="text-[10px] text-slate-500 font-bold uppercase">Target Root:</span>
+                <span className="font-semibold text-slate-800" title={verificationData.target_root}>
+                  {verificationData.target_root ? `${verificationData.target_root.slice(0, 16)}...` : 'n/a'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Mismatch List if any */}
+          {verificationData.mismatches && verificationData.mismatches.length > 0 && (
+            <div className="pt-2 border-t border-rose-200 text-xs">
+              <span className="font-semibold text-rose-800">Mismatches:</span>
+              <ul className="list-disc list-inside mt-1 space-y-0.5 text-rose-700 font-mono text-[11px]">
+                {verificationData.mismatches.map((m, idx) => (
+                  <li key={idx}>{m}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 

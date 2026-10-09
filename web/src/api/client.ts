@@ -426,6 +426,7 @@ export async function startVulnerabilityRun(payload: {
   policy_id?: string;
   as_of_date?: string;
   confirmed_ambiguities?: string[];
+  rules?: any;
 }): Promise<any> {
   const res = await fetch(`${API_BASE}/vulnerability/run/start`, {
     method: 'POST',

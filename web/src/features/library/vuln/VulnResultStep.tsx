@@ -7,6 +7,8 @@ import {
   Code,
   Loader2,
   FileText,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { ControlAssessment } from '../../../types';
 import { VulnSqlViewer } from './VulnSqlViewer';
@@ -25,6 +27,7 @@ interface VulnResultStepProps {
   namedQueries: Record<string, string>;
   ticketSql?: string;
   applySql?: string;
+  runDigest?: string;
   onCompleteAndClose: () => Promise<void>;
   loading: boolean;
   stage: string;
@@ -44,12 +47,14 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
   namedQueries,
   ticketSql,
   applySql,
+  runDigest,
   onCompleteAndClose,
   loading,
   stage,
 }) => {
   const [showSqlSection, setShowSqlSection] = useState(false);
   const [selectedSqlKey, setSelectedSqlKey] = useState<string>('Q1_SLA_BREACH');
+  const [digestCopied, setDigestCopied] = useState(false);
 
   const grade = assessment?.overall_grade || 'Effective with follow-ups';
   const rationale = assessment?.rationale || 'Residual defects identified in vulnerability lifecycle governance.';
@@ -156,6 +161,13 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
     { key: 'TICKETING_INSERT', label: 'Ticketing INSERT', sql: ticketSql || namedQueries['TICKETING_INSERT'] || '' },
     { key: 'APPLY_UPDATE', label: 'Apply UPDATEs', sql: applySql || namedQueries['APPLY_UPDATE'] || '' },
   ];
+
+  const handleCopyDigest = () => {
+    if (!runDigest) return;
+    navigator.clipboard.writeText(runDigest);
+    setDigestCopied(true);
+    setTimeout(() => setDigestCopied(false), 2000);
+  };
 
   return (
     <div className="space-y-5">
@@ -333,7 +345,7 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
           Execution Run Record
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3 text-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-3 text-xs">
           <div className="bg-white p-2.5 rounded-lg border border-slate-200">
             <div className="text-[10px] text-slate-400 font-semibold uppercase">Run ID</div>
             <div className="font-mono font-bold text-slate-800 truncate" title={runId}>{runId}</div>
@@ -364,6 +376,23 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
             <div className="text-[10px] text-slate-400 font-semibold uppercase">Approver</div>
             <div className="font-mono font-bold text-slate-800 truncate" title={approver || 'n/a'}>
               {approver || 'n/a'}
+            </div>
+          </div>
+          <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+            <div className="text-[10px] text-slate-400 font-semibold uppercase flex items-center justify-between">
+              <span>Run Digest</span>
+              {runDigest && (
+                <button
+                  onClick={handleCopyDigest}
+                  className="text-slate-400 hover:text-slate-700 cursor-pointer p-0.5"
+                  title="Copy full 64-char SHA-256 digest"
+                >
+                  {digestCopied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                </button>
+              )}
+            </div>
+            <div className="font-mono font-bold text-indigo-700 truncate" title={runDigest || 'n/a'}>
+              {runDigest ? `${runDigest.slice(0, 12)}...` : 'n/a'}
             </div>
           </div>
         </div>
