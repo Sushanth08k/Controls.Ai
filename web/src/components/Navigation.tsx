@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -6,46 +6,25 @@ import {
   PlayCircle,
   CheckSquare,
   Shield,
-  UserCheck,
   AlertTriangle,
   History,
   LogOut,
-  ChevronDown,
 } from 'lucide-react';
 import { UserSessionDTO } from '../types';
+import { getPrimaryRole } from '../utils/rbac';
 
 interface NavigationProps {
   currentUser: UserSessionDTO;
-  onSwitchUser: (user: UserSessionDTO) => void;
+  onSwitchUser?: (user: UserSessionDTO) => void;
   onLogout?: () => void;
   pendingGatesCount: number;
 }
 
-const AVAILABLE_USERS: UserSessionDTO[] = [
-  {
-    user_id: 'sec_reviewer_1',
-    roles: ['control_reviewer'],
-    email: 'ksushanth9030@gmail.com',
-  },
-  {
-    user_id: 'sec_owner_1',
-    roles: ['db_security_owner', 'control_owner'],
-    email: 'ksushanth9030@gmail.com',
-  },
-  {
-    user_id: 'release_owner_1',
-    roles: ['release_owner'],
-    email: 'ksushanth9030@gmail.com',
-  },
-];
-
 export const Navigation: React.FC<NavigationProps> = ({
   currentUser,
-  onSwitchUser,
   onLogout,
   pendingGatesCount,
 }) => {
-  const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
 
   const navItems = [
     { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -118,76 +97,54 @@ export const Navigation: React.FC<NavigationProps> = ({
         </nav>
       </div>
 
-      {/* Operator Profile and Sign Out / Role Switcher */}
+      {/* Operator Profile and Sign Out (Fixed Role) */}
       <div className="pt-4 border-t border-[#183e2e] space-y-3">
-        <div className="flex items-center gap-3 px-1">
-          <div className="w-9 h-9 rounded-full bg-[#245e45] text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0">
-            {userInitial}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-white truncate" title={currentUser.email}>
-              {username}
-            </div>
-            <div className="text-[10px] uppercase font-semibold tracking-wider text-[#8ea79b] truncate">
-              {currentUser.roles[0]?.replace(/_/g, ' ') || 'CONTROL REVIEWER'}
-            </div>
-          </div>
-        </div>
+        {(() => {
+          const role = getPrimaryRole(currentUser);
+          const roleConfig = {
+            approver: { label: 'APPROVER', bg: 'bg-purple-900/60 text-purple-200 border-purple-700/60' },
+            executor: { label: 'EXECUTOR', bg: 'bg-emerald-900/60 text-emerald-200 border-emerald-700/60' },
+            auditor: { label: 'AUDITOR (READ-ONLY)', bg: 'bg-amber-900/60 text-amber-200 border-amber-700/60' },
+          }[role];
 
-        {/* Role Switcher Popover for HITL Maker-Checker Testing */}
-        {showRoleSwitcher && (
-          <div className="p-2.5 rounded-lg bg-[#133526] border border-[#204a37] space-y-1.5 text-xs animate-in fade-in duration-150">
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-[#8ea79b] block mb-1">
-              Simulate Role
-            </span>
-            {AVAILABLE_USERS.map((u) => (
-              <button
-                key={u.user_id}
-                type="button"
-                onClick={() => {
-                  const targetEmail =
-                    currentUser.email && !currentUser.email.includes('@bank.internal')
-                      ? currentUser.email
-                      : u.email;
-                  onSwitchUser({ ...u, email: targetEmail });
-                  setShowRoleSwitcher(false);
-                }}
-                className={`w-full text-left px-2 py-1.5 rounded text-[11px] font-medium transition-colors ${
-                  currentUser.user_id === u.user_id
-                    ? 'bg-[#1e4e3a] text-white font-semibold'
-                    : 'text-[#a0bfb0] hover:text-white hover:bg-[#183e2e]'
-                }`}
-              >
-                {u.user_id} ({u.roles[0]?.replace(/_/g, ' ')})
-              </button>
-            ))}
-          </div>
-        )}
+          return (
+            <div className="space-y-2 px-1">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-[#245e45] text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0">
+                  {userInitial}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-white truncate" title={currentUser.email}>
+                    {username}
+                  </div>
+                  <div className="text-[11px] text-[#8ea79b] truncate font-mono" title={currentUser.email}>
+                    {currentUser.email}
+                  </div>
+                </div>
+              </div>
 
-        <div className="grid grid-cols-2 gap-2">
+              {/* Single Role Badge */}
+              <div className="pt-1">
+                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider border ${roleConfig.bg}`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
+                  {roleConfig.label}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
+
+        {onLogout && (
           <button
             type="button"
-            onClick={() => setShowRoleSwitcher(!showRoleSwitcher)}
-            className="py-1.5 px-2 rounded-lg bg-[#163c2c] hover:bg-[#1e4e3a] text-slate-200 text-[11px] font-medium transition-all text-center flex items-center justify-center gap-1 cursor-pointer border border-[#204a37]"
-            title="Switch Maker-Checker Role for Testing"
+            onClick={onLogout}
+            className="w-full py-2 px-3 rounded-lg bg-white/5 hover:bg-rose-950/60 hover:text-rose-200 text-slate-300 text-xs font-medium transition-all text-center flex items-center justify-center gap-2 cursor-pointer border border-white/10 hover:border-rose-800"
+            title="Sign Out of Session"
           >
-            <UserCheck className="w-3 h-3 text-emerald-400" />
-            <span>Role</span>
-            <ChevronDown className={`w-3 h-3 transition-transform ${showRoleSwitcher ? 'rotate-180' : ''}`} />
+            <LogOut className="w-3.5 h-3.5" />
+            <span>Sign out</span>
           </button>
-
-          {onLogout && (
-            <button
-              type="button"
-              onClick={onLogout}
-              className="py-1.5 px-2 rounded-lg bg-white/10 hover:bg-rose-950/60 hover:text-rose-300 text-slate-200 text-[11px] font-medium transition-all text-center flex items-center justify-center gap-1 cursor-pointer border border-white/10 hover:border-rose-800"
-              title="Sign Out"
-            >
-              <LogOut className="w-3 h-3" />
-              <span>Sign out</span>
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </aside>
   );

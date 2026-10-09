@@ -25,6 +25,7 @@ interface VulnTicketingStepProps {
   onProceed: () => void;
   loading: boolean;
   stage: string;
+  operatorEmail?: string;
 }
 
 export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
@@ -38,6 +39,7 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
   onProceed,
   loading,
   stage,
+  operatorEmail,
 }) => {
   const [showSql, setShowSql] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -46,11 +48,13 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
   const isTicketed = Boolean(ticketingData) || stage === 'TICKETED' || stage === 'VERIFIED' || stage === 'APPROVAL_PENDING' || stage === 'APPLIED' || stage === 'FINALIZED';
   const createdCount = ticketingData?.tickets_created_count ?? ticketingData?.created_count ?? ticketingData?.tickets?.length ?? 0;
 
+  const creatorEmail = operatorEmail || 'reviewer@bank.internal';
+
   // Real SQL from backend or default named query
   const sql = ticketingSql || ticketingData?.sql || (
     candidateCount > 0
       ? `INSERT INTO vuln_tickets (ticket_id, finding_id, assignee, due_date, created_by, status, created_at)\nVALUES\n` +
-        candidates.map((c, i) => `  ('TKT-AUTO-${String(i+1).padStart(4, '0')}', '${c.finding_id}', '${c.computed_assignee}', '${c.computed_due_date}', 'sec_reviewer_1', 'OPEN', datetime('now'))`).join(',\n') + ';'
+      candidates.map((c, i) => `  ('TKT-AUTO-${String(i + 1).padStart(4, '0')}', '${c.finding_id}', '${c.computed_assignee}', '${c.computed_due_date}', '${creatorEmail}', 'OPEN', datetime('now'))`).join(',\n') + ';'
       : '-- No candidates requiring ticketing INSERT'
   );
 
@@ -68,16 +72,16 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-xl p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-blue-800 shadow-md">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-blue-300 bg-blue-950/80 px-2 py-0.5 rounded border border-blue-700">
+            <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
               STAGE: {stage}
             </span>
-            <h3 className="text-sm font-bold">Screen 4: Remediation Ticketing & Reconciliation</h3>
+            <h3 className="text-sm font-bold text-slate-900">Remediation Ticketing & Reconciliation</h3>
           </div>
-          <p className="text-xs text-slate-300">
-            Automated provisioning of tracking tickets in <code className="font-mono text-emerald-300">vuln_tickets</code> for open Critical/High/KEV findings lacking coverage, followed by deterministic reconciliation verification.
+          <p className="text-xs text-slate-500">
+            Automated provisioning of tracking tickets in <code className="font-mono text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200">vuln_tickets</code> for open Critical/High/KEV findings lacking coverage, followed by deterministic reconciliation verification.
           </p>
         </div>
 
@@ -267,13 +271,12 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
                     <td className="p-2.5 text-blue-600">{c.cve_id || '-'}</td>
                     <td className="p-2.5">
                       <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          c.severity === 'CRITICAL'
-                            ? 'bg-rose-100 text-rose-800'
-                            : c.severity === 'HIGH'
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${c.severity === 'CRITICAL'
+                          ? 'bg-rose-100 text-rose-800'
+                          : c.severity === 'HIGH'
                             ? 'bg-amber-100 text-amber-800'
                             : 'bg-slate-100 text-slate-700'
-                        }`}
+                          }`}
                       >
                         {c.severity}
                       </span>

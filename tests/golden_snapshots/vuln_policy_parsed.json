@@ -5,6 +5,13 @@
     "vuln_target",
     "core_banking_sim"
   ],
+  "extracted_scope_targets": null,
+  "governed_severities": [
+    "CRITICAL",
+    "HIGH",
+    "MEDIUM"
+  ],
+  "has_kev_sla": false,
   "description": "Vulnerability remediation SLA: Critical (7d), High (30d), Medium (60d).",
   "rule_summary": "Vulnerability remediation SLA: Critical (7d), High (30d), Medium (60d).",
   "requirements": [
@@ -167,7 +174,14 @@
     "scope_targets": [
       "vuln_target",
       "core_banking_sim"
-    ]
+    ],
+    "extracted_scope_targets": null,
+    "governed_severities": [
+      "CRITICAL",
+      "HIGH",
+      "MEDIUM"
+    ],
+    "has_kev_sla": false
   },
   "definition_patch": {
     "severity_policy": {

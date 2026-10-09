@@ -36,7 +36,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Map Firebase user and stored role into UserSessionDTO
   const buildUserSession = (user: User, customRole?: string): UserSessionDTO => {
-    const savedRole = customRole || localStorage.getItem(`${ROLE_STORAGE_KEY_PREFIX}${user.uid}`) || 'control_reviewer';
+    const savedRole = customRole || localStorage.getItem(`${ROLE_STORAGE_KEY_PREFIX}${user.uid}`) || 'executor';
+
+    // Map into canonical RBAC roles:
+    // approver -> ['approver', 'control_reviewer']
+    // auditor -> ['auditor']
+    // executor -> ['executor', 'control_operator']
+    let mappedRoles: string[];
+    const roleLower = savedRole.toLowerCase();
+    if (roleLower === 'approver' || roleLower === 'control_reviewer' || roleLower === 'risk_officer' || roleLower === 'db_security_owner') {
+      mappedRoles = ['approver', 'control_reviewer'];
+    } else if (roleLower === 'auditor' || roleLower === 'compliance_auditor') {
+      mappedRoles = ['auditor'];
+    } else {
+      mappedRoles = ['executor', 'control_operator'];
+    }
 
     // Store UID -> Email mapping for audit trail lookups
     if (user.email) {
@@ -58,7 +72,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return {
       user_id: user.uid.substring(0, 16),
-      roles: [savedRole],
+      roles: mappedRoles,
       email: user.email || 'user@bank.internal',
       username: cleanUsername,
       displayName: user.displayName || cleanUsername,
@@ -124,17 +138,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const switchRole = (newRole: string) => {
-    if (currentUser) {
-      const updated: UserSessionDTO = {
-        ...currentUser,
-        roles: [newRole],
-      };
-      setCurrentUser(updated);
-      if (firebaseUser) {
-        localStorage.setItem(`${ROLE_STORAGE_KEY_PREFIX}${firebaseUser.uid}`, newRole);
-      }
-    }
+  // Role switching is strictly disabled: each user possesses a single immutable role
+  const switchRole = (_newRole: string) => {
+    console.warn('Role switching is disabled: each user profile has a single fixed role.');
   };
 
   return (

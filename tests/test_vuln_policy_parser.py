@@ -26,7 +26,7 @@ def test_vuln_legacy_golden_snapshot():
 
 
 def test_vuln_extended_policy_parsing():
-    """Verify extended vuln policy parses KEV, closure, exceptions, scan cadence, escalation, and ambiguities."""
+    """Verify extended vuln policy parses KEV, exceptions, scan cadence, escalation, and ambiguities."""
     parsed = parse_policy_specification(DEFAULT_VULNERABILITY_POLICY, default_archetype="A")
 
     rules_by_id = {r["rule_id"]: r for r in parsed["rules"]}
@@ -39,10 +39,6 @@ def test_vuln_extended_policy_parsing():
     assert "VULN-RULE-KEV" in rules_by_id
     assert rules_by_id["VULN-RULE-KEV"]["rule_type"] == "KEV_SLA"
     assert rules_by_id["VULN-RULE-KEV"]["max_age_days"] == 3
-
-    assert "VULN-RULE-CLOSURE" in rules_by_id
-    assert rules_by_id["VULN-RULE-CLOSURE"]["rule_type"] == "CLOSURE_VERIFICATION"
-    assert rules_by_id["VULN-RULE-CLOSURE"]["requires_rescan"] is True
 
     assert "VULN-RULE-EXCEPTION" in rules_by_id
     assert rules_by_id["VULN-RULE-EXCEPTION"]["rule_type"] == "EXCEPTION_GOVERNANCE"

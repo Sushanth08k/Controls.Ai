@@ -39,15 +39,21 @@ export async function decideGate(
   decision: 'approved' | 'rejected',
   comment: string,
   userId: string,
-  roles: string[]
+  roles: string[],
+  userEmail?: string
 ): Promise<any> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-User-Id': userId,
+    'X-User-Roles': roles.join(','),
+  };
+  const effectiveEmail = userEmail || (userId.includes('@') ? userId : undefined);
+  if (effectiveEmail) {
+    headers['X-User-Email'] = effectiveEmail;
+  }
   const res = await fetch(`${API_BASE}/gates/${gateId}/decision`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-User-Id': userId,
-      'X-User-Roles': roles.join(','),
-    },
+    headers,
     body: JSON.stringify({ decision, comment }),
   });
 
@@ -258,15 +264,22 @@ export async function approveGate(
   comment: string,
   operatorId?: string
 ): Promise<any> {
+  const effectiveUser = operatorId || 'approver@bank.internal';
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (effectiveUser && effectiveUser.includes('@')) {
+    headers['X-User-Email'] = effectiveUser;
+    headers['X-User-Id'] = effectiveUser;
+  }
   const res = await fetch(`${API_BASE}/interactive/approve_gate`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       control_id: controlId,
       run_id: runId,
       attestation_token: attestationToken,
       operator_comment: comment,
-      operator_id: operatorId || 'sec_reviewer_1',
+      operator_id: effectiveUser,
+      operator_email: effectiveUser,
     }),
   });
   if (!res.ok) throw new Error(`Failed to record approval: ${res.statusText}`);
@@ -289,15 +302,22 @@ export async function commitCleanup(
   comment: string,
   operatorId?: string
 ): Promise<any> {
+  const effectiveUser = operatorId || 'approver@bank.internal';
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (effectiveUser && effectiveUser.includes('@')) {
+    headers['X-User-Email'] = effectiveUser;
+    headers['X-User-Id'] = effectiveUser;
+  }
   const res = await fetch(`${API_BASE}/interactive/cleanup`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({
       control_id: controlId,
       run_id: runId,
       attestation_token: attestationToken,
       operator_comment: comment,
-      operator_id: operatorId || 'sec_reviewer_1',
+      operator_id: effectiveUser,
+      operator_email: effectiveUser,
     }),
   });
   if (!res.ok) {
@@ -427,11 +447,22 @@ export async function startVulnerabilityRun(payload: {
   as_of_date?: string;
   confirmed_ambiguities?: string[];
   rules?: any;
+  operator_email?: string;
+  operator_id?: string;
 }): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const userEmail = payload.operator_email || payload.operator_id;
+  if (userEmail && userEmail.includes('@')) {
+    headers['X-User-Email'] = userEmail;
+    headers['X-User-Id'] = userEmail;
+  }
   const res = await fetch(`${API_BASE}/vulnerability/run/start`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers,
+    body: JSON.stringify({
+      ...payload,
+      document_text: payload.policy_text || (payload as any).document_text,
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -453,11 +484,16 @@ export async function rerunVulnerabilityReview(runId: string, asOf?: string): Pr
   return res.json();
 }
 
-export async function ticketVulnerabilityRun(runId: string): Promise<any> {
+export async function ticketVulnerabilityRun(runId: string, userEmail?: string): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (userEmail && userEmail.includes('@')) {
+    headers['X-User-Email'] = userEmail;
+    headers['X-User-Id'] = userEmail;
+  }
   const res = await fetch(`${API_BASE}/vulnerability/run/ticket`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ run_id: runId }),
+    headers,
+    body: JSON.stringify({ run_id: runId, operator_id: userEmail, operator_email: userEmail }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -479,11 +515,21 @@ export async function verifyVulnerabilityRun(runId: string): Promise<any> {
   return res.json();
 }
 
-export async function requestVulnerabilityApproval(runId: string, requestedBy: string = 'sec_reviewer_1'): Promise<any> {
+export async function requestVulnerabilityApproval(runId: string, requestedBy: string = 'operator@bank.internal'): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (requestedBy && requestedBy.includes('@')) {
+    headers['X-User-Email'] = requestedBy;
+    headers['X-User-Id'] = requestedBy;
+  }
   const res = await fetch(`${API_BASE}/vulnerability/run/request_approval`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ run_id: runId, requested_by: requestedBy }),
+    headers,
+    body: JSON.stringify({
+      run_id: runId,
+      maker_id: requestedBy,
+      maker_email: requestedBy,
+      requested_by: requestedBy,
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -492,11 +538,21 @@ export async function requestVulnerabilityApproval(runId: string, requestedBy: s
   return res.json();
 }
 
-export async function approveVulnerabilityRun(runId: string, approverId: string = 'risk_officer_1', notes: string = ''): Promise<any> {
+export async function approveVulnerabilityRun(runId: string, approverId: string = 'approver@bank.internal', notes: string = ''): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (approverId && approverId.includes('@')) {
+    headers['X-User-Email'] = approverId;
+    headers['X-User-Id'] = approverId;
+  }
   const res = await fetch(`${API_BASE}/vulnerability/run/approve`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ run_id: runId, approver_id: approverId, notes }),
+    headers,
+    body: JSON.stringify({
+      run_id: runId,
+      approver_id: approverId,
+      approver_email: approverId,
+      notes,
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));

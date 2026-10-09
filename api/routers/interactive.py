@@ -36,6 +36,7 @@ from sim.audit_store import (
     upsert_audit_run,
     save_audit_step,
     save_audit_evidence,
+    list_audit_evidence,
     save_audit_approval,
     get_audit_approval,
     get_full_audit_bundle,
@@ -85,13 +86,22 @@ class ExecuteStepRequest(BaseModel):
     run_id: str
 
 
+PERSONA_EMAIL_MAP: dict[str, str] = {
+    "sec_reviewer_1": "reviewer@bank.internal",
+    "sec_owner_1": "owner@bank.internal",
+    "release_owner_1": "release@bank.internal",
+    "operator_1": "operator@bank.internal",
+}
+
+
 class CleanupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     control_id: str
     run_id: str
     attestation_token: str
     operator_comment: str
-    operator_id: str = "sec_reviewer_1"
+    operator_id: str = "approver@bank.internal"
+    operator_email: str | None = None
 
 
 # In-memory storage for active interactive sessions
@@ -108,50 +118,30 @@ def build_generated_sql_scripts(
     exceptions: list[dict[str, Any]] | None = None,
 ) -> dict[str, str]:
     target_run = run_id or "RUN-ACTIVE"
-    rule_key = f"{defn.control_id}:{retention_years}"
 
-    # 1. Check in-memory cache by (control_id, retention_years) for instant return
-    if rule_key in _GENERATED_SQL_CACHE:
-        cached = _GENERATED_SQL_CACHE[rule_key]
-        cached_run = cached.get("_cached_run_id", "RUN-ACTIVE")
-        scripts = {
-            "selection_sql": cached["selection_sql"],
-            "archival_sql": cached["archival_sql"].replace(cached_run, target_run),
-            "cleanup_sql": cached["cleanup_sql"].replace(cached_run, target_run),
-        }
-        if target_run != "RUN-ACTIVE":
-            _GENERATED_SQL_CACHE[target_run] = scripts
-        return scripts
+    # If explicit rules were supplied from policy interpretation, always synthesize fresh grounded queries
+    has_explicit_rules = bool(rules and len(rules) > 0)
 
-    # 2. Check in-memory cache by run_id
-    if run_id and run_id != "RUN-ACTIVE" and run_id in _GENERATED_SQL_CACHE:
-        return _GENERATED_SQL_CACHE[run_id]
+    if not has_explicit_rules:
+        # 1. Check in-memory cache by specific run_id
+        if run_id and run_id != "RUN-ACTIVE" and run_id in _GENERATED_SQL_CACHE:
+            return _GENERATED_SQL_CACHE[run_id]
 
-    # 3. Check active interactive sessions
-    if run_id and run_id in _INTERACTIVE_SESSIONS and _INTERACTIVE_SESSIONS[run_id].get("generated_sql"):
-        cached = _INTERACTIVE_SESSIONS[run_id]["generated_sql"]
-        _GENERATED_SQL_CACHE[run_id] = cached
-        return cached
+        # 2. Check active interactive sessions for this specific run
+        if run_id and run_id in _INTERACTIVE_SESSIONS and _INTERACTIVE_SESSIONS[run_id].get("generated_sql"):
+            cached = _INTERACTIVE_SESSIONS[run_id]["generated_sql"]
+            _GENERATED_SQL_CACHE[run_id] = cached
+            return cached
 
-    # 4. Check persistent database run record
-    if run_id and run_id != "RUN-ACTIVE":
-        run_rec = get_audit_run(run_id)
-        if run_rec and run_rec.get("metadata", {}).get("generated_sql"):
-            stored = run_rec["metadata"]["generated_sql"]
-            _GENERATED_SQL_CACHE[run_id] = stored
-            return stored
+        # 3. Check persistent database run record
+        if run_id and run_id != "RUN-ACTIVE":
+            run_rec = get_audit_run(run_id)
+            if run_rec and run_rec.get("metadata", {}).get("generated_sql"):
+                stored = run_rec["metadata"]["generated_sql"]
+                _GENERATED_SQL_CACHE[run_id] = stored
+                return stored
 
-    # 5. Check control fallback
-    if defn.control_id in _GENERATED_SQL_CACHE:
-        cached = _GENERATED_SQL_CACHE[defn.control_id]
-        cached_run = cached.get("_cached_run_id", "RUN-ACTIVE")
-        return {
-            "selection_sql": cached["selection_sql"],
-            "archival_sql": cached["archival_sql"].replace(cached_run, target_run),
-            "cleanup_sql": cached["cleanup_sql"].replace(cached_run, target_run),
-        }
-
-    # 6. Synthesize queries via Gemini / ComplianceSQLAgent with instant deterministic fallback
+    # Synthesize queries via Gemini / ComplianceSQLAgent grounded dynamically in extracted rules
     res = generate_sql_with_gemini(
         rules=rules or [],
         exceptions=exceptions or [],
@@ -169,8 +159,6 @@ def build_generated_sql_scripts(
     }
     if target_run != "RUN-ACTIVE":
         _GENERATED_SQL_CACHE[target_run] = scripts
-    _GENERATED_SQL_CACHE[defn.control_id] = scripts
-    _GENERATED_SQL_CACHE[rule_key] = scripts
     return {
         "selection_sql": res["selection_sql"],
         "archival_sql": res["archival_sql"],
@@ -600,7 +588,7 @@ async def upload_policy_file(
 
     # 5. Persist to SQLite compliance_policy_documents
     rules_summary = f"Ingested {len(extracted_text.splitlines())} lines. Ready for automated parsing and execution."
-    editor_email = uploaded_by or x_user_email or "ksushanth9030@gmail.com"
+    editor_email = uploaded_by or x_user_email or "operator@bank.internal"
     doc_record = {
         "policy_id": policy_id,
         "filename": clean_filename,
@@ -654,7 +642,10 @@ async def upload_policy_file(
 
 
 @router.post("/interpret")
-async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
+async def interpret_document(
+    req: InterpretRequest,
+    x_user_email: str | None = Header(default=None),
+) -> dict[str, Any]:
     """Step 1: Dynamically extract policy rules and citations from user input or uploaded text."""
     defn = default_registry.get_definition(req.control_id)
     if not defn:
@@ -722,7 +713,7 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         finally:
             conn.close()
 
-    op_email = req.operator_email or "sec_owner_1"
+    op_email = req.operator_email or x_user_email or "sec_owner_1"
 
     session = {
         "run_id": run_id,
@@ -732,6 +723,8 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         "policy_id": policy_id,
         "raw_text": text,
         "extracted_rules": parsed["extracted_rules"],
+        "rules": parsed.get("rules", []),
+        "exceptions": parsed.get("exceptions", []),
         "retention_years": ret_years,
         "citation": parsed["citation"],
         "status": "policy_extracted",
@@ -1421,7 +1414,10 @@ async def verify_archival_step(
 
 
 @router.post("/approve_gate")
-async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
+async def approve_human_gate(
+    req: CleanupRequest,
+    x_user_email: str | None = Header(default=None),
+) -> dict[str, Any]:
     """Step 4: Record maker-checker human approval before source cleanup."""
     defn = default_registry.get_definition(req.control_id)
     if not defn:
@@ -1439,15 +1435,13 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
     raw_role = existing_gate.get("approver_role") if existing_gate else None
     approver_role: str = raw_role if isinstance(raw_role, str) and raw_role else "control_reviewer"
 
-    approver_id = req.operator_id or "imsushanth2005@gmail.com"
-    # Enforce maker-checker segregation: In interactive quick-approval testing,
-    # if the operator matches the maker, assign distinct reviewer persona so maker != checker
-    if approver_id == maker_id:
-        approver_id = (
-            "imsushanth2005@gmail.com"
-            if "ksushanth9030" in str(maker_id).lower()
-            else "ksushanth9030@gmail.com"
-        )
+    approver_id = (
+        x_user_email
+        or req.operator_email
+        or (req.operator_id if req.operator_id and "@" in req.operator_id and not req.operator_id.endswith("@bank.internal") else None)
+        or req.operator_id
+        or "sec_reviewer_1"
+    )
 
     now = datetime.datetime.now(datetime.timezone.utc)
     save_audit_approval(
@@ -1589,8 +1583,8 @@ async def perform_archival_cleanup(
             "deleted_count": deleted_count,
             "ledger_seq": ledger_entry.seq,
             "ledger_entry_hash": ledger_entry.entry_hash,
-            "operator_email": session.get("operator_email") or (run.get("metadata") or {}).get("operator_email") or "ksushanth9030@gmail.com",
-            "editor_email": session.get("operator_email") or (run.get("metadata") or {}).get("operator_email") or "ksushanth9030@gmail.com",
+            "operator_email": session.get("operator_email") or (run.get("metadata") or {}).get("operator_email") or "operator@bank.internal",
+            "editor_email": session.get("operator_email") or (run.get("metadata") or {}).get("operator_email") or "operator@bank.internal",
         },
     )
     ev_final = f"EV-SIGNOFF-{run_id[:8]}"
@@ -1611,7 +1605,7 @@ async def perform_archival_cleanup(
     run_editor = (
         session.get("operator_email")
         or (run.get("metadata") or {}).get("operator_email")
-        or "ksushanth9030@gmail.com"
+        or "operator@bank.internal"
     )
     pol_id = session.get("policy_id") or run.get("policy_id") or (run.get("metadata") or {}).get("policy_id")
     pol_fn = session.get("filename") or run.get("policy_info") or (run.get("metadata") or {}).get("filename")

@@ -9,14 +9,7 @@ import {
   AlertCircle,
   KeyRound,
 } from 'lucide-react';
-
-const COMPLIANCE_ROLES = [
-  { id: 'control_reviewer', label: 'Control Reviewer', desc: 'Policy compliance analyst & test runner' },
-  { id: 'control_owner', label: 'Control Owner', desc: 'Owns remediation & control evidence' },
-  { id: 'db_security_owner', label: 'DB Security Owner', desc: 'Approves schema & query audit gates' },
-  { id: 'release_owner', label: 'Release Owner', desc: 'Controls deployment locks & pipeline gates' },
-  { id: 'auditor', label: 'Independent Auditor', desc: 'Read-only access to immutable ledger' },
-];
+import { COMPLIANCE_ROLES } from '../../utils/rbac';
 
 export const AuthPage: React.FC = () => {
   const { signIn, signUp } = useAuth();
@@ -25,7 +18,7 @@ export const AuthPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState('control_reviewer');
+  const [role, setRole] = useState('executor');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -177,7 +170,7 @@ export const AuthPage: React.FC = () => {
             {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Primary Compliance Role
+                  Compliance Role (Fixed Assignment)
                 </label>
                 <select
                   value={role}
@@ -186,12 +179,12 @@ export const AuthPage: React.FC = () => {
                 >
                   {COMPLIANCE_ROLES.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.label} ({r.desc})
+                      {r.label} — {r.desc}
                     </option>
                   ))}
                 </select>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  Role governs maker-checker gate privileges and test executions.
+                  One user, one role: Permissions are permanently assigned to this profile based on role governance.
                 </p>
               </div>
             )}

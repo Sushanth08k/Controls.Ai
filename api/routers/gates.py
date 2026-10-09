@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from typing import Any, Literal
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
 from api.auth import UserSession, get_current_user
 from api.rbac import check_gate_authorization
@@ -45,6 +45,13 @@ class GateItem(BaseModel):
 
 
 
+PERSONA_EMAIL_MAP: dict[str, str] = {
+    "sec_reviewer_1": "reviewer@bank.internal",
+    "sec_owner_1": "owner@bank.internal",
+    "release_owner_1": "release@bank.internal",
+    "operator_1": "operator@bank.internal",
+}
+
 # Dynamic gate store for runtime/testing overrides
 _GATE_STORE: dict[str, GateItem] = {}
 
@@ -55,17 +62,24 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
     db_approvals = list_audit_approvals()
     db_gates: dict[str, GateItem] = {}
     for a in db_approvals:
-        maker_val = a.get("maker_id") or "sec_owner_1"
-        if not maker_val or maker_val == "sec_owner_1" or "@" not in maker_val:
+        maker_val = a.get("maker_id")
+        if not maker_val or "@" not in maker_val:
             run_rec = get_audit_run(a["run_id"])
-            if run_rec and run_rec.get("metadata", {}).get("operator_email"):
+            if run_rec and run_rec.get("metadata", {}).get("operator_email") and "@" in str(run_rec["metadata"]["operator_email"]):
                 maker_val = run_rec["metadata"]["operator_email"]
+            elif run_rec and run_rec.get("metadata", {}).get("editor_email") and "@" in str(run_rec["metadata"]["editor_email"]):
+                maker_val = run_rec["metadata"]["editor_email"]
+            elif maker_val in PERSONA_EMAIL_MAP:
+                maker_val = PERSONA_EMAIL_MAP[maker_val]
             else:
-                maker_val = "ksushanth9030@gmail.com"
+                maker_val = f"{maker_val}@bank.internal" if maker_val else "operator@bank.internal"
 
         decided_by_val = a.get("approved_by")
-        if decided_by_val == "sec_reviewer_1":
-            decided_by_val = "imsushanth2005@gmail.com"
+        if decided_by_val and "@" not in decided_by_val:
+            if decided_by_val in PERSONA_EMAIL_MAP:
+                decided_by_val = PERSONA_EMAIL_MAP[decided_by_val]
+            elif decided_by_val.lower() not in ("n/a", "none", "null"):
+                decided_by_val = f"{decided_by_val}@bank.internal"
 
         p_json = a.get("payload_json")
         p_summary = None
@@ -82,13 +96,13 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
             run_id=a["run_id"],
             control_id=a["control_id"],
             gate_name=a.get("gate_name") or "archival_signoff",
-            maker_id=maker_val,
+            maker_id=a.get("maker_id") or "sec_owner_1",
             maker_email=maker_val,
             approver_role=a.get("approver_role") or "control_reviewer",
             status=a["status"] if a["status"] in ("pending", "approved", "rejected") else "approved",
             created_at=a.get("created_at") or datetime.now(timezone.utc).isoformat(),
             decided_at=a.get("approved_at"),
-            decided_by=decided_by_val,
+            decided_by=a.get("approved_by"),
             comment=a.get("comment"),
             gate_type=a.get("gate_type") or "archival_signoff",
             payload_summary=p_summary,
@@ -102,6 +116,7 @@ async def decide_gate(
     gate_id: str,
     body: GateDecisionRequest,
     user: UserSession = Depends(get_current_user),
+    x_user_email: str | None = Header(default=None),
 ) -> dict[str, Any]:
     """Approve or reject a gate with strict RBAC enforcement, resuming control execution on approval."""
     # Lookup gate: first in database, then in _GATE_STORE
@@ -165,6 +180,11 @@ async def decide_gate(
 
     # Update gate state
     now_iso = datetime.now(timezone.utc).isoformat()
+    effective_approver = (
+        x_user_email
+        if (x_user_email and "@" in x_user_email)
+        else (user.email if (user.email and "@" in user.email and not user.email.endswith("@bank.internal")) else user.user_id)
+    )
     updated = GateItem(
         gate_id=gate.gate_id,
         run_id=gate.run_id,
@@ -175,7 +195,7 @@ async def decide_gate(
         status=body.decision,
         created_at=gate.created_at,
         decided_at=now_iso,
-        decided_by=user.user_id,
+        decided_by=effective_approver,
         comment=body.comment,
         gate_type=gate.gate_type,
         payload_summary=gate.payload_summary,
@@ -188,7 +208,7 @@ async def decide_gate(
         run_id=gate.run_id,
         control_id=gate.control_id,
         status=body.decision,
-        approved_by=user.user_id,
+        approved_by=effective_approver,
         approved_at=now_iso,
         comment=body.comment,
         gate_name=gate.gate_name,
@@ -199,7 +219,7 @@ async def decide_gate(
     # Emit realtime event
     await sse_broker.publish(
         "gate.decided",
-        {"gate_id": gate_id, "decision": body.decision, "decided_by": user.user_id},
+        {"gate_id": gate_id, "decision": body.decision, "decided_by": effective_approver},
     )
 
     # Resume/block the associated run after human approval.

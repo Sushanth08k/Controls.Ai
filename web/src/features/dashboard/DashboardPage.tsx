@@ -6,9 +6,10 @@ import { SeverityTag } from '../../components/SeverityTag';
 import { EvidenceChip } from '../../components/EvidenceChip';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
-import { Plus, ArrowUpRight, Play, PlayCircle, Shield, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, ArrowUpRight, Play, PlayCircle, Shield, Clock, RefreshCw, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatFrequency } from '../../utils/formatFrequency';
+import { isAuditor } from '../../utils/rbac';
 
 interface DashboardPageProps {
   controls: ControlDefinitionDTO[];
@@ -35,17 +36,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const testsRun = runs.length;
   const pendingApprovals = gates.filter((g) => g.status === 'pending').length;
 
-  // Unresolved open findings calculation
-  const unresolvedFindings = findings.filter((f) => {
-    const s = (f.status || '').toUpperCase();
-    return s === 'OPEN' || s === 'ACTIVE' || (!['PATCHED', 'RESOLVED', 'CLOSED'].includes(s) && s !== '');
-  });
-  const openFindingsCount = unresolvedFindings.length;
-  const openHighCriticalCount = unresolvedFindings.filter((f) => {
-    const sev = (f.severity || '').toLowerCase();
-    return sev === 'high' || sev === 'critical';
-  }).length;
-
   return (
     <div className="space-y-6">
       {/* Page Header with Primary Actions */}
@@ -70,19 +60,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => navigate('/policies')}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-xs sm:text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Upload Policy</span>
-          </button>
+          {!isAuditor(currentUser) && (
+            <button
+              type="button"
+              onClick={() => navigate('/policies')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-xs sm:text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Upload Policy</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 4 Control Testing Metrics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 3 Control Testing Metrics Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Card 1: Total Controls */}
         <div
           onClick={() => navigate('/controls')}
@@ -194,50 +186,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <span>Review queue →</span>
           </div>
         </div>
-
-        {/* Card 4: Open Findings */}
-        <div
-          onClick={() => navigate('/findings')}
-          className="bg-white hover:bg-slate-50/70 border border-slate-200/90 hover:border-slate-300 p-5 rounded-xl shadow-xs transition-all cursor-pointer flex flex-col justify-between group"
-        >
-          <div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-7 h-7 rounded-lg flex items-center justify-center ${
-                    openHighCriticalCount > 0 ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'
-                  }`}
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                </div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  Open Findings
-                </span>
-              </div>
-              <ArrowUpRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
-            </div>
-
-            <div className="mt-3.5 flex items-baseline justify-between">
-              <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900 tracking-tight">
-                {openFindingsCount}
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                  openHighCriticalCount > 0
-                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                }`}
-              >
-                High/Critical: {openHighCriticalCount}
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-medium">
-            <span>Issues requiring attention</span>
-            <span>View findings →</span>
-          </div>
-        </div>
       </div>
 
       {/* Controls Section */}
@@ -300,14 +248,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => setModalControl(c)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
-                    title={`Run ${c.control_id} test`}
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-                    <span>Run</span>
-                  </button>
+                  {isAuditor(currentUser) ? (
+                    <span
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                      title="Auditors have read-only access"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Read-Only</span>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setModalControl(c)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
+                      title={`Run ${c.control_id} test`}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+                      <span>Run</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

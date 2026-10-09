@@ -36,7 +36,7 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   stage,
   defaultsUsed,
 }) => {
-  const [selectedCheck, setSelectedCheck] = useState<'Q1' | 'Q2' | 'Q3' | 'Q4'>('Q1');
+  const [selectedCheck, setSelectedCheck] = useState<'Q1' | 'Q2' | 'Q3'>('Q1');
   const [showSqlModal, setShowSqlModal] = useState<string | null>(null);
   const [expandScopeReasons, setExpandScopeReasons] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -45,8 +45,7 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
 
   const q1 = reviewSnapshot?.q1_sla_breach;
   const q2 = reviewSnapshot?.q2_ticket_coverage;
-  const q3 = reviewSnapshot?.q3_closure_validity;
-  const q4 = reviewSnapshot?.q4_exception_governance;
+  const q3 = reviewSnapshot?.q3_exception_governance || reviewSnapshot?.q4_exception_governance;
 
   const rules: any = (reviewSnapshot as any)?.rules || {};
   const slaKev = rules.sla_kev ?? 3;
@@ -57,7 +56,7 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   const excMax = rules.exception_max_days ?? 90;
 
   const q1Description = q1?.description || `Findings exceeding remediation SLA timeframes (KEV ${slaKev}d, Critical ${slaCrit}d, High ${slaHigh}d, Medium ${slaMed}d, Low ${slaLow}d) without approved exception.`;
-  const q4Description = q4?.description || `Exception requests audited for pending approvals, expiration (> ${excMax}d), and compensating control verification.`;
+  const q4Description = q3?.description || `Exception requests audited for pending approvals, expiration (> ${excMax}d), and compensating control verification.`;
 
   const checks = [
     {
@@ -81,20 +80,11 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
     {
       id: 'Q3' as const,
       num: 'Q3',
-      title: 'Closure Validity',
-      description: 'Closed or patched findings audited for verified rescan evidence to prevent premature closure without confirmation.',
-      data: q3,
-      sqlKey: 'Q3_CLOSURE_VALIDITY',
-      count: q3?.row_count,
-    },
-    {
-      id: 'Q4' as const,
-      num: 'Q4',
       title: 'Exception Governance',
       description: q4Description,
-      data: q4,
-      sqlKey: 'Q4_EXCEPTION_GOVERNANCE',
-      count: q4?.row_count,
+      data: q3,
+      sqlKey: 'Q3_EXCEPTION_GOVERNANCE',
+      count: q3?.row_count,
     },
   ];
 
@@ -183,32 +173,32 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
       </div>
 
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-xl p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-slate-800 shadow-md">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-bold text-indigo-300 bg-indigo-950/80 px-2 py-0.5 rounded border border-indigo-700">
+            <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
               STAGE: {stage}
             </span>
-            <h3 className="text-sm font-bold">Screen 3: Vulnerability Control Review Checks</h3>
+            <h3 className="text-sm font-bold text-slate-900">Vulnerability Control Review Checks</h3>
           </div>
-          <p className="text-xs text-slate-300">
-            Four deterministic governance queries evaluating SLA breaches, ticket coverage, closure validity, and exception governance.
+          <p className="text-xs text-slate-500">
+            Three deterministic governance queries evaluating SLA breaches, ticket coverage, and exception governance.
           </p>
         </div>
 
         <button
           onClick={handleRerun}
           disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 transition-all cursor-pointer disabled:opacity-50"
+          className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 rounded-lg border border-slate-300 shadow-2xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
         >
           {loading ? (
             <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
               <span>Running...</span>
             </>
           ) : (
             <>
-              <RefreshCw className="w-3.5 h-3.5" />
+              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
               <span>Re-run Review</span>
             </>
           )}
@@ -222,8 +212,8 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
         </div>
       )}
 
-      {/* 4 Check Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* 3 Check Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {checks.map((chk) => {
           const isSelected = selectedCheck === chk.id;
           const isQ2 = chk.id === 'Q2';
@@ -249,22 +239,20 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
             <div
               key={chk.id}
               onClick={() => setSelectedCheck(chk.id)}
-              className={`p-3.5 rounded-xl border transition-all cursor-pointer text-left space-y-1.5 ${
-                isSelected
+              className={`p-3.5 rounded-xl border transition-all cursor-pointer text-left space-y-1.5 ${isSelected
                   ? 'bg-blue-50/80 border-blue-400 shadow-xs ring-1 ring-blue-300'
                   : 'bg-white border-slate-200 hover:bg-slate-50/80 hover:border-slate-300'
-              }`}
+                }`}
             >
               <div className="flex items-start justify-between gap-1">
                 <span className="text-[11px] font-mono font-bold text-slate-500 uppercase">{chk.num}</span>
                 <span
-                  className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                    !isExecuted
+                  className={`text-xs font-bold px-2 py-0.5 rounded-full ${!isExecuted
                       ? 'bg-slate-100 text-slate-500'
                       : hasDefects
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-emerald-100 text-emerald-800'
-                  }`}
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
                 >
                   {displayCount}
                 </span>
@@ -383,7 +371,7 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
           className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to AI Analysis
+          Back to Analysis
         </button>
 
         <div className="flex items-center gap-3">

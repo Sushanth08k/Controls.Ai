@@ -90,20 +90,6 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
       };
     }
 
-    if (ruleType === 'CLOSURE_VERIFICATION' || rule.requires_rescan) {
-      return {
-        badge: 'CLOSURE',
-        badgeClass: 'bg-indigo-100 text-indigo-900',
-        slaLabel: 'Rescan Required',
-        slaClass: 'text-indigo-700',
-        cardClass: 'border-indigo-200 bg-indigo-50/50',
-        textClass: 'text-indigo-950/80',
-        borderClass: 'border-indigo-200/60 text-indigo-800',
-        description: 'Vulnerability closure requires a verification rescan before being marked resolved.',
-        footer: 'Verification: MANDATORY RESCAN',
-      };
-    }
-
     if (ruleType === 'EXCEPTION_GOVERNANCE') {
       return {
         badge: 'EXCEPTIONS',

@@ -52,8 +52,7 @@ def test_a_default_policy_no_key():
     assert rev["q1_sla_breach"]["row_count"] == 3
     assert rev["q2_ticket_coverage"]["candidate_count"] == 4
     assert rev["q2_ticket_coverage"]["defective_count"] == 2
-    assert rev["q3_closure_validity"]["row_count"] == 1
-    assert rev["q4_exception_governance"]["row_count"] == 3
+    assert rev["q3_exception_governance"]["row_count"] == 3
 
 
 # (b) Relaxed 30/60/90/180/KEV30: Q1=0, no escalations, due dates first_seen+30 for Critical/KEV, Merkle roots match

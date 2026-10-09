@@ -136,24 +136,31 @@ def compile_schema_driven_sql(
 
     # Build exclusion clauses from all extracted exceptions
     exclusion_clauses: list[str] = []
+    seen_clauses: set[str] = set()
     for exc in exceptions:
         f = exc.get("field", "")
         op = str(exc.get("operator", "EQUALS")).upper()
-        val = str(exc.get("value", "")).strip()
+        val_exc = str(exc.get("value", "")).strip()
         reason = str(exc.get("reason", "") or exc.get("title", "")).lower()
 
+        clause = None
         if f == "legal_hold" or "legal hold" in reason:
-            exclusion_clauses.append("(legal_hold = 0 OR legal_hold IS NULL)")
+            clause = "(legal_hold = 0 OR legal_hold IS NULL)"
         elif f == "investigation_status" or "investigation" in reason:
-            exclusion_clauses.append("(investigation_status != 'ACTIVE' OR investigation_status IS NULL)")
-        elif f and val:
+            clause = "(investigation_status != 'ACTIVE' OR investigation_status IS NULL)"
+        elif f and val_exc:
             if op in ("EQUALS", "==", "="):
-                exclusion_clauses.append(f"({f} != '{val}' OR {f} IS NULL)")
+                clause = f"({f} != '{val_exc}' OR {f} IS NULL)"
             elif op == "NOT_EQUALS":
-                exclusion_clauses.append(f"({f} = '{val}')")
+                clause = f"({f} = '{val_exc}')"
+
+        if clause and clause not in seen_clauses:
+            seen_clauses.add(clause)
+            exclusion_clauses.append(clause)
 
     if not exclusion_clauses and hold_field in schema_ddl:
-        exclusion_clauses.append(f"({hold_field} = 0 OR {hold_field} IS NULL)")
+        default_clause = f"({hold_field} = 0 OR {hold_field} IS NULL)"
+        exclusion_clauses.append(default_clause)
 
     exclusion_sql = ("\n  AND " + "\n  AND ".join(exclusion_clauses)) if exclusion_clauses else ""
 
@@ -167,18 +174,24 @@ def compile_schema_driven_sql(
         extra_cols.append("document_ref")
     extra_cols_str = (", " + ", ".join(extra_cols)) if extra_cols else ""
 
-    # Multi-rule generation: if multiple distinct rules were detected in policy
-    if len(rules) > 1:
+    # Rule-driven generation: if extracted rules were detected in policy
+    if rules and len(rules) >= 1:
         sel_blocks = []
         arch_blocks = []
         clean_blocks = []
+
+        num_words = {
+            "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+            "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        }
 
         for idx, r in enumerate(rules):
             rid = r.get("rule_id", f"RULE-{idx + 1:03d}")
             rdesc = r.get("description", "Archival Rule")
             cond = r.get("condition") or {}
             cond_f = cond.get("field")
-            val = cond.get("value") or str(retention_years)
+            raw_val = str(cond.get("value") or retention_years).strip().lower()
+            val = str(num_words[raw_val]) if raw_val in num_words else (re.sub(r"[^\d]", "", raw_val) or raw_val)
             unit = cond.get("unit") or "years"
 
             derived = derive_table_name(rdesc, default=source_table)
