@@ -5,6 +5,7 @@ import { ArchetypeBadge } from '../../components/ArchetypeBadge';
 import { fetchRunAudit, resumeInteractiveRun, getPolicyDocumentFileUrl } from '../../api/client';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
+import { isAuditor } from '../../utils/rbac';
 import {
   ShieldCheck,
   CheckCircle2,
@@ -269,22 +270,32 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleResumeRun(r);
-                            }}
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-white font-semibold text-[11px] shadow-xs transition-all cursor-pointer ${
-                              r.status === 'running'
-                                ? 'bg-emerald-600 hover:bg-emerald-700 animate-pulse'
-                                : 'bg-blue-600 hover:bg-blue-700'
-                            }`}
-                            title="Navigate directly into the process where it left off"
-                          >
-                            <Play className="w-3 h-3 fill-white" />
-                            <span>{r.status === 'running' ? 'Resume' : 'Open'}</span>
-                          </button>
+                          {isAuditor(currentUser) && r.status !== 'completed' ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-100 text-slate-400 font-semibold text-[11px] border border-slate-200 cursor-not-allowed"
+                              title="Auditors have read-only access and cannot execute runs"
+                            >
+                              <Eye className="w-3 h-3 text-slate-400" />
+                              <span>Read-Only</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleResumeRun(r);
+                              }}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-white font-semibold text-[11px] shadow-xs transition-all cursor-pointer ${
+                                r.status === 'running'
+                                  ? 'bg-emerald-600 hover:bg-emerald-700 animate-pulse'
+                                  : 'bg-blue-600 hover:bg-blue-700'
+                              }`}
+                              title={r.status === 'completed' ? "View full audit details" : "Navigate directly into the process where it left off"}
+                            >
+                              {r.status === 'completed' ? <Eye className="w-3 h-3 text-white" /> : <Play className="w-3 h-3 fill-white" />}
+                              <span>{r.status === 'running' ? 'Resume' : r.status === 'completed' ? 'View' : 'Open'}</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-slate-900"
@@ -340,16 +351,23 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                         </p>
                                       </div>
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleResumeRun(r, stage)}
-                                      className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-semibold text-xs shadow-xs transition-all hover:shadow-sm cursor-pointer shrink-0 ${
-                                        stageInfo.isCompleted ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-blue-600 hover:bg-blue-700'
-                                      }`}
-                                    >
-                                      {stageInfo.isCompleted ? <ShieldCheck className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-white" />}
-                                      <span>{stageInfo.nextAction} →</span>
-                                    </button>
+                                    {isAuditor(currentUser) && !stageInfo.isCompleted ? (
+                                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-500 text-xs font-semibold border border-slate-200 shrink-0">
+                                        <Eye className="w-3.5 h-3.5 text-slate-400" />
+                                        <span>Auditor Read-Only</span>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleResumeRun(r, stage)}
+                                        className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-white font-semibold text-xs shadow-xs transition-all hover:shadow-sm cursor-pointer shrink-0 ${
+                                          stageInfo.isCompleted ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-blue-600 hover:bg-blue-700'
+                                        }`}
+                                      >
+                                        {stageInfo.isCompleted ? <ShieldCheck className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 fill-white" />}
+                                        <span>{stageInfo.nextAction} →</span>
+                                      </button>
+                                    )}
                                   </div>
                                 );
                               })()}
@@ -637,7 +655,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
         resumeModalControl.archetype === 'A' ? (
           <VulnerabilityExecutionModal
             control={resumeModalControl}
-            currentUser={currentUser || { user_id: 'sec_reviewer_1', roles: ['control_reviewer'], email: 'reviewer@bank.internal' }}
+            currentUser={currentUser || { user_id: 'reviewer', roles: ['control_reviewer'], email: 'reviewer@bank.internal' }}
             initialRunId={resumeRunId}
             onClose={() => {
               setResumeModalControl(null);
@@ -654,7 +672,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
         ) : (
           <ControlExecutionModal
             control={resumeModalControl}
-            currentUser={currentUser || { user_id: 'sec_reviewer_1', roles: ['control_reviewer'], email: 'reviewer@bank.internal' }}
+            currentUser={currentUser || { user_id: 'reviewer', roles: ['control_reviewer'], email: 'reviewer@bank.internal' }}
             initialRunId={resumeRunId}
             initialStage={resumeStage}
             onClose={() => {

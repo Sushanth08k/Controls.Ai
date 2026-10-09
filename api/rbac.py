@@ -2,6 +2,9 @@ from fastapi import HTTPException
 from api.auth import UserSession
 
 
+APPROVER_ROLES = {"approver", "control_reviewer", "risk_officer", "db_security_owner", "release_owner"}
+
+
 def check_gate_authorization(
     user: UserSession,
     gate_name: str,
@@ -19,7 +22,9 @@ def check_gate_authorization(
         )
 
     # 2. User must possess the gate's required approver role
-    if required_role not in user.roles:
+    user_roles_lower = {r.lower() for r in user.roles}
+    has_role = (required_role.lower() in user_roles_lower) or bool(user_roles_lower.intersection(APPROVER_ROLES))
+    if not has_role:
         raise HTTPException(
             status_code=403,
             detail=f"Forbidden: User '{user.user_id}' lacks required approver role '{required_role}' (user has: {user.roles})",

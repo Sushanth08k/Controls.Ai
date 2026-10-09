@@ -85,13 +85,22 @@ class ExecuteStepRequest(BaseModel):
     run_id: str
 
 
+PERSONA_EMAIL_MAP: dict[str, str] = {
+    "sec_reviewer_1": "reviewer@bank.internal",
+    "sec_owner_1": "owner@bank.internal",
+    "release_owner_1": "release@bank.internal",
+    "operator_1": "operator@bank.internal",
+}
+
+
 class CleanupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     control_id: str
     run_id: str
     attestation_token: str
     operator_comment: str
-    operator_id: str = "sec_reviewer_1"
+    operator_id: str = "approver@bank.internal"
+    operator_email: str | None = None
 
 
 # In-memory storage for active interactive sessions
@@ -600,7 +609,7 @@ async def upload_policy_file(
 
     # 5. Persist to SQLite compliance_policy_documents
     rules_summary = f"Ingested {len(extracted_text.splitlines())} lines. Ready for automated parsing and execution."
-    editor_email = uploaded_by or x_user_email or "ksushanth9030@gmail.com"
+    editor_email = uploaded_by or x_user_email or "operator@bank.internal"
     doc_record = {
         "policy_id": policy_id,
         "filename": clean_filename,
@@ -654,7 +663,10 @@ async def upload_policy_file(
 
 
 @router.post("/interpret")
-async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
+async def interpret_document(
+    req: InterpretRequest,
+    x_user_email: str | None = Header(default=None),
+) -> dict[str, Any]:
     """Step 1: Dynamically extract policy rules and citations from user input or uploaded text."""
     defn = default_registry.get_definition(req.control_id)
     if not defn:
@@ -722,7 +734,7 @@ async def interpret_document(req: InterpretRequest) -> dict[str, Any]:
         finally:
             conn.close()
 
-    op_email = req.operator_email or "sec_owner_1"
+    op_email = req.operator_email or x_user_email or "sec_owner_1"
 
     session = {
         "run_id": run_id,
@@ -1439,15 +1451,12 @@ async def approve_human_gate(req: CleanupRequest) -> dict[str, Any]:
     raw_role = existing_gate.get("approver_role") if existing_gate else None
     approver_role: str = raw_role if isinstance(raw_role, str) and raw_role else "control_reviewer"
 
-    approver_id = req.operator_id or "imsushanth2005@gmail.com"
+    approver_id = req.operator_id or req.operator_email or "sec_reviewer_1"
+
     # Enforce maker-checker segregation: In interactive quick-approval testing,
     # if the operator matches the maker, assign distinct reviewer persona so maker != checker
     if approver_id == maker_id:
-        approver_id = (
-            "imsushanth2005@gmail.com"
-            if "ksushanth9030" in str(maker_id).lower()
-            else "ksushanth9030@gmail.com"
-        )
+        approver_id = "reviewer@bank.internal"
 
     now = datetime.datetime.now(datetime.timezone.utc)
     save_audit_approval(
@@ -1589,8 +1598,8 @@ async def perform_archival_cleanup(
             "deleted_count": deleted_count,
             "ledger_seq": ledger_entry.seq,
             "ledger_entry_hash": ledger_entry.entry_hash,
-            "operator_email": session.get("operator_email") or (run.get("metadata") or {}).get("operator_email") or "ksushanth9030@gmail.com",
-            "editor_email": session.get("operator_email") or (run.get("metadata") or {}).get("operator_email") or "ksushanth9030@gmail.com",
+            "operator_email": session.get("operator_email") or (run.get("metadata") or {}).get("operator_email") or "operator@bank.internal",
+            "editor_email": session.get("operator_email") or (run.get("metadata") or {}).get("operator_email") or "operator@bank.internal",
         },
     )
     ev_final = f"EV-SIGNOFF-{run_id[:8]}"
@@ -1611,7 +1620,7 @@ async def perform_archival_cleanup(
     run_editor = (
         session.get("operator_email")
         or (run.get("metadata") or {}).get("operator_email")
-        or "ksushanth9030@gmail.com"
+        or "operator@bank.internal"
     )
     pol_id = session.get("policy_id") or run.get("policy_id") or (run.get("metadata") or {}).get("policy_id")
     pol_fn = session.get("filename") or run.get("policy_info") or (run.get("metadata") or {}).get("filename")

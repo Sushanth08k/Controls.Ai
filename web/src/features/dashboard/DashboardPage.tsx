@@ -6,9 +6,10 @@ import { SeverityTag } from '../../components/SeverityTag';
 import { EvidenceChip } from '../../components/EvidenceChip';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
-import { Plus, ArrowUpRight, Play, PlayCircle, Shield, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Plus, ArrowUpRight, Play, PlayCircle, Shield, Clock, AlertTriangle, RefreshCw, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { formatFrequency } from '../../utils/formatFrequency';
+import { isAuditor } from '../../utils/rbac';
 
 interface DashboardPageProps {
   controls: ControlDefinitionDTO[];
@@ -70,14 +71,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => navigate('/policies')}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-xs sm:text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer"
-          >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>Upload Policy</span>
-          </button>
+          {!isAuditor(currentUser) && (
+            <button
+              type="button"
+              onClick={() => navigate('/policies')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-xs sm:text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Upload Policy</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -300,14 +303,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => setModalControl(c)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
-                    title={`Run ${c.control_id} test`}
-                  >
-                    <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-                    <span>Run</span>
-                  </button>
+                  {isAuditor(currentUser) ? (
+                    <span
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                      title="Auditors have read-only access"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Read-Only</span>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setModalControl(c)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
+                      title={`Run ${c.control_id} test`}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+                      <span>Run</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
