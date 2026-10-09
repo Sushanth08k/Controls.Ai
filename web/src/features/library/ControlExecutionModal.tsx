@@ -33,8 +33,10 @@ import {
   ShieldAlert,
   Database,
   Clock,
+  ChevronRight,
 } from 'lucide-react';
 import { SelectExistingPolicyModal } from './SelectExistingPolicyModal';
+import { isApprover } from '../../utils/rbac';
 
 interface ControlExecutionModalProps {
   control: ControlDefinitionDTO;
@@ -286,7 +288,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       setError(null);
       setDuplicateNotice(null);
       try {
-        const editorEmail = currentUser.email || 'ksushanth9030@gmail.com';
+        const editorEmail = currentUser.email || currentUser.user_id || 'operator@bank.internal';
         const res = await uploadPolicyDocument(file, control.control_id, editorEmail);
         if (res.policy_id) {
           setPolicyId(res.policy_id);
@@ -327,7 +329,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const editorEmail = currentUser.email || 'ksushanth9030@gmail.com';
+      const editorEmail = currentUser.email || currentUser.user_id || 'operator@bank.internal';
       const data = await interpretPolicy(control.control_id, policyText, fileName, policyId || undefined, editorEmail);
       setRunId(data.run_id);
       if (data.run_id) {
@@ -399,7 +401,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const editorEmail = currentUser.email || 'ksushanth9030@gmail.com';
+      const editorEmail = currentUser.email || currentUser.user_id || 'operator@bank.internal';
       const res = await verifyArchival(control.control_id, runId, editorEmail);
       const verified = res.records_verified ?? archivedCount ?? eligibleCount;
       setVerifiedCount(verified);
@@ -426,7 +428,7 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const editorEmail = currentUser.email || 'ksushanth9030@gmail.com';
+      const editorEmail = currentUser.email || currentUser.user_id || 'operator@bank.internal';
       const res = await verifyArchival(control.control_id, runId, editorEmail);
       if (res.gate_id) {
         setActiveGateId(res.gate_id);
@@ -451,12 +453,12 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
       const makerEmail =
         localStorage.getItem(`controls_gate_maker_${activeGateId}`) ||
         localStorage.getItem(`controls_run_editor_${runId}`) ||
-        'ksushanth9030@gmail.com';
+        'operator@bank.internal';
       // In quick simulation, ensure approver is an authorized reviewer distinct from the maker
       const approverEmail =
         currentUser.email && currentUser.email.toLowerCase() !== makerEmail.toLowerCase()
           ? currentUser.email
-          : (makerEmail.toLowerCase().includes('ksushanth9030') ? 'imsushanth2005@gmail.com' : 'ksushanth9030@gmail.com');
+          : 'reviewer@bank.internal';
 
       const countForComment = verifiedCount || archivedCount || eligibleCount;
       const effectiveComment =
@@ -603,7 +605,7 @@ AND legal_hold = 0;`,
 
   const breadcrumbs = [
     { name: 'Upload', active: viewMode === 1 },
-    { name: 'AI analysis', active: viewMode >= 2 },
+    { name: 'Analysis', active: viewMode >= 2 },
     { name: 'Structured rules', active: viewMode >= 2 },
     { name: 'Execution', active: viewMode === 3 },
     { name: 'Archival', active: runStage !== 'EVALUATED' },
@@ -635,7 +637,7 @@ AND legal_hold = 0;`,
         </div>
 
         {/* Top Breadcrumb Lifecycle Pills (Matching Screenshot 1 & 2) */}
-        <div className="px-6 py-2.5 bg-white border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto text-[11px] font-medium shrink-0">
+        <div className="px-6 py-2.5 bg-white border-b border-slate-200 flex items-center gap-2 overflow-x-auto text-[11px] font-medium shrink-0">
           {breadcrumbs.map((b, idx) => (
             <React.Fragment key={b.name}>
               <span
@@ -649,7 +651,11 @@ AND legal_hold = 0;`,
                 {b.name}
               </span>
               {idx < breadcrumbs.length - 1 && (
-                <span className="text-slate-300">›</span>
+                <ChevronRight
+                  className={`w-3.5 h-3.5 shrink-0 transition-colors ${
+                    b.active ? 'text-emerald-600 stroke-[2.5]' : 'text-slate-400 stroke-[2]'
+                  }`}
+                />
               )}
             </React.Fragment>
           ))}
@@ -1249,7 +1255,7 @@ AND legal_hold = 0;`,
                                 {localStorage.getItem(`controls_gate_maker_${activeGateId}`) ||
                                   localStorage.getItem(`controls_run_editor_${runId}`) ||
                                   currentUser.email ||
-                                  'ksushanth9030@gmail.com'}
+                                  'operator@bank.internal'}
                               </span>
                             </div>
                             <div>
@@ -1274,10 +1280,10 @@ AND legal_hold = 0;`,
                             />
                           </div>
 
-                          {currentUser.user_id === 'sec_owner_1' && (
-                            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center gap-2">
-                              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
-                              <span>Maker-checker rule: You are logged in as the maker ('sec_owner_1'). You must keep this in the Approval Queue for a reviewer.</span>
+                          {!isApprover(currentUser) && (
+                            <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-900 flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 shrink-0 text-blue-600" />
+                              <span>Role constraint: You are an Executor. You can execute controls up to the approval gate, but must wait for an Approver. Click "Keep in Approval Queue" to dispatch for approval.</span>
                             </div>
                           )}
 
@@ -1285,9 +1291,13 @@ AND legal_hold = 0;`,
                             <button
                               onClick={handleKeepInQueue}
                               disabled={loading}
-                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold text-xs transition-all shadow-xs"
+                              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-xs transition-all shadow-xs ${
+                                !isApprover(currentUser)
+                                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20'
+                                  : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                              }`}
                             >
-                              <Clock className="w-3.5 h-3.5 text-slate-600" />
+                              <Clock className="w-3.5 h-3.5" />
                               <span>Keep in Approval Queue</span>
                             </button>
 
@@ -1295,10 +1305,11 @@ AND legal_hold = 0;`,
                               onClick={handleQuickApproveAndContinue}
                               disabled={
                                 loading ||
-                                currentUser.user_id === 'sec_owner_1' ||
+                                !isApprover(currentUser) ||
                                 !(operatorComment.trim() || (verifiedCount || archivedCount || eligibleCount))
                               }
                               className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs shadow-md shadow-amber-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                              title={!isApprover(currentUser) ? "Requires Approver role" : undefined}
                             >
                               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                               <span>Quick Approve & Continue</span>

@@ -28,7 +28,9 @@ import {
   Upload,
   ExternalLink,
   Shield,
+  Lock,
 } from 'lucide-react';
+import { isAuditor } from '../../utils/rbac';
 
 interface ControlLibraryPageProps {
   controls: ControlDefinitionDTO[];
@@ -41,6 +43,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
   currentUser,
   onRefresh,
 }) => {
+  const userIsAuditor = isAuditor(currentUser);
   const location = useLocation();
   const isControlsView = location.pathname === '/controls';
   const [policies, setPolicies] = useState<UploadedPolicyDTO[]>([]);
@@ -86,7 +89,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
     setUploadSuccess(null);
     setDuplicateInfo(null);
     try {
-      const editorEmail = currentUser.email || 'ksushanth9030@gmail.com';
+      const editorEmail = currentUser.email || currentUser.user_id || 'operator@bank.internal';
       const res = await uploadPolicyDocument(file, undefined, editorEmail);
       if (res.policy_id) {
         localStorage.setItem(`controls_policy_editor_${res.policy_id}`, editorEmail);
@@ -243,17 +246,27 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => {
-                        setActivePolicy(null);
-                        setModalControl(c);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
-                      title={`Run ${c.control_id} workflow`}
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-                      <span>Run</span>
-                    </button>
+                    {userIsAuditor ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                        title="Auditor: Read-only access — cannot execute control runs"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Read-Only</span>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setActivePolicy(null);
+                          setModalControl(c);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
+                        title={`Run ${c.control_id} workflow`}
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+                        <span>Run</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -321,24 +334,26 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
               if (file) handleFileUpload(file);
             }}
           />
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-xs font-semibold shadow-xs hover:shadow transition-all cursor-pointer disabled:opacity-50"
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Extracting Document...</span>
-              </>
-            ) : (
-              <>
-                <FileUp className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>+ Upload Policy Document</span>
-              </>
-            )}
-          </button>
+          {!userIsAuditor && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#143d2c] hover:bg-[#1a4d38] text-white text-xs font-semibold shadow-xs hover:shadow transition-all cursor-pointer disabled:opacity-50"
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Extracting Document...</span>
+                </>
+              ) : (
+                <>
+                  <FileUp className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>+ Upload Policy Document</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -399,26 +414,33 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
       )}
 
       {/* Dropzone Area */}
-      <div
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const file = e.dataTransfer.files?.[0];
-          if (file) handleFileUpload(file);
-        }}
-        onClick={() => fileInputRef.current?.click()}
-        className="p-6 rounded-2xl border-2 border-dashed border-slate-200 hover:border-emerald-500 bg-white hover:bg-emerald-50/20 transition-all text-center cursor-pointer group shadow-2xs"
-      >
-        <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-emerald-100 text-slate-500 group-hover:text-emerald-700 flex items-center justify-center mx-auto mb-2 transition-colors">
-          <Upload className="w-5 h-5" />
+      {!userIsAuditor ? (
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files?.[0];
+            if (file) handleFileUpload(file);
+          }}
+          onClick={() => fileInputRef.current?.click()}
+          className="p-6 rounded-2xl border-2 border-dashed border-slate-200 hover:border-emerald-500 bg-white hover:bg-emerald-50/20 transition-all text-center cursor-pointer group shadow-2xs"
+        >
+          <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-emerald-100 text-slate-500 group-hover:text-emerald-700 flex items-center justify-center mx-auto mb-2 transition-colors">
+            <Upload className="w-5 h-5" />
+          </div>
+          <div className="text-xs font-semibold text-slate-800 group-hover:text-emerald-900">
+            Drop compliance policy files here, or <span className="text-emerald-700 underline">browse</span>
+          </div>
+          <p className="text-[11px] text-slate-500 mt-1">
+            Supports PDF, Word (DOCX), and Plain Text (TXT/MD) with automatic AI rule extraction
+          </p>
         </div>
-        <div className="text-xs font-semibold text-slate-800 group-hover:text-emerald-900">
-          Drop compliance policy files here, or <span className="text-emerald-700 underline">browse</span>
+      ) : (
+        <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+          <Lock className="w-4 h-4 text-slate-400" />
+          <span>Auditor Account: Read-only access to existing policy documents. Policy ingestion is restricted to Operators & Approvers.</span>
         </div>
-        <p className="text-[11px] text-slate-500 mt-1">
-          Supports PDF, Word (DOCX), and Plain Text (TXT/MD) with automatic AI rule extraction
-        </p>
-      </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
@@ -571,24 +593,36 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
                       )}
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleRunPolicy(p)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
-                      title={`Run compliance workflow for ${p.title}`}
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-                      <span>Run</span>
-                    </button>
+                    {userIsAuditor ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                        title="Auditor: Read-only access"
+                      >
+                        <Lock className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Read-Only</span>
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleRunPolicy(p)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-[#143d2c] hover:bg-[#1a4d38] text-white shadow-xs hover:shadow transition-all cursor-pointer"
+                          title={`Run compliance workflow for ${p.title}`}
+                        >
+                          <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+                          <span>Run</span>
+                        </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(p.policy_id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                      title="Delete uploaded policy"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(p.policy_id)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Delete uploaded policy"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 

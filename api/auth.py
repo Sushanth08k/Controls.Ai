@@ -12,9 +12,10 @@ class UserSession(BaseModel):
 
 # Default demo users
 DEMO_USERS = {
-    "sec_owner_1": UserSession(user_id="sec_owner_1", roles=["db_security_owner", "control_owner"], email="owner@bank.internal"),
-    "sec_reviewer_1": UserSession(user_id="sec_reviewer_1", roles=["control_reviewer"], email="reviewer@bank.internal"),
-    "release_owner_1": UserSession(user_id="release_owner_1", roles=["release_owner"], email="release@bank.internal"),
+    "sec_owner_1": UserSession(user_id="sec_owner_1", roles=["db_security_owner", "control_owner", "executor"], email="owner@bank.internal"),
+    "sec_reviewer_1": UserSession(user_id="sec_reviewer_1", roles=["control_reviewer", "approver"], email="reviewer@bank.internal"),
+    "release_owner_1": UserSession(user_id="release_owner_1", roles=["release_owner", "approver"], email="release@bank.internal"),
+    "auditor_1": UserSession(user_id="auditor_1", roles=["auditor"], email="auditor@bank.internal"),
 }
 
 

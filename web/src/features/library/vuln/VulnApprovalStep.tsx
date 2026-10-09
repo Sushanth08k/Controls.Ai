@@ -11,8 +11,11 @@ import {
   Code,
 } from 'lucide-react';
 import { VulnSqlViewer } from './VulnSqlViewer';
+import { UserSessionDTO } from '../../../types';
+import { isApprover } from '../../../utils/rbac';
 
 interface VulnApprovalStepProps {
+  currentUser?: UserSessionDTO;
   gateData: {
     gate_id?: string;
     payload_summary?: {
@@ -58,6 +61,7 @@ interface VulnApprovalStepProps {
 }
 
 export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
+  currentUser,
   gateData,
   applyData,
   onKeepInQueue,
@@ -69,6 +73,8 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
 }) => {
   const [showAppliedSql, setShowAppliedSql] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const userCanApprove = currentUser ? isApprover(currentUser) : true;
 
   // Safely parse gate payload if it is a string
   let parsedPayload: any = gateData?.payload;
@@ -371,19 +377,30 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
             </button>
           ) : (
             <>
+              {!userCanApprove && (
+                <span className="text-[11px] text-blue-900 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 font-medium">
+                  Role: Executor — Waiting for Approver sign-off
+                </span>
+              )}
+
               <button
                 onClick={onKeepInQueue}
                 disabled={loading}
-                className="flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 rounded-lg shadow-2xs transition-all cursor-pointer"
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer ${
+                  !userCanApprove
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20'
+                    : 'text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50'
+                }`}
               >
-                <Clock className="w-4 h-4 text-amber-600" />
-                Keep in Approval Queue
+                <Clock className="w-4 h-4 text-current" />
+                <span>Keep in Approval Queue & Close</span>
               </button>
 
               <button
                 onClick={handleApprove}
-                disabled={loading}
-                className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-lg shadow-sm transition-all cursor-pointer"
+                disabled={loading || !userCanApprove}
+                className="flex items-center gap-2 px-5 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all cursor-pointer"
+                title={!userCanApprove ? "Requires Approver role" : undefined}
               >
                 {loading ? (
                   <>

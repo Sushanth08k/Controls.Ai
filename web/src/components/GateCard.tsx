@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { GateItemDTO, UserSessionDTO, RunItemDTO } from '../types';
 import { StatusPill } from './StatusPill';
 import { ShieldAlert, CheckCircle2, XCircle, User, ArrowRight } from 'lucide-react';
+import { isApprover, isAuditor, isExecutor, canExecuteControls } from '../utils/rbac';
 
 interface GateCardProps {
   gate: GateItemDTO;
@@ -23,9 +24,25 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
       : 'Resume Run (Step 5)';
   const activeResumeLabel = resumeLabel || defaultResumeLabel;
 
-  const canApprove = gate.status === 'pending';
+  const userIsAuditor = isAuditor(currentUser);
+  const userIsExecutor = isExecutor(currentUser);
+  const userIsApprover = isApprover(currentUser);
+
+  const isMaker =
+    currentUser.user_id === gate.maker_id ||
+    (Boolean(gate.maker_email) && currentUser.email?.toLowerCase() === gate.maker_email?.toLowerCase());
+
+  const canApprove = gate.status === 'pending' && userIsApprover && !isMaker;
 
   const handleAction = async (decision: 'approved' | 'rejected') => {
+    if (!userIsApprover) {
+      setError('Access Denied: Only users with the Approver role can approve or reject gates.');
+      return;
+    }
+    if (isMaker) {
+      setError('Maker-Checker Violation: The proposer who created this run cannot approve their own gate.');
+      return;
+    }
     if (decision === 'rejected' && !comment.trim()) {
       setError('A comment is mandatory when rejecting a gate.');
       return;
@@ -93,13 +110,34 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
 
       {gate.status === 'pending' ? (
         <div className="space-y-3">
+          {userIsAuditor && (
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Auditor (Read-Only): You have read-only access. Only users with the Approver role can approve or reject gates.</span>
+            </div>
+          )}
+
+          {userIsExecutor && (
+            <div className="p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-[11px] text-blue-800 flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-blue-600 shrink-0" />
+              <span>Executor Role: You can execute controls up to the approval gate, but cannot approve them. Waiting for Approver sign-off.</span>
+            </div>
+          )}
+
+          {isMaker && userIsApprover && (
+            <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Maker-Checker Policy: You initiated this run. A distinct Approver must sign off.</span>
+            </div>
+          )}
+
           <div>
             <textarea
-              placeholder="Add review comment or rationale (mandatory for rejection)..."
+              placeholder={canApprove ? "Add review comment or rationale (mandatory for rejection)..." : "Decisions disabled for this role..."}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               disabled={submitting || !canApprove}
-              className="w-full text-xs p-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none shadow-xs"
+              className="w-full text-xs p-2.5 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none shadow-xs disabled:bg-slate-100 disabled:text-slate-500"
               rows={2}
             />
           </div>
@@ -112,13 +150,16 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
 
           <div className="flex items-center justify-between gap-2 pt-1">
             <span className="text-[11px] text-slate-500">
-              Approving authorizes the run to proceed to the next step.
+              {canApprove
+                ? "Approving authorizes the run to proceed to the next step."
+                : "Awaiting sign-off by authorized Approver."}
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => handleAction('rejected')}
                 disabled={submitting || !canApprove}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                title={!canApprove ? "Requires Approver role" : undefined}
               >
                 <XCircle className="w-3.5 h-3.5" />
                 Reject
@@ -127,6 +168,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
                 onClick={() => handleAction('approved')}
                 disabled={submitting || !canApprove}
                 className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm cursor-pointer"
+                title={!canApprove ? "Requires Approver role" : undefined}
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Approve
@@ -158,7 +200,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
                   <XCircle className="w-3.5 h-3.5 text-rose-600" />
                   Run Failed
                 </span>
-              ) : onResumeRun ? (
+              ) : onResumeRun && canExecuteControls(currentUser) ? (
                 <button
                   onClick={() => onResumeRun(gate)}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all shadow-xs cursor-pointer"
@@ -166,6 +208,8 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
                   <ArrowRight className="w-3.5 h-3.5" />
                   {activeResumeLabel}
                 </button>
+              ) : isAuditor(currentUser) ? (
+                <span className="text-[11px] text-slate-400 italic">Awaiting execution continuation (Read-only)</span>
               ) : null}
             </div>
           )}

@@ -39,47 +39,58 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
   // Resolve user identifier to the true editor's email
   const resolveEditorEmail = (userVal?: string | null, specificEditor?: string | null): string => {
     // 1. Direct explicit editor email passed from run / policy / gate
-    if (specificEditor && specificEditor.includes('@') && !specificEditor.includes('@bank.internal')) {
+    if (specificEditor && specificEditor.includes('@')) {
       return specificEditor;
     }
 
     if (!userVal) {
-      return 'ksushanth9030@gmail.com';
+      return currentUser?.email || 'operator@bank.internal';
     }
 
     // 2. Already an email address
     if (userVal.includes('@')) {
-      if (userVal.includes('@bank.internal')) {
-        return 'ksushanth9030@gmail.com';
-      }
       return userVal;
     }
 
-    // 3. Known system personas
-    if (userVal === 'sec_reviewer_1') {
-      return 'imsushanth2005@gmail.com';
-    }
-    if (
-      userVal === 'sec_owner_1' ||
-      userVal === 'release_owner_1' ||
-      userVal.toLowerCase().includes('sushanth') ||
-      userVal.toLowerCase().includes('operator')
-    ) {
-      return 'ksushanth9030@gmail.com';
-    }
-
-    // 4. Check localStorage cache for mapped UID
+    // 3. Check localStorage cache for mapped UID or run/gate
     const stored = localStorage.getItem(`controls_user_email_${userVal}`);
-    if (stored && stored.includes('@') && !stored.includes('@bank.internal')) {
+    if (stored && stored.includes('@')) {
       return stored;
     }
 
-    // 5. Matches current logged-in user ID
-    if (currentUser.user_id && userVal.toLowerCase() === currentUser.user_id.toLowerCase()) {
-      return currentUser.email || 'ksushanth9030@gmail.com';
+    // 4. Matches current logged-in user session
+    if (
+      currentUser?.email &&
+      ((currentUser.user_id && userVal.toLowerCase() === currentUser.user_id.toLowerCase()) ||
+       (currentUser.username && userVal.toLowerCase() === currentUser.username.toLowerCase()) ||
+       (currentUser.displayName && userVal.toLowerCase() === currentUser.displayName.toLowerCase()))
+    ) {
+      return currentUser.email;
     }
 
-    return 'ksushanth9030@gmail.com';
+    // 5. Canonical persona mappings for test / demo seeds
+    const personaMap: Record<string, string> = {
+      sec_reviewer_1: 'reviewer@bank.internal',
+      sec_owner_1: 'owner@bank.internal',
+      release_owner_1: 'release@bank.internal',
+      operator_1: 'operator@bank.internal',
+      compliance_lead: 'compliance@bank.internal',
+      ciso_direct: 'ciso@bank.internal',
+      payments_lead: 'payments@bank.internal',
+      sec_ops_team: 'secops@bank.internal',
+      db_admin_core: 'dbadmin@bank.internal',
+      identity_team: 'identity@bank.internal',
+    };
+    if (personaMap[userVal]) {
+      return personaMap[userVal];
+    }
+
+    // 6. Generic or slug string without @: format as corporate internal email
+    if (!userVal.includes(' ')) {
+      return `${userVal}@bank.internal`;
+    }
+
+    return currentUser?.email || 'operator@bank.internal';
   };
 
   // Map control_id to title
@@ -98,8 +109,9 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
     // Map run_id to operator_email for quick lookup
     const runEditorMap = new Map<string, string>();
     runs.forEach((r) => {
-      if (r.operator_email && r.operator_email.includes('@') && !r.operator_email.includes('@bank.internal')) {
-        runEditorMap.set(r.run_id, r.operator_email);
+      const email = resolveEditorEmail(r.operator_email);
+      if (email && email.includes('@')) {
+        runEditorMap.set(r.run_id, email);
       }
     });
 
@@ -107,13 +119,15 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
     gates.forEach((g) => {
       // Maker request: who requested approval?
       if (g.created_at) {
-        const makerEditor =
-          (g.maker_email && g.maker_email.includes('@') && !g.maker_email.includes('@bank.internal') ? g.maker_email : null) ||
-          (g.maker_id && g.maker_id.includes('@') && !g.maker_id.includes('@bank.internal') ? g.maker_id : null) ||
+        const rawMakerCandidate =
+          (g.maker_email && g.maker_email.includes('@') ? g.maker_email : null) ||
+          (g.maker_id && g.maker_id.includes('@') ? g.maker_id : null) ||
           localStorage.getItem(`controls_gate_maker_${g.gate_id}`) ||
-          localStorage.getItem(`controls_run_editor_${g.run_id}`) ||
           runEditorMap.get(g.run_id) ||
-          resolveEditorEmail(g.maker_id);
+          localStorage.getItem(`controls_run_editor_${g.run_id}`) ||
+          g.maker_email ||
+          g.maker_id;
+        const makerEditor = resolveEditorEmail(rawMakerCandidate);
 
         events.push({
           id: `gate-created-${g.gate_id}`,
@@ -129,13 +143,11 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
       // Reviewer decision: who approved/rejected the gate?
       if (g.decided_at && g.decided_by) {
         const isApproved = g.status === 'approved';
-        let deciderEditor =
+        const rawDeciderCandidate =
+          (g.decided_by && g.decided_by.includes('@') ? g.decided_by : null) ||
           localStorage.getItem(`controls_gate_decided_${g.gate_id}`) ||
-          (g.decided_by && g.decided_by.includes('@') && !g.decided_by.includes('@bank.internal') ? g.decided_by : null);
-
-        if (!deciderEditor) {
-          deciderEditor = resolveEditorEmail(g.decided_by);
-        }
+          g.decided_by;
+        const deciderEditor = resolveEditorEmail(rawDeciderCandidate);
 
         events.push({
           id: `gate-decided-${g.gate_id}`,
@@ -152,10 +164,11 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
     // 2. Policy Uploads: who uploaded the policy?
     policies.forEach((p) => {
       if (p.uploaded_at) {
-        const policyEditor =
-          (p.uploaded_by && p.uploaded_by.includes('@') && !p.uploaded_by.includes('@bank.internal') ? p.uploaded_by : null) ||
+        const rawPolicyCandidate =
+          (p.uploaded_by && p.uploaded_by.includes('@') ? p.uploaded_by : null) ||
           localStorage.getItem(`controls_policy_editor_${p.policy_id}`) ||
-          resolveEditorEmail(p.uploaded_by);
+          p.uploaded_by;
+        const policyEditor = resolveEditorEmail(rawPolicyCandidate);
 
         events.push({
           id: `policy-uploaded-${p.policy_id}`,
@@ -173,11 +186,12 @@ export const AuditTrailPage: React.FC<AuditTrailPageProps> = ({
     runs.forEach((r) => {
       if (r.started_at) {
         const ctrlName = controlMap.get(r.control_id) || r.control_id;
-        const runEditor =
-          (r.operator_email && r.operator_email.includes('@') && !r.operator_email.includes('@bank.internal') ? r.operator_email : null) ||
+        const rawRunCandidate =
+          (r.operator_email && r.operator_email.includes('@') ? r.operator_email : null) ||
           localStorage.getItem(`controls_run_editor_${r.run_id}`) ||
           (r.policy_id ? localStorage.getItem(`controls_policy_editor_${r.policy_id}`) : null) ||
-          resolveEditorEmail(r.evidence_id ? localStorage.getItem(`controls_run_editor_${r.run_id}`) : undefined);
+          r.operator_email;
+        const runEditor = resolveEditorEmail(rawRunCandidate);
 
         events.push({
           id: `run-started-${r.run_id}`,

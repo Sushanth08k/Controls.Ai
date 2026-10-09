@@ -21,6 +21,13 @@ from sim.audit_store import (
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
+PERSONA_EMAIL_MAP: dict[str, str] = {
+    "sec_reviewer_1": "reviewer@bank.internal",
+    "sec_owner_1": "owner@bank.internal",
+    "release_owner_1": "release@bank.internal",
+    "operator_1": "operator@bank.internal",
+}
+
 
 class RunItem(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -109,7 +116,18 @@ def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
         policy_id=pol_id,
         policy_filename=pol_fname,
         policy_used=policy_used_summary,
-        operator_email=meta.get("operator_email") or meta.get("editor_email") or row.get("operator_id") or "ksushanth9030@gmail.com",
+        operator_email=(
+            meta.get("operator_email")
+            if meta.get("operator_email") and "@" in str(meta.get("operator_email"))
+            else (
+                meta.get("editor_email")
+                if meta.get("editor_email") and "@" in str(meta.get("editor_email"))
+                else PERSONA_EMAIL_MAP.get(
+                    str(meta.get("operator_email") or meta.get("editor_email") or row.get("operator_id")),
+                    str(row.get("operator_id") if row.get("operator_id") and "@" in str(row.get("operator_id")) else "operator@bank.internal")
+                )
+            )
+        ),
     )
 
 
@@ -202,7 +220,7 @@ async def trigger_run(
 
     new_id = f"run-{uuid.uuid4().hex[:8]}"
     now_iso = datetime.now(timezone.utc).isoformat()
-    editor_email = x_user_email or "ksushanth9030@gmail.com"
+    editor_email = x_user_email or "operator@bank.internal"
 
     item = RunItem(
         run_id=new_id,

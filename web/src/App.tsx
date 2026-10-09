@@ -12,10 +12,10 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from './types';
 import { fetchControls, fetchGates, fetchRuns, fetchFindings, decideGate, API_BASE, isTargetControl } from './api/client';
 import { AlertCircle, Shield } from 'lucide-react';
+import { canApproveGates } from './utils/rbac';
 
 interface AppLayoutProps {
   currentUser: UserSessionDTO;
-  onSwitchUser: (u: UserSessionDTO) => void;
   onLogout: () => void;
   pendingCount: number;
   controls: ControlDefinitionDTO[];
@@ -30,7 +30,6 @@ interface AppLayoutProps {
 
 const AppLayout: React.FC<AppLayoutProps> = ({
   currentUser,
-  onSwitchUser,
   onLogout,
   pendingCount,
   controls,
@@ -45,7 +44,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900 font-sans">
       <Navigation
         currentUser={currentUser}
-        onSwitchUser={onSwitchUser}
         onLogout={onLogout}
         pendingGatesCount={pendingCount}
       />
@@ -139,7 +137,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({
 };
 
 const AuthenticatedPlatform: React.FC = () => {
-  const { currentUser, switchRole, logout, loading: authLoading } = useAuth();
+  const { currentUser, logout, loading: authLoading } = useAuth();
 
   const [controls, setControls] = useState<ControlDefinitionDTO[]>([]);
   const [runs, setRuns] = useState<RunItemDTO[]>([]);
@@ -227,15 +225,17 @@ const AuthenticatedPlatform: React.FC = () => {
     comment: string
   ) => {
     if (!currentUser) return;
+    if (!canApproveGates(currentUser)) {
+      throw new Error('Access Denied: Only users with the Approver role can approve or reject compliance gates.');
+    }
+
     const targetGate = gates.find((g) => g.gate_id === gateId);
-    const requiredRole = targetGate?.approver_role || 'control_reviewer';
-    const effectiveUserId =
-      currentUser.user_id === targetGate?.maker_id || currentUser.user_id === 'sec_owner_1'
-        ? 'sec_reviewer_1'
-        : (currentUser.email || currentUser.user_id);
-    const effectiveRoles = currentUser.roles.includes(requiredRole)
-      ? currentUser.roles
-      : [...currentUser.roles, requiredRole];
+    if (targetGate && (currentUser.email === targetGate.maker_email || currentUser.user_id === targetGate.maker_id)) {
+      throw new Error('Maker-Checker Violation: The proposer who created the run cannot approve their own gate.');
+    }
+
+    const effectiveUserId = currentUser.email || currentUser.user_id;
+    const effectiveRoles = currentUser.roles;
 
     const result = await decideGate(
       gateId,
@@ -271,7 +271,6 @@ const AuthenticatedPlatform: React.FC = () => {
     <BrowserRouter>
       <AppLayout
         currentUser={currentUser}
-        onSwitchUser={(user) => switchRole(user.roles[0])}
         onLogout={logout}
         pendingCount={pendingCount}
         controls={controls}

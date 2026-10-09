@@ -25,6 +25,7 @@ interface VulnTicketingStepProps {
   onProceed: () => void;
   loading: boolean;
   stage: string;
+  operatorEmail?: string;
 }
 
 export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
@@ -38,6 +39,7 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
   onProceed,
   loading,
   stage,
+  operatorEmail,
 }) => {
   const [showSql, setShowSql] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -46,11 +48,13 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
   const isTicketed = Boolean(ticketingData) || stage === 'TICKETED' || stage === 'VERIFIED' || stage === 'APPROVAL_PENDING' || stage === 'APPLIED' || stage === 'FINALIZED';
   const createdCount = ticketingData?.tickets_created_count ?? ticketingData?.created_count ?? ticketingData?.tickets?.length ?? 0;
 
+  const creatorEmail = operatorEmail || 'reviewer@bank.internal';
+
   // Real SQL from backend or default named query
   const sql = ticketingSql || ticketingData?.sql || (
     candidateCount > 0
       ? `INSERT INTO vuln_tickets (ticket_id, finding_id, assignee, due_date, created_by, status, created_at)\nVALUES\n` +
-        candidates.map((c, i) => `  ('TKT-AUTO-${String(i+1).padStart(4, '0')}', '${c.finding_id}', '${c.computed_assignee}', '${c.computed_due_date}', 'sec_reviewer_1', 'OPEN', datetime('now'))`).join(',\n') + ';'
+        candidates.map((c, i) => `  ('TKT-AUTO-${String(i+1).padStart(4, '0')}', '${c.finding_id}', '${c.computed_assignee}', '${c.computed_due_date}', '${creatorEmail}', 'OPEN', datetime('now'))`).join(',\n') + ';'
       : '-- No candidates requiring ticketing INSERT'
   );
 
