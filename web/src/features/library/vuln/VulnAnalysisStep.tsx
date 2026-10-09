@@ -32,6 +32,7 @@ interface VulnAnalysisStepProps {
   onToggleAmbiguity: (text: string, confirm: boolean) => void;
   onBack: () => void;
   onProceed: () => void;
+  onClose?: () => void;
   loading: boolean;
 }
 
@@ -42,29 +43,32 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
   onToggleAmbiguity,
   onBack,
   onProceed,
+  onClose,
   loading,
 }) => {
-  const defaultRules: RuleItem[] = [
-    { rule_id: 'VULN-RULE-001', severity: 'CRITICAL', max_age_days: 7, allowed_status: ['PATCHED', 'CLOSED'] },
-    { rule_id: 'VULN-RULE-002', severity: 'HIGH', max_age_days: 30, allowed_status: ['PATCHED', 'CLOSED'] },
-    { rule_id: 'VULN-RULE-003', severity: 'MEDIUM', max_age_days: 60, allowed_status: ['PATCHED', 'CLOSED'] },
-    { rule_id: 'VULN-RULE-004', severity: 'LOW', max_age_days: 90, allowed_status: ['PATCHED', 'CLOSED'] },
-  ];
+  const isBlocked = analysisData?.has_sla_rules === false || analysisData?.is_unrelated || (analysisData && analysisData.rules_detected === 0);
 
-  const rules: RuleItem[] =
-    analysisData?.structured_rules && analysisData.structured_rules.length > 0
-      ? analysisData.structured_rules
-      : analysisData?.rules && analysisData.rules.length > 0
-      ? analysisData.rules
-      : defaultRules;
+  const rules: RuleItem[] = isBlocked
+    ? []
+    : analysisData?.structured_rules && analysisData.structured_rules.length > 0
+    ? analysisData.structured_rules
+    : analysisData?.rules && analysisData.rules.length > 0
+    ? analysisData.rules
+    : [];
 
-  const rawAmbiguities: (string | AmbiguityItem)[] =
-    analysisData?.ambiguities || analysisData?.ambiguous_items || [];
+  const rawAmbiguities: (string | AmbiguityItem)[] = isBlocked
+    ? []
+    : Array.isArray(analysisData?.ambiguities)
+    ? analysisData.ambiguities
+    : Array.isArray(analysisData?.ambiguous_items)
+    ? analysisData.ambiguous_items
+    : [];
 
-  const exceptionsCount =
-    analysisData?.exceptions_detected ??
-    analysisData?.exceptions?.length ??
-    rules.filter((r) => r.rule_type === 'EXCEPTION_GOVERNANCE').length;
+  const exceptionsCount = isBlocked
+    ? 0
+    : analysisData?.exceptions_detected ??
+      analysisData?.exceptions?.length ??
+      rules.filter((r) => r.rule_type === 'EXCEPTION_GOVERNANCE').length;
 
   // Format human-friendly card details for any rule type
   const formatRuleCard = (rule: RuleItem) => {
@@ -245,71 +249,88 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
           Remediation SLA Boundaries:
         </h4>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {rules.map((rule, idx) => {
-            const card = formatRuleCard(rule);
-            return (
-              <div
-                key={rule.rule_id || idx}
-                className={`p-4 rounded-xl border ${card.cardClass} flex flex-col justify-between shadow-2xs hover:shadow-xs transition-shadow`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${card.badgeClass} uppercase tracking-wide`}>
-                      {card.badge}
-                    </span>
-                    <span className={`font-mono text-xs font-bold ${card.slaClass}`}>
-                      {card.slaLabel}
-                    </span>
+        {rules.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {rules.map((rule, idx) => {
+              const card = formatRuleCard(rule);
+              return (
+                <div
+                  key={rule.rule_id || idx}
+                  className={`p-4 rounded-xl border ${card.cardClass} flex flex-col justify-between shadow-2xs hover:shadow-xs transition-shadow`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${card.badgeClass} uppercase tracking-wide`}>
+                        {card.badge}
+                      </span>
+                      <span className={`font-mono text-xs font-bold ${card.slaClass}`}>
+                        {card.slaLabel}
+                      </span>
+                    </div>
+                    <p className={`text-xs ${card.textClass} leading-relaxed font-normal`}>
+                      {card.description}
+                    </p>
                   </div>
-                  <p className={`text-xs ${card.textClass} leading-relaxed font-normal`}>
-                    {card.description}
-                  </p>
+                  <div className={`mt-3 pt-2 border-t ${card.borderClass} text-[11px] flex items-center justify-between font-medium`}>
+                    <span>{card.footer}</span>
+                    <span className="font-mono text-[10px] text-slate-400 font-normal">{rule.rule_id}</span>
+                  </div>
                 </div>
-                <div className={`mt-3 pt-2 border-t ${card.borderClass} text-[11px] flex items-center justify-between font-medium`}>
-                  <span>{card.footer}</span>
-                  <span className="font-mono text-[10px] text-slate-400 font-normal">{rule.rule_id}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-6 rounded-xl border border-slate-200 bg-slate-50/50 text-center">
+            <p className="text-xs text-slate-500 font-medium">
+              No recognizable remediation SLA rules detected in this document.
+            </p>
+          </div>
+        )}
       </div>
 
-      {/* Ambiguous Items Interactive Section */}
+      {/* Ambiguous Items Requiring Human Review (matching Archival styling) */}
       {rawAmbiguities.length > 0 && (
-        <div className="bg-amber-50/70 rounded-xl border border-amber-200 p-4 space-y-3 mt-4">
+        <div className="space-y-3 pt-3 border-t border-slate-200">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-            <div>
-              <h4 className="text-xs font-bold text-amber-900">
-                Ambiguous or Discretionary Clauses ({rawAmbiguities.length})
-              </h4>
-              <p className="text-[11px] text-amber-700">
-                These clauses contain subjective hedge words. Confirm or dismiss each clause before proceeding to scope.
-              </p>
-            </div>
+            <AlertTriangle className="w-4 h-4 text-rose-600" />
+            <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              Ambiguous Items Requiring Human Review ({rawAmbiguities.length})
+            </h4>
           </div>
 
-          <div className="space-y-2 pt-1">
+          <div className="space-y-3">
             {rawAmbiguities.map((item, idx) => {
-              const text = typeof item === 'string' ? item : item.text;
+              const ambObj: any = typeof item === 'object' && item !== null ? item : {};
+              const text = typeof item === 'string' ? item : (ambObj.description || ambObj.text || JSON.stringify(item));
+              const type = ambObj.type || ambObj.ambiguity_id || `AMB-${String(idx + 1).padStart(3, '0')}`;
+              const severity = ambObj.severity || 'NEEDS REVIEW';
+              const hedgeWords = ambObj.hedge_words || [];
               const isConfirmed = confirmedAmbiguities.includes(text);
               const isDismissed = dismissedAmbiguities.includes(text);
 
               return (
                 <div
                   key={idx}
-                  className="bg-white rounded-lg border border-amber-200/80 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                  className="bg-white p-4 rounded-xl border border-rose-200 shadow-xs space-y-2.5 bg-gradient-to-r from-rose-50/20 to-transparent"
                 >
-                  <div className="space-y-1">
-                    <p className="text-slate-800 italic">"{text}"</p>
-                    <span className="text-[10px] font-mono text-amber-800 bg-amber-100/70 px-1.5 py-0.5 rounded">
-                      Hedge word / Subjective standard
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-rose-800">
+                      {type}
+                    </span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                      {severity}
                     </span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <p className="text-xs text-slate-700 leading-relaxed">{text}</p>
+                  {hedgeWords.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-rose-800/80">
+                      <span className="font-semibold">Hedge words:</span>
+                      <span className="italic bg-rose-100/60 px-1.5 py-0.5 rounded border border-rose-200/50">{hedgeWords.join(', ')}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-rose-100">
                     <button
+                      type="button"
                       onClick={() => onToggleAmbiguity(text, true)}
                       className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
                         isConfirmed
@@ -321,6 +342,7 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
                       {isConfirmed ? 'Confirmed' : 'Confirm'}
                     </button>
                     <button
+                      type="button"
                       onClick={() => onToggleAmbiguity(text, false)}
                       className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-semibold transition-all cursor-pointer ${
                         isDismissed
@@ -340,7 +362,7 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
       )}
 
       {/* Block message if no recognizable SLA rules */}
-      {analysisData?.has_sla_rules === false && (
+      {isBlocked && (
         <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-3">
           <AlertTriangle className="w-5 h-5 shrink-0 text-rose-600" />
           <div>
@@ -359,23 +381,33 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Back to Policy</span>
         </button>
-        <button
-          onClick={onProceed}
-          disabled={loading || analysisData?.has_sla_rules === false}
-          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-blue-500/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Discovering Targets...</span>
-            </>
-          ) : (
-            <>
-              <span>Continue to Target Discovery</span>
-              <ArrowRight className="w-4 h-4 ml-0.5" />
-            </>
-          )}
-        </button>
+        {isBlocked ? (
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-sm hover:shadow-rose-500/25 transition-all cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+            <span>Close Execution</span>
+          </button>
+        ) : (
+          <button
+            onClick={onProceed}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-blue-500/25 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Discovering Targets...</span>
+              </>
+            ) : (
+              <>
+                <span>Continue to Target Discovery</span>
+                <ArrowRight className="w-4 h-4 ml-0.5" />
+              </>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

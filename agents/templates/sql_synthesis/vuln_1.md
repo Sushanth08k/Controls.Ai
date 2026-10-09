@@ -7,7 +7,7 @@ Inputs:
 - dialect: {{dialect}}
 
 You are a principal compliance database engineer and AI security agent.
-Generate 4 distinct, compliant SQL SELECT queries for a vulnerability management regulatory control run (CTL-VULN-001) strictly grounded in the database schema and policy rules provided below.
+Generate 4 distinct, compliant SQL SELECT queries for a vulnerability management regulatory control run ({{control_id}}) strictly grounded in the database schema and policy rules provided below.
 
 DATABASE SCHEMA:
 {{schema_ddl}}

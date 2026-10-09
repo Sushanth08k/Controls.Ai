@@ -329,7 +329,7 @@ def generate_sql_with_gemini(
 
 
 def compile_vuln_sql(
-    rules: dict[str, Any],
+    rules: dict[str, Any] | list[dict[str, Any]] | None = None,
     schema_ddl: str = "",
 ) -> dict[str, Any]:
     """Compile deterministic, parameterized SQL for vulnerability remediation controls.
@@ -337,6 +337,28 @@ def compile_vuln_sql(
     Returns dict with q1_sla_breach, q2_ticket_coverage, q3_closure_validity, q4_exception_governance,
     ticket_insert, apply_exception_update, apply_escalation_update, and params.
     """
+    if isinstance(rules, list):
+        r_dict: dict[str, Any] = {}
+        for r in rules:
+            sev = (r.get("severity") or "").upper()
+            max_age = r.get("max_age_days") or r.get("timeframe_days")
+            if max_age is not None:
+                if r.get("is_kev") or r.get("rule_type") == "KEV_SLA":
+                    r_dict["sla_kev"] = max_age
+                elif sev == "CRITICAL":
+                    r_dict["sla_critical"] = max_age
+                elif sev == "HIGH":
+                    r_dict["sla_high"] = max_age
+                elif sev == "MEDIUM":
+                    r_dict["sla_medium"] = max_age
+                elif sev == "LOW":
+                    r_dict["sla_low"] = max_age
+            if r.get("rule_type") == "EXCEPTION_GOVERNANCE" and r.get("max_expiry_days"):
+                r_dict["exception_max_days"] = r.get("max_expiry_days")
+        rules = r_dict
+    elif not isinstance(rules, dict):
+        rules = {}
+
     sla_critical = int(rules.get("sla_critical", 7))
     sla_high = int(rules.get("sla_high", 30))
     sla_medium = int(rules.get("sla_medium", 60))
@@ -352,6 +374,15 @@ def compile_vuln_sql(
         "sla_kev": sla_kev,
         "exception_max_days": exception_max_days,
     }
+
+    governed = rules.get("governed_severities")
+    if not governed or not isinstance(governed, list):
+        governed = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+    governed_quoted = ", ".join(f"'{s.upper()}'" for s in governed)
+    has_kev = bool(rules.get("has_kev_sla"))
+    kev_clause = " OR v.is_kev = 1" if has_kev else ""
+    sev_filter = f"(UPPER(v.severity) IN ({governed_quoted}){kev_clause})"
+    kev_case = "WHEN v.is_kev = 1 THEN :sla_kev\n        " if has_kev else ""
 
     # Verify required schema elements if DDL is supplied
     if schema_ddl:
@@ -378,7 +409,7 @@ def compile_vuln_sql(
                 "params": params,
             }
 
-    q1_sla_breach = """SELECT
+    q1_sla_breach = f"""SELECT
     v.vulnerability_id,
     v.database_name,
     v.cve_id,
@@ -389,16 +420,14 @@ def compile_vuln_sql(
     v.discovered_at,
     CAST((julianday(:as_of) - julianday(v.discovered_at)) AS INTEGER) AS age_days,
     CASE
-        WHEN v.is_kev = 1 THEN :sla_kev
-        WHEN UPPER(v.severity) = 'CRITICAL' THEN :sla_critical
+        {kev_case}WHEN UPPER(v.severity) = 'CRITICAL' THEN :sla_critical
         WHEN UPPER(v.severity) = 'HIGH' THEN :sla_high
         WHEN UPPER(v.severity) = 'MEDIUM' THEN :sla_medium
         ELSE :sla_low
     END AS sla_days,
     (CAST((julianday(:as_of) - julianday(v.discovered_at)) AS INTEGER) -
      CASE
-        WHEN v.is_kev = 1 THEN :sla_kev
-        WHEN UPPER(v.severity) = 'CRITICAL' THEN :sla_critical
+        {kev_case}WHEN UPPER(v.severity) = 'CRITICAL' THEN :sla_critical
         WHEN UPPER(v.severity) = 'HIGH' THEN :sla_high
         WHEN UPPER(v.severity) = 'MEDIUM' THEN :sla_medium
         ELSE :sla_low
@@ -410,9 +439,9 @@ FROM db_vulnerabilities v
 JOIN vuln_assets a ON v.database_name = a.database_name
 WHERE a.in_scope = 1
   AND v.status IN ('OPEN', 'IN_PROGRESS')
+  AND {sev_filter}
   AND CAST((julianday(:as_of) - julianday(v.discovered_at)) AS INTEGER) > CASE
-        WHEN v.is_kev = 1 THEN :sla_kev
-        WHEN UPPER(v.severity) = 'CRITICAL' THEN :sla_critical
+        {kev_case}WHEN UPPER(v.severity) = 'CRITICAL' THEN :sla_critical
         WHEN UPPER(v.severity) = 'HIGH' THEN :sla_high
         WHEN UPPER(v.severity) = 'MEDIUM' THEN :sla_medium
         ELSE :sla_low
@@ -423,7 +452,7 @@ WHERE a.in_scope = 1
   )
 ORDER BY v.severity ASC, overdue_days DESC;""".strip()
 
-    q2_ticket_coverage = """SELECT
+    q2_ticket_coverage = f"""SELECT
     v.vulnerability_id,
     v.database_name,
     v.cve_id,
@@ -452,7 +481,7 @@ JOIN vuln_assets a ON v.database_name = a.database_name
 LEFT JOIN vuln_tickets t ON t.finding_id = v.vulnerability_id
 WHERE a.in_scope = 1
   AND v.status IN ('OPEN', 'IN_PROGRESS')
-  AND (UPPER(v.severity) IN ('CRITICAL', 'HIGH') OR v.is_kev = 1)
+  AND {sev_filter}
   AND (
       t.ticket_id IS NULL
       OR t.assignee IS NULL
