@@ -530,12 +530,12 @@ def extract_policy_with_regex(text: str) -> dict[str, Any]:
     }
 
 
-class VulnPolicyParseResult(dict):
+class VulnPolicyParseResult(dict[str, Any]):
     """Dictionary subclass that retains exact 15-key legacy dictionary equality
     with golden snapshots while dynamically exposing rules_object, defaults_used,
     and has_sla_rules via .get() and key lookups.
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._rules_object: dict[str, Any] = {}
         self._defaults_used: list[str] = []

@@ -1,3 +1,4 @@
+import datetime
 import hashlib
 import json
 import logging
@@ -52,7 +53,7 @@ class ComplianceSQLAgent:
         dialect: str = "SQLITE",
         control_id: str = "",
         archetype: str = "D",
-        as_of: str | None = None,
+        as_of: str | datetime.date | None = None,
         schema_ddl: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
@@ -61,6 +62,7 @@ class ComplianceSQLAgent:
         """
         rules = rules or []
         exceptions = exceptions or []
+        as_of_str = as_of.isoformat() if isinstance(as_of, datetime.date) else (str(as_of) if as_of is not None else None)
         cid_lower = control_id.lower()
         target_tables = (
             ["source_transactions", "archive_transactions", "legal_holds"]
@@ -85,19 +87,30 @@ class ComplianceSQLAgent:
                 gemini_api_key=gemini_api_key,
                 run_id=run_id,
                 rules=rules,
-                as_of=as_of,
+                as_of=as_of_str,
                 control_id=control_id,
             )
         elif "priv" in cid_lower:
             return self._synthesize_privileged_access_control(schema_ddl, gemini_api_key, run_id)
 
         # 2. Archival and Data Lifecycle Controls (LangChain + Gemini synthesis with fallback)
+        rules_list: list[dict[str, Any]]
+        if isinstance(rules, list):
+            rules_list = rules
+        elif isinstance(rules, dict):
+            if "rules" in rules and isinstance(rules["rules"], list):
+                rules_list = rules["rules"]
+            else:
+                rules_list = [rules]
+        else:
+            rules_list = []
+
         if gemini_api_key:
             try:
                 gemini_res = self._call_langchain_synthesis(
                     gemini_api_key=gemini_api_key,
                     schema_ddl=schema_ddl,
-                    rules=rules,
+                    rules=rules_list,
                     exceptions=exceptions,
                     run_id=run_id,
                     retention_years=retention_years,
@@ -119,7 +132,7 @@ class ComplianceSQLAgent:
         )
         compiled = compile_schema_driven_sql(
             schema_ddl=schema_ddl,
-            rules=rules,
+            rules=rules_list,
             exceptions=exceptions,
             run_id=run_id,
             retention_years=retention_years,
@@ -244,7 +257,7 @@ REQUIREMENTS:
         gemini_api_key: str | None,
         run_id: str,
         rules: list[dict[str, Any]] | dict[str, Any] | None = None,
-        as_of: str | None = None,
+        as_of: str | datetime.date | None = None,
         control_id: str = "",
     ) -> dict[str, Any]:
         """Synthesize vulnerability management SQL queries (Q1-Q4) using LangChain LCEL Gemini
@@ -252,6 +265,7 @@ REQUIREMENTS:
         ticket_insert and UPDATE statements ALWAYS come from the compiler.
         """
         global _QUOTA_EXHAUSTED_UNTIL
+        as_of_val: str = as_of.isoformat() if isinstance(as_of, datetime.date) else (as_of or "2026-10-06")
         # 1. Normalize rules dictionary
         rules_dict: dict[str, Any] = {}
         if isinstance(rules, dict):
@@ -330,7 +344,7 @@ REQUIREMENTS:
                         "control_id": control_id or "VULN_CONTROL",
                         "schema_ddl": schema_ddl,
                         "rules": json.dumps(rules_dict, indent=2),
-                        "as_of": as_of or "2026-10-06",
+                        "as_of": as_of_val,
                         "dialect": "SQLITE",
                     })
 
@@ -344,9 +358,9 @@ REQUIREMENTS:
                                     ("q2_ticket_coverage", compiled["q2_ticket_coverage"]),
                                     ("q3_closure_validity", compiled["q3_closure_validity"]),
                                     ("q4_exception_governance", compiled["q4_exception_governance"]),
-                                ]:
+                                ] :
                                     cand = parsed.get(q_key)
-                                    if cand and self._validate_vuln_query(cand, q_key, c_sql, compiled["params"], as_of or "2026-10-06", vconn):
+                                    if cand and self._validate_vuln_query(cand, q_key, c_sql, compiled["params"], as_of_val, vconn):
                                         valid_dict[q_key] = cand
                                     else:
                                         valid_dict[q_key] = c_sql
