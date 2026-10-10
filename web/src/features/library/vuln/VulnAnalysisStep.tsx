@@ -8,10 +8,7 @@ interface RuleItem {
   max_age_days?: number;
   timeframe_days?: number;
   allowed_status?: string[];
-  requires_rescan?: boolean;
   max_validity_days?: number;
-  tier1_cadence?: string;
-  other_cadence?: string;
   escalation_target?: string;
   business_days?: number;
   raw_statement?: string;
@@ -64,13 +61,24 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
     ? analysisData.ambiguous_items
     : [];
 
-  const exceptionsCount = isBlocked
-    ? 0
-    : analysisData?.exceptions_detected ??
-      analysisData?.exceptions?.length ??
-      rules.filter((r) => r.rule_type === 'EXCEPTION_GOVERNANCE').length;
+  // Separate SLA boundaries from exceptions and scan cadence
+  const slaRules = rules.filter(
+    (r) =>
+      r.rule_type !== 'EXCEPTION_GOVERNANCE' &&
+      r.rule_type !== 'SCAN_CADENCE' &&
+      r.rule_type !== 'CLOSURE_VERIFICATION'
+  );
 
-  // Format human-friendly card details for any rule type
+  const exceptionRules = rules.filter((r) => r.rule_type === 'EXCEPTION_GOVERNANCE');
+  const rawExceptions: any[] = isBlocked
+    ? []
+    : analysisData?.exceptions && Array.isArray(analysisData.exceptions) && analysisData.exceptions.length > 0
+    ? analysisData.exceptions
+    : exceptionRules;
+
+  const exceptionsCount = isBlocked ? 0 : rawExceptions.length;
+
+  // Format human-friendly card details for SLA rules
   const formatRuleCard = (rule: RuleItem) => {
     const ruleType = rule.rule_type?.toUpperCase();
     const sev = String(rule.severity || '').toUpperCase();
@@ -87,34 +95,6 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
         borderClass: 'border-rose-200/60 text-rose-800',
         description: `Known Exploited Vulnerabilities (KEV) must be remediated within ${days ?? 3} days.`,
         footer: 'Allowed: PATCHED, CLOSED',
-      };
-    }
-
-    if (ruleType === 'EXCEPTION_GOVERNANCE') {
-      return {
-        badge: 'EXCEPTIONS',
-        badgeClass: 'bg-amber-200 text-amber-900',
-        slaLabel: `≤ ${rule.max_validity_days ?? 90} Days`,
-        slaClass: 'text-amber-700',
-        cardClass: 'border-amber-200 bg-amber-50/50',
-        textClass: 'text-amber-950/80',
-        borderClass: 'border-amber-200/60 text-amber-800',
-        description: 'Exceptions require formal approval and a compensating control and expire within 90 days.',
-        footer: 'Governance: COMPENSATING CONTROL',
-      };
-    }
-
-    if (ruleType === 'SCAN_CADENCE') {
-      return {
-        badge: 'CADENCE',
-        badgeClass: 'bg-blue-100 text-blue-900',
-        slaLabel: 'Tier 1 Daily',
-        slaClass: 'text-blue-700',
-        cardClass: 'border-blue-200 bg-blue-50/50',
-        textClass: 'text-blue-950/80',
-        borderClass: 'border-blue-200/60 text-blue-800',
-        description: 'Tier 1 assets scanned daily, all other in-scope assets scanned weekly.',
-        footer: 'Schedule: DAILY / WEEKLY',
       };
     }
 
@@ -211,7 +191,7 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
           <span className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
             Rules Detected
           </span>
-          <span className="text-2xl font-bold font-mono text-blue-600">{rules.length}</span>
+          <span className="text-2xl font-bold font-mono text-blue-600">{slaRules.length}</span>
         </div>
         <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5">
           <span className="text-[11px] font-semibold text-slate-500 uppercase block mb-1">
@@ -235,9 +215,9 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
           Remediation SLA Boundaries:
         </h4>
 
-        {rules.length > 0 ? (
+        {slaRules.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {rules.map((rule, idx) => {
+            {slaRules.map((rule, idx) => {
               const card = formatRuleCard(rule);
               return (
                 <div
@@ -269,6 +249,56 @@ export const VulnAnalysisStep: React.FC<VulnAnalysisStepProps> = ({
           <div className="p-6 rounded-xl border border-slate-200 bg-slate-50/50 text-center">
             <p className="text-xs text-slate-500 font-medium">
               No recognizable remediation SLA rules detected in this document.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Exceptions Section - Shown Separately */}
+      <div className="space-y-2.5 pt-1">
+        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          Policy Exceptions &amp; Governance:
+        </h4>
+
+        {rawExceptions.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {rawExceptions.map((exc: any, idx: number) => {
+              const excId = exc.exception_id || exc.rule_id || `EXC-${idx + 1}`;
+              const maxDays = exc.max_expiry_days ?? exc.max_validity_days ?? 90;
+              const desc =
+                exc.description ||
+                `Exceptions require formal approval and a compensating control, and expire within ${maxDays} days.`;
+
+              return (
+                <div
+                  key={excId || idx}
+                  className="p-4 rounded-xl border border-amber-200 bg-amber-50/50 flex flex-col justify-between shadow-2xs hover:shadow-xs transition-shadow"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900 uppercase tracking-wide">
+                        EXCEPTION
+                      </span>
+                      <span className="font-mono text-xs font-bold text-amber-700">
+                        ≤ {maxDays} Days
+                      </span>
+                    </div>
+                    <p className="text-xs text-amber-950/80 leading-relaxed font-normal">
+                      {desc}
+                    </p>
+                  </div>
+                  <div className="mt-3 pt-2 border-t border-amber-200/60 text-[11px] flex items-center justify-between font-medium text-amber-800">
+                    <span>Compensating Control: REQUIRED</span>
+                    <span className="font-mono text-[10px] text-amber-600/70 font-normal">{excId}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 text-center">
+            <p className="text-xs text-slate-500 font-medium">
+              No formal exception clauses detected in policy specification.
             </p>
           </div>
         )}

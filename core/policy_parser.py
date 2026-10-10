@@ -823,28 +823,8 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "description": f"Known Exploited Vulnerabilities (KEV) must be remediated within {kev_days} days.",
             })
 
-        # Closure verification rule
-        closure_m = bool(
-            re.search(r"closure\s+requires\s+(?:a\s+)?verification\s+rescan", text_clean, re.IGNORECASE)
-            or ("closure" in text_clean.lower() and "verification rescan" in text_clean.lower())
-        )
-        requires_rescan = closure_m
-        if closure_m:
-            structured_rules.append({
-                "rule_id": "VULN-RULE-CLOSURE",
-                "rule_type": "CLOSURE_VERIFICATION",
-                "requires_rescan": True,
-            })
-            rules_list.append({
-                "rule_id": "VULN-RULE-CLOSURE",
-                "description": "Vulnerability closure requires a verification rescan before being marked resolved.",
-                "rule_type": "CLOSURE_VERIFICATION",
-                "requires_rescan": True,
-            })
-            requirements_list.append({
-                "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
-                "description": "Closure requires an independent verification rescan.",
-            })
+        requires_rescan = False
+
         # Exception governance rule
         exp_match = re.search(r"(?:exceptions?.*?expire|expire.*?exceptions?|exceptions?)[^\n\d]*?(\d+)\s*days?", text_clean, re.I)
         if not exp_match:
@@ -884,29 +864,6 @@ def parse_policy_specification(text: str, default_archetype: str = "A") -> dict[
                 "requires_approval": True,
                 "requires_compensating_control": True,
                 "max_expiry_days": exc_days,
-            })
-
-        # Scan cadence rule
-        scan_m = re.search(r"tier\s*1\s*(?:assets\s*)?(?:scanned\s*)?daily[,\s]+(?:others|other\s*tiers?)\s*(?:scanned\s*)?weekly", text_clean, re.IGNORECASE) or (
-            "tier 1" in text_clean.lower() and "daily" in text_clean.lower() and "weekly" in text_clean.lower()
-        )
-        if scan_m:
-            structured_rules.append({
-                "rule_id": "VULN-RULE-SCAN",
-                "rule_type": "SCAN_CADENCE",
-                "tier1_cadence": "DAILY",
-                "other_cadence": "WEEKLY",
-            })
-            rules_list.append({
-                "rule_id": "VULN-RULE-SCAN",
-                "description": "Tier 1 assets scanned daily, others weekly.",
-                "rule_type": "SCAN_CADENCE",
-                "tier1_cadence": "DAILY",
-                "other_cadence": "WEEKLY",
-            })
-            requirements_list.append({
-                "requirement_id": f"REQ-{len(requirements_list) + 1:03d}",
-                "description": "Scan frequency requires Daily for Tier 1 assets and Weekly for other tiers.",
             })
 
         # Escalation rule

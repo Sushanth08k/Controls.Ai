@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import {
   ArrowRight,
   ArrowLeft,
-  RefreshCw,
   Code,
   ChevronDown,
   ChevronRight,
-  Loader2,
   CheckCircle2,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { VulnReviewSnapshot, VulnScopeSummary } from '../../../types';
 import { VulnSqlViewer } from './VulnSqlViewer';
@@ -17,11 +16,11 @@ interface VulnReviewStepProps {
   scopeSummary: VulnScopeSummary | null;
   reviewSnapshot: VulnReviewSnapshot | null;
   namedQueries: Record<string, string>;
-  onRunQueries: () => Promise<void>;
+  onRunQueries?: () => Promise<void>;
   onBack: () => void;
   onProceed: () => void;
   loading: boolean;
-  stage: string;
+  stage?: string;
   defaultsUsed?: string[];
 }
 
@@ -29,17 +28,16 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   scopeSummary,
   reviewSnapshot,
   namedQueries,
-  onRunQueries,
+  onRunQueries: _onRunQueries,
   onBack,
   onProceed,
   loading,
-  stage,
+  stage: _stage,
   defaultsUsed,
 }) => {
   const [selectedCheck, setSelectedCheck] = useState<'Q1' | 'Q2' | 'Q3'>('Q1');
   const [showSqlModal, setShowSqlModal] = useState<string | null>(null);
   const [expandScopeReasons, setExpandScopeReasons] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isExecuted = Boolean(reviewSnapshot?.review_executed);
 
@@ -100,15 +98,6 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
     q2?.defective_rows?.length ??
     reviewSnapshot?.summary?.defective_tickets_count ??
     0;
-
-  const handleRerun = async () => {
-    setErrorMsg(null);
-    try {
-      await onRunQueries();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to re-run review queries.');
-    }
-  };
 
   // Scope counts and strip message
   const inScopeCount = scopeSummary?.counts?.assets_in_scope ?? 0;
@@ -173,44 +162,12 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
       </div>
 
       {/* Header Banner */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-              STAGE: {stage}
-            </span>
-            <h3 className="text-sm font-bold text-slate-900">Vulnerability Control Review Checks</h3>
-          </div>
-          <p className="text-xs text-slate-500">
-            Three deterministic governance queries evaluating SLA breaches, ticket coverage, and exception governance.
-          </p>
-        </div>
-
-        <button
-          onClick={handleRerun}
-          disabled={loading}
-          className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 rounded-lg border border-slate-300 shadow-2xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
-              <span>Running...</span>
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-              <span>Re-run Review</span>
-            </>
-          )}
-        </button>
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-2xs">
+        <h3 className="text-sm font-bold text-slate-900">Vulnerability Control Review Checks</h3>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Three deterministic governance queries evaluating SLA breaches, ticket coverage, and exception governance.
+        </p>
       </div>
-
-      {errorMsg && (
-        <div className="p-3 bg-red-50 border border-red-300 rounded-lg text-xs text-red-800 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-          <span>{errorMsg}</span>
-        </div>
-      )}
 
       {/* 3 Check Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -299,11 +256,21 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
                 <tr>
                   {Object.keys(currentCheck.data.rows[0])
                     .filter((col) => !['raw', 'payload'].includes(col))
-                    .map((header) => (
-                      <th key={header} className="p-2.5 whitespace-nowrap uppercase text-[10px] tracking-wider">
-                        {header.replace(/_/g, ' ')}
-                      </th>
-                    ))}
+                    .map((header) => {
+                      const isResultCol = ['overdue_days', 'ticket_issue', 'exception_defect'].includes(header);
+                      return (
+                        <th
+                          key={header}
+                          className={`p-2.5 whitespace-nowrap uppercase text-[10px] tracking-wider ${
+                            isResultCol
+                              ? 'bg-amber-100/80 text-amber-950 font-bold border-x border-amber-200'
+                              : ''
+                          }`}
+                        >
+                          {header.replace(/_/g, ' ')}
+                        </th>
+                      );
+                    })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono text-[11px] text-slate-700">
@@ -313,11 +280,57 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
                     <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
                       {Object.keys(firstRow)
                         .filter((col) => !['raw', 'payload'].includes(col))
-                        .map((colKey) => (
-                          <td key={colKey} className="p-2.5 whitespace-nowrap">
-                            {row[colKey] !== null && row[colKey] !== undefined ? String(row[colKey]) : '-'}
-                          </td>
-                        ))}
+                        .map((colKey) => {
+                          const val = row[colKey];
+                          const displayVal = val !== null && val !== undefined ? String(val) : '-';
+
+                          // Highlight Q1 result: overdue_days
+                          if (colKey === 'overdue_days') {
+                            const num = Number(val);
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap bg-rose-50/60 border-x border-rose-100">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[11px] bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs">
+                                  {num > 0 ? `+${num}d overdue` : `${num}d`}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // Highlight Q2 result: ticket_issue
+                          if (colKey === 'ticket_issue') {
+                            const isDefect = displayVal !== 'TRACKED';
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap bg-amber-50/60 border-x border-amber-100">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] border shadow-2xs ${
+                                    isDefect
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                  }`}
+                                >
+                                  {displayVal}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // Highlight Q3 result: exception_defect
+                          if (colKey === 'exception_defect') {
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap bg-purple-50/60 border-x border-purple-100">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs">
+                                  {displayVal}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          return (
+                            <td key={colKey} className="p-2.5 whitespace-nowrap">
+                              {displayVal}
+                            </td>
+                          );
+                        })}
                     </tr>
                   );
                 })}

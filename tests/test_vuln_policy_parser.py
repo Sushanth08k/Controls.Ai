@@ -48,10 +48,6 @@ def test_vuln_extended_policy_parsing():
     assert rules_by_id["VULN-RULE-EXCEPTION"]["rule_type"] == "EXCEPTION_GOVERNANCE"
     assert rules_by_id["VULN-RULE-EXCEPTION"]["max_expiry_days"] == 90
 
-    assert "VULN-RULE-SCAN" in rules_by_id
-    assert rules_by_id["VULN-RULE-SCAN"]["rule_type"] == "SCAN_CADENCE"
-    assert rules_by_id["VULN-RULE-SCAN"]["tier1_cadence"] == "DAILY"
-
     assert "VULN-RULE-ESCALATION" in rules_by_id
     assert rules_by_id["VULN-RULE-ESCALATION"]["rule_type"] == "ESCALATION"
     assert rules_by_id["VULN-RULE-ESCALATION"]["escalation_days"] == 1
