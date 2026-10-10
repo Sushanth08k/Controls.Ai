@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { Navigation } from './components/Navigation';
 import { DashboardPage } from './features/dashboard/DashboardPage';
 import { ControlLibraryPage } from './features/library/ControlLibraryPage';
@@ -40,6 +40,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({
   loadData,
   handleDecideGate,
 }) => {
+  const location = useLocation();
+
+  useEffect(() => {
+    loadData();
+  }, [location.pathname]);
+
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-900 font-sans">
       <Navigation
@@ -195,9 +201,14 @@ const AuthenticatedPlatform: React.FC = () => {
               : g
           )
         );
+        loadData();
       } catch (e) {
         console.error('SSE parse error:', e);
       }
+    });
+
+    sse.addEventListener('gate.created', () => {
+      loadData();
     });
 
     sse.addEventListener('run.started', (event) => {
@@ -205,10 +216,16 @@ const AuthenticatedPlatform: React.FC = () => {
         const newRun = JSON.parse(event.data);
         if (newRun.control_id && !isTargetControl(newRun.control_id)) return;
         setRuns((prev) => [newRun, ...prev.filter((r) => r.run_id !== newRun.run_id)]);
+        loadData();
       } catch (e) {
         console.error('SSE parse error:', e);
       }
     });
+
+    sse.addEventListener('run.updated', () => {
+      loadData();
+    });
+
 
     sse.onerror = () => {
       setSseConnected(false);

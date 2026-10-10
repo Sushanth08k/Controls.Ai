@@ -212,8 +212,8 @@ export const RunsPage: React.FC<RunsPageProps> = ({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold">
-                <th className="py-3 px-4 w-[130px] whitespace-nowrap">Run ID</th>
-                <th className="py-3 px-3 w-[220px]">Control ID</th>
+                <th className="py-3 pl-4 pr-1.5 w-auto whitespace-nowrap">Run ID</th>
+                <th className="py-3 pl-1.5 pr-4 w-[240px]">Control ID</th>
                 <th className="py-3 px-3 w-[160px] whitespace-nowrap">Testing Method</th>
                 <th className="py-3 px-3 w-[110px]">Status</th>
                 <th className="py-3 px-3 min-w-[200px]">Data Checked</th>
@@ -234,11 +234,11 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                         isExpanded ? 'bg-blue-50/40 border-l-4 border-l-blue-600' : ''
                       }`}
                     >
-                      <td className="py-3 px-4 font-mono text-slate-800 font-semibold whitespace-nowrap">{r.run_id}</td>
-                      <td className="py-3 px-3">
-                        <div className="font-mono text-blue-600 font-bold">{r.control_id}</div>
+                      <td className="py-3 pl-4 pr-1.5 font-mono text-slate-800 font-semibold whitespace-nowrap">{r.run_id}</td>
+                      <td className="py-3 pl-1.5 pr-4">
+                        <div className="font-mono text-blue-600 font-bold break-words">{r.control_id}</div>
                         {matchedCtrl && (
-                          <div className="text-[11px] text-slate-500 truncate max-w-[210px]" title={matchedCtrl.title}>
+                          <div className="text-[11px] text-slate-500 break-words whitespace-normal leading-snug mt-0.5" title={matchedCtrl.title}>
                             {matchedCtrl.title}
                           </div>
                         )}
@@ -375,8 +375,10 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                               <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                                 <div>
                                   <span className="text-slate-500 block text-[11px]">Control & Run</span>
-                                  <span className="font-bold text-slate-900 font-mono">{r.control_id}</span>
-                                  <span className="block text-slate-500 font-mono text-[10px]">{r.run_id}</span>
+                                  <div className="flex flex-col gap-0.5 mt-0.5">
+                                    <span className="font-mono text-xs font-bold text-blue-700 whitespace-nowrap">{r.control_id}</span>
+                                    <span className="font-mono text-[11px] font-semibold text-slate-800 whitespace-nowrap">{r.run_id}</span>
+                                  </div>
                                 </div>
                                 <div>
                                   <span className="text-slate-500 block text-[11px]">Test Status</span>

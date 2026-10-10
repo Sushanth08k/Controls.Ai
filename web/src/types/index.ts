@@ -65,6 +65,7 @@ export interface RunItemDTO {
   policy_id?: string;
   policy_filename?: string;
   operator_email?: string;
+  executor_email?: string;
   policy_used?: {
     policy_id: string;
     filename: string;

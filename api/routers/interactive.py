@@ -690,13 +690,7 @@ async def interpret_document(
     run_id = f"RUN-{uuid.uuid4().hex[:8]}"
 
     ret_years = parsed.get("retention_years", 5)
-    sql_scripts = build_generated_sql_scripts(
-        defn,
-        run_id,
-        retention_years=ret_years,
-        rules=parsed.get("rules", []),
-        exceptions=parsed.get("exceptions", []),
-    )
+    sql_scripts: dict[str, str] = {}
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -890,6 +884,7 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
             session["eligible_ids"] = list(eligible_ids)
             session["rules"] = rules
             session["exceptions"] = exceptions
+            session["generated_sql"] = sql_scripts
 
         # Format sample records from real database query matching actual eligibility
         sample_records = []
@@ -941,6 +936,7 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
                 control_id=req.control_id,
                 records_evaluated=total_source_count,
                 records_eligible=eligible_count,
+                metadata_json={"generated_sql": sql_scripts},
             )
 
         return {

@@ -2,13 +2,11 @@ import React, { useState } from 'react';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from '../../types';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
 import { StatusPill } from '../../components/StatusPill';
-import { SeverityTag } from '../../components/SeverityTag';
-import { EvidenceChip } from '../../components/EvidenceChip';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
-import { Plus, ArrowUpRight, Play, PlayCircle, Shield, Clock, RefreshCw, Eye } from 'lucide-react';
+import { Plus, ArrowUpRight, Play, PlayCircle, Shield, Clock, RefreshCw, Eye, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { formatFrequency } from '../../utils/formatFrequency';
+import { getControlObjective } from '../../utils/vulnDisplayNames';
 import { isAuditor } from '../../utils/rbac';
 
 interface DashboardPageProps {
@@ -24,7 +22,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   controls,
   runs,
   gates,
-  findings,
+  findings: _findings,
   currentUser,
   onRefresh,
 }) => {
@@ -43,7 +41,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Dashboard</h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Overview of controls, test runs, and security findings.
+            Overview of controls and compliance test runs.
           </p>
         </div>
 
@@ -224,29 +222,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   </div>
                 </div>
 
-                {c.objective && (
-                  <p className="text-xs text-slate-600 mb-4 line-clamp-2">{c.objective}</p>
-                )}
-
-                <div className="grid grid-cols-2 gap-2 text-xs py-2 px-3 rounded-lg bg-slate-50 border border-slate-200 mb-4">
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-medium">Frequency</span>
-                    <span className="text-slate-800 font-medium">{formatFrequency(c.frequency)}</span>
+                <div className="mt-3 mb-4 p-3 rounded-lg bg-emerald-50/50 border border-emerald-100/80 text-xs">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-1.5">
+                    <Target className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                    <span>Control Objective</span>
                   </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] uppercase font-medium">Risk Rating</span>
-                    <SeverityTag severity={c.risk_rating} />
-                  </div>
+                  <p className="text-slate-800 font-medium leading-relaxed">
+                    {getControlObjective(c.control_id, c.title, c.objective)}
+                  </p>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
-                <div className="flex items-center gap-2 overflow-hidden">
-                  <span className="text-slate-500 text-[11px] truncate">
-                    Owner: <span className="font-mono text-slate-800 font-medium">{c.owner_role}</span>
-                  </span>
-                </div>
-
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end text-xs gap-2">
                 <div className="flex items-center gap-2 shrink-0">
                   {isAuditor(currentUser) ? (
                     <span
@@ -292,8 +279,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <table className="w-full text-left text-xs">
             <thead>
               <tr className="border-b border-slate-200 text-slate-500 font-medium">
-                <th className="py-2.5 font-semibold">Run ID</th>
-                <th className="py-2.5 font-semibold">Control ID</th>
+                <th className="py-2.5 pl-3 pr-1.5 font-semibold w-auto whitespace-nowrap">Run ID</th>
+                <th className="py-2.5 pl-1.5 pr-4 font-semibold min-w-[160px]">Control ID</th>
                 <th className="py-2.5 font-semibold">Testing Method</th>
                 <th className="py-2.5 font-semibold">Status</th>
                 <th className="py-2.5 font-semibold">Data Checked</th>
@@ -310,8 +297,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               ) : (
                 runs.slice(0, 5).map((r) => (
                   <tr key={r.run_id} className="hover:bg-slate-50/50">
-                    <td className="py-3 font-mono text-slate-700 font-semibold">{r.run_id}</td>
-                    <td className="py-3 font-mono text-emerald-800 font-semibold">{r.control_id}</td>
+                    <td className="py-3 pl-3 pr-1.5 font-mono text-slate-700 font-semibold whitespace-nowrap">{r.run_id}</td>
+                    <td className="py-3 pl-1.5 pr-4 font-mono text-emerald-800 font-semibold break-words whitespace-normal">{r.control_id}</td>
                     <td className="py-3">
                       <ArchetypeBadge archetype={r.archetype} />
                     </td>
@@ -330,72 +317,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
       </div>
 
-      {/* Recent Security Findings */}
-      {findings.length > 0 && (
-        <div className="bg-white rounded-xl p-5 border border-slate-200/90 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Recent Security Findings</h3>
-              <p className="text-xs text-slate-500">Issues identified during control testing.</p>
-            </div>
-            <button
-              onClick={() => navigate('/findings')}
-              className="text-xs text-[#143d2c] hover:text-[#1e543e] flex items-center gap-1 font-semibold cursor-pointer"
-            >
-              View all findings <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="space-y-2.5">
-            {findings.slice(0, 3).map((f) => {
-              const ctrl = controls.find((c) => c.control_id === f.control_id);
-              const ctrlTitle = ctrl ? ctrl.title : f.control_id;
-
-              const cleanTitle = f.title
-                .replace(/^(Critical|High|Medium|Low)\s+vulnerability\s+/i, 'Vulnerability ');
-
-              const cveMatch = f.title.match(/(CVE-\d{4}-\d+)/i);
-              const cveId = cveMatch ? cveMatch[1] : null;
-
-              return (
-                <div
-                  key={f.finding_id}
-                  className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 shrink-0">
-                      <SeverityTag severity={f.severity} />
-                    </div>
-                    <div>
-                      <span className="text-xs font-semibold text-slate-900 block">
-                        {cleanTitle}
-                      </span>
-                      <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px] text-slate-500">
-                        {cveId && (
-                          <span className="font-mono font-medium text-slate-700 bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                            {cveId}
-                          </span>
-                        )}
-                        <span>{ctrlTitle}</span>
-                        <span>·</span>
-                        <span className="capitalize">
-                          Status: <strong className="font-medium text-slate-700">{f.status || 'Open'}</strong>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
-                    {f.evidence_ids.map((id) => (
-                      <EvidenceChip key={id} evidenceId={id} />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Interactive Compliance Execution Modal */}
       {modalControl && (

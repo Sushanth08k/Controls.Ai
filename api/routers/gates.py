@@ -75,6 +75,13 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
                 maker_val = f"{maker_val}@bank.internal" if maker_val else "operator@bank.internal"
 
         decided_by_val = a.get("approved_by")
+        if not decided_by_val or str(decided_by_val).lower() in ("n/a", "none", "null", ""):
+            run_rec = get_audit_run(a["run_id"])
+            if run_rec:
+                decided_by_val = (
+                    run_rec.get("metadata", {}).get("approved_by")
+                    or run_rec.get("metadata", {}).get("decided_by")
+                )
         if decided_by_val and "@" not in decided_by_val:
             if decided_by_val in PERSONA_EMAIL_MAP:
                 decided_by_val = PERSONA_EMAIL_MAP[decided_by_val]
@@ -102,13 +109,14 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
             status=a["status"] if a["status"] in ("pending", "approved", "rejected") else "approved",
             created_at=a.get("created_at") or datetime.now(timezone.utc).isoformat(),
             decided_at=a.get("approved_at"),
-            decided_by=a.get("approved_by"),
+            decided_by=decided_by_val or a.get("approved_by"),
             comment=a.get("comment"),
             gate_type=a.get("gate_type") or "archival_signoff",
             payload_summary=p_summary,
         )
     merged = {**db_gates, **_GATE_STORE}
-    return list(merged.values())
+    return sorted(list(merged.values()), key=lambda g: g.created_at, reverse=True)
+
 
 
 @router.post("/{gate_id}/decision")

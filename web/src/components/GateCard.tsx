@@ -3,6 +3,7 @@ import { GateItemDTO, UserSessionDTO, RunItemDTO } from '../types';
 import { StatusPill } from './StatusPill';
 import { ShieldAlert, CheckCircle2, XCircle, User, ArrowRight } from 'lucide-react';
 import { isApprover, isAuditor, isExecutor, canExecuteControls } from '../utils/rbac';
+import { formatGateTitle, formatApproverRole } from '../utils/vulnDisplayNames';
 
 interface GateCardProps {
   gate: GateItemDTO;
@@ -53,7 +54,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
       await onDecide(gate.gate_id, decision, comment);
       setComment('');
       if (decision === 'approved' && onResumeRun) {
-        onResumeRun(gate);
+        onResumeRun({ ...gate, status: 'approved' });
       }
     } catch (err: any) {
       setError(err.message || 'Action failed');
@@ -64,27 +65,57 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
 
   return (
     <div className="bg-white rounded-xl p-5 border border-slate-200/90 hover:border-slate-300 transition-all shadow-xs hover:shadow-md">
-      <div className="flex items-start justify-between gap-4 mb-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+            <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 whitespace-nowrap">
+              {gate.run_id}
+            </span>
+            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 whitespace-nowrap">
               {gate.control_id}
             </span>
-            <span className="text-sm font-semibold text-slate-900 tracking-wide">
-              {gate.gate_name}
-            </span>
           </div>
-          <p className="text-xs text-slate-500">
-            Run ID: <span className="font-mono text-slate-700 font-medium">{gate.run_id}</span>
-          </p>
+          <h4 className="text-sm font-bold text-slate-900 tracking-tight break-words whitespace-normal leading-snug">
+            {formatGateTitle(gate.gate_name || gate.gate_type, gate.control_id)}
+          </h4>
         </div>
         <StatusPill status={gate.status} />
       </div>
 
       {gate.payload_summary && (
-        <div className="mb-4 px-3.5 py-2.5 rounded-lg bg-amber-50/80 border border-amber-200/90 text-xs text-amber-900 flex items-center justify-between">
-          <span className="font-medium text-amber-800">Pending Actions Payload:</span>
-          <span className="font-semibold font-mono bg-amber-100/80 px-2 py-0.5 rounded text-amber-900">
+        <div
+          className={`mb-4 px-3.5 py-2.5 rounded-lg border text-xs flex items-center justify-between ${
+            gate.status === 'approved'
+              ? 'bg-emerald-50/80 border-emerald-200/90 text-emerald-950'
+              : gate.status === 'rejected'
+              ? 'bg-rose-50/80 border-rose-200/90 text-rose-950'
+              : 'bg-amber-50/80 border-amber-200/90 text-amber-900'
+          }`}
+        >
+          <span
+            className={`font-medium ${
+              gate.status === 'approved'
+                ? 'text-emerald-800'
+                : gate.status === 'rejected'
+                ? 'text-rose-800'
+                : 'text-amber-800'
+            }`}
+          >
+            {gate.status === 'approved'
+              ? 'Approved Actions Payload:'
+              : gate.status === 'rejected'
+              ? 'Rejected Actions Payload:'
+              : 'Pending Actions Payload:'}
+          </span>
+          <span
+            className={`font-semibold font-mono px-2 py-0.5 rounded ${
+              gate.status === 'approved'
+                ? 'bg-emerald-100/80 text-emerald-900'
+                : gate.status === 'rejected'
+                ? 'bg-rose-100/80 text-rose-900'
+                : 'bg-amber-100/80 text-amber-900'
+            }`}
+          >
             {gate.payload_summary.exceptions_count || 0} exception(s), {gate.payload_summary.escalations_count || 0} escalation(s)
           </span>
         </div>
@@ -103,7 +134,7 @@ export const GateCard: React.FC<GateCardProps> = ({ gate, currentUser, onDecide,
           <span className="text-slate-500 block mb-0.5 font-medium">Approval required from</span>
           <span className="font-mono text-blue-700 flex items-center gap-1 font-semibold">
             <ShieldAlert className="w-3 h-3 text-blue-600" />
-            {gate.approver_role || 'control_reviewer'}
+            {formatApproverRole(gate.approver_role)}
           </span>
         </div>
       </div>

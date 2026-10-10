@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { VulnReviewSnapshot, VulnScopeSummary } from '../../../types';
 import { VulnSqlViewer } from './VulnSqlViewer';
+import { formatRoleName, formatCompensatingControl } from '../../../utils/vulnDisplayNames';
 
 interface VulnReviewStepProps {
   scopeSummary: VulnScopeSummary | null;
@@ -23,6 +24,38 @@ interface VulnReviewStepProps {
   stage?: string;
   defaultsUsed?: string[];
 }
+
+const REQUIRED_COLUMNS_BY_CHECK: Record<string, string[]> = {
+  Q1: ['vulnerability_id', 'database_name', 'cve_id', 'severity', 'is_kev', 'discovered_at', 'age_days', 'sla_days', 'overdue_days'],
+  Q2: ['vulnerability_id', 'database_name', 'cve_id', 'severity', 'discovered_at', 'asset_owner', 'asset_owner_manager', 'ticket_id', 'assignee', 'due_date', 'ticket_issue'],
+  Q3: ['exception_id', 'finding_id', 'database_name', 'cve_id', 'severity', 'requested_by', 'approved_by', 'compensating_control', 'expires_at', 'exception_status', 'exception_defect'],
+};
+
+const COLUMN_HEADERS: Record<string, string> = {
+  vulnerability_id: 'Vulnerability ID',
+  database_name: 'Database Name',
+  cve_id: 'CVE ID',
+  severity: 'Severity',
+  is_kev: 'KEV',
+  discovered_at: 'Discovered Date',
+  age_days: 'Age (Days)',
+  sla_days: 'SLA (Days)',
+  overdue_days: 'Overdue (Days)',
+  asset_owner: 'Asset Owner',
+  asset_owner_manager: 'Asset Owner Manager',
+  ticket_id: 'Ticket ID',
+  assignee: 'Assignee',
+  due_date: 'Due Date',
+  ticket_issue: 'Ticket Issue',
+  exception_id: 'Exception ID',
+  finding_id: 'Finding ID',
+  requested_by: 'Requested By',
+  approved_by: 'Approved By',
+  compensating_control: 'Compensating Control',
+  expires_at: 'Expires At',
+  exception_status: 'Exception Status',
+  exception_defect: 'Exception Defect',
+};
 
 export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   scopeSummary,
@@ -197,18 +230,18 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
               key={chk.id}
               onClick={() => setSelectedCheck(chk.id)}
               className={`p-3.5 rounded-xl border transition-all cursor-pointer text-left space-y-1.5 ${isSelected
-                  ? 'bg-blue-50/80 border-blue-400 shadow-xs ring-1 ring-blue-300'
-                  : 'bg-white border-slate-200 hover:bg-slate-50/80 hover:border-slate-300'
+                ? 'bg-blue-50/80 border-blue-400 shadow-xs ring-1 ring-blue-300'
+                : 'bg-white border-slate-200 hover:bg-slate-50/80 hover:border-slate-300'
                 }`}
             >
               <div className="flex items-start justify-between gap-1">
                 <span className="text-[11px] font-mono font-bold text-slate-500 uppercase">{chk.num}</span>
                 <span
                   className={`text-xs font-bold px-2 py-0.5 rounded-full ${!isExecuted
-                      ? 'bg-slate-100 text-slate-500'
-                      : hasDefects
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-emerald-100 text-emerald-800'
+                    ? 'bg-slate-100 text-slate-500'
+                    : hasDefects
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-emerald-100 text-emerald-800'
                     }`}
                 >
                   {displayCount}
@@ -236,7 +269,29 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
                   : `(${currentCheck.data?.row_count ?? 0} ${currentCheck.data?.row_count === 1 ? 'row' : 'rows'} detected)`}
               </span>
             </div>
-            <p className="text-xs text-slate-600 mt-1">{currentCheck.description}</p>
+            {currentCheck.id === 'Q1' ? (
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-slate-600">
+                <span className="font-semibold text-slate-700">Remediation SLA:</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-rose-100 text-rose-800 border border-rose-300">
+                  KEV: {slaKev}d
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-red-100 text-red-800 border border-red-300">
+                  Critical: {slaCrit}d
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-orange-100 text-orange-800 border border-orange-300">
+                  High: {slaHigh}d
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-300">
+                  Medium: {slaMed}d
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-blue-100 text-blue-800 border border-blue-300">
+                  Low: {slaLow}d
+                </span>
+                <span className="text-slate-400 text-[11px] ml-1">(unresolved findings without approved exception)</span>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600 mt-1">{currentCheck.description}</p>
+            )}
           </div>
 
           <button
@@ -250,39 +305,90 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
 
         {/* Results Table (Capped at 50) */}
         <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-72">
-          {currentCheck.data?.rows && currentCheck.data.rows.length > 0 ? (
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-100/80 sticky top-0 border-b border-slate-200 text-slate-700 font-semibold">
-                <tr>
-                  {Object.keys(currentCheck.data.rows[0])
-                    .filter((col) => !['raw', 'payload'].includes(col))
-                    .map((header) => {
+          {currentCheck.data?.rows && currentCheck.data.rows.length > 0 ? (() => {
+            const firstRow = currentCheck.data.rows[0] || {};
+            const reqCols = REQUIRED_COLUMNS_BY_CHECK[currentCheck.id] || [];
+            const visibleCols = reqCols.filter((col) => col in firstRow).length > 0
+              ? reqCols.filter((col) => col in firstRow)
+              : Object.keys(firstRow).filter((col) => !['raw', 'payload', 'is_kev', 'cvss_score', 'status', 'finding_status', 'exception_id', 'exception_status', 'exception_expires_at', 'mirrored_exception_status', 'mirrored_expires_at', 'requested_at', 'approved_at', 'justification', 'tier', 'asset_id', 'ticket_status', 'escalated_at'].includes(col));
+
+            return (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-100/80 sticky top-0 border-b border-slate-200 text-slate-700 font-semibold">
+                  <tr>
+                    {visibleCols.map((header) => {
                       const isResultCol = ['overdue_days', 'ticket_issue', 'exception_defect'].includes(header);
                       return (
                         <th
                           key={header}
-                          className={`p-2.5 whitespace-nowrap uppercase text-[10px] tracking-wider ${
-                            isResultCol
+                          className={`p-2.5 whitespace-nowrap uppercase text-[10px] tracking-wider ${isResultCol
                               ? 'bg-amber-100/80 text-amber-950 font-bold border-x border-amber-200'
                               : ''
-                          }`}
+                            }`}
                         >
-                          {header.replace(/_/g, ' ')}
+                          {COLUMN_HEADERS[header] || header.replace(/_/g, ' ')}
                         </th>
                       );
                     })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono text-[11px] text-slate-700">
-                {currentCheck.data.rows.slice(0, 50).map((row: any, idx: number) => {
-                  const firstRow = currentCheck.data?.rows[0] || {};
-                  return (
-                    <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                      {Object.keys(firstRow)
-                        .filter((col) => !['raw', 'payload'].includes(col))
-                        .map((colKey) => {
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono text-[11px] text-slate-700">
+                  {currentCheck.data.rows.slice(0, 50).map((row: any, idx: number) => {
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                        {visibleCols.map((colKey) => {
                           const val = row[colKey];
                           const displayVal = val !== null && val !== undefined ? String(val) : '-';
+
+                          // Highlight Severity
+                          if (colKey === 'severity') {
+                            const sev = String(val || '').toUpperCase();
+                            const badgeColors =
+                              sev === 'CRITICAL'
+                                ? 'bg-red-100 text-red-800 border-red-300'
+                                : sev === 'HIGH'
+                                ? 'bg-orange-100 text-orange-800 border-orange-300'
+                                : sev === 'MEDIUM'
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : sev === 'LOW'
+                                ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                : 'bg-slate-100 text-slate-700 border-slate-200';
+
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] border shadow-2xs ${badgeColors}`}>
+                                  {sev || displayVal}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // Highlight SLA days
+                          if (colKey === 'sla_days') {
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded font-semibold text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
+                                  {displayVal}d
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // Highlight KEV status
+                          if (colKey === 'is_kev') {
+                            const isKev = val === 1 || val === true || val === '1' || val === 'true';
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                {isKev ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded font-bold text-[10px] bg-rose-100 text-rose-800 border border-rose-300">
+                                    KEV
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 text-xs">No</span>
+                                )}
+                              </td>
+                            );
+                          }
 
                           // Highlight Q1 result: overdue_days
                           if (colKey === 'overdue_days') {
@@ -302,11 +408,10 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
                             return (
                               <td key={colKey} className="p-2.5 whitespace-nowrap bg-amber-50/60 border-x border-amber-100">
                                 <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] border shadow-2xs ${
-                                    isDefect
+                                  className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] border shadow-2xs ${isDefect
                                       ? 'bg-amber-100 text-amber-900 border-amber-300'
                                       : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                  }`}
+                                    }`}
                                 >
                                   {displayVal}
                                 </span>
@@ -325,18 +430,35 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
                             );
                           }
 
+                          if (['asset_owner', 'asset_owner_manager', 'assignee', 'escalated_to', 'requested_by', 'approved_by'].includes(colKey)) {
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                {displayVal !== '-' ? formatRoleName(displayVal) : '-'}
+                              </td>
+                            );
+                          }
+
+                          if (colKey === 'compensating_control') {
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                {displayVal !== '-' ? formatCompensatingControl(displayVal) : '-'}
+                              </td>
+                            );
+                          }
+
                           return (
                             <td key={colKey} className="p-2.5 whitespace-nowrap">
                               {displayVal}
                             </td>
                           );
                         })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : (
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            );
+          })() : (
             <div className="py-10 text-center space-y-2">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
               <p className="text-xs text-slate-600 font-medium">No defects detected for this check.</p>

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { VulnSqlViewer } from './VulnSqlViewer';
 import { VulnTicketCandidate, VulnDefectiveTicket, VulnVerificationResult } from '../../../types';
+import { formatRoleName } from '../../../utils/vulnDisplayNames';
 
 interface VulnTicketingStepProps {
   candidates: VulnTicketCandidate[];
@@ -75,9 +76,6 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
       <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-              STAGE: {stage}
-            </span>
             <h3 className="text-sm font-bold text-slate-900">Remediation Ticketing & Reconciliation</h3>
           </div>
           <p className="text-xs text-slate-500">
@@ -142,11 +140,10 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
       {/* Reconciliation Result Banner (Pass / Fail on Same Screen) */}
       {isTicketed && verificationData && (
         <div
-          className={`p-4 rounded-xl border flex flex-col gap-2.5 shadow-2xs ${
-            isVerifiedSuccess
+          className={`p-4 rounded-xl border flex flex-col gap-2.5 shadow-2xs ${isVerifiedSuccess
               ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
               : 'bg-rose-50 border-rose-300 text-rose-950'
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -159,9 +156,8 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
                 <div className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
                   <span>Integrity verification (SHA-256 Merkle roots)</span>
                   <span
-                    className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${
-                      verificationData.roots_match !== false ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
-                    }`}
+                    className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider ${verificationData.roots_match !== false ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+                      }`}
                   >
                     {verificationData.roots_match !== false ? 'MATCH' : 'MISMATCH'}
                   </span>
@@ -176,9 +172,8 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
               </div>
             </div>
             <span
-              className={`px-2.5 py-1 text-xs font-bold rounded uppercase tracking-wider ${
-                isVerifiedSuccess ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
-              }`}
+              className={`px-2.5 py-1 text-xs font-bold rounded uppercase tracking-wider ${isVerifiedSuccess ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'
+                }`}
             >
               {isVerifiedSuccess ? 'PASS' : 'FAIL'}
             </span>
@@ -283,7 +278,7 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
                     </td>
                     <td className="p-2.5">{c.is_kev ? <span className="text-rose-600 font-bold">YES</span> : 'NO'}</td>
                     <td className="p-2.5 text-slate-500">{c.discovered_at}</td>
-                    <td className="p-2.5 font-bold text-slate-800">{c.computed_assignee}</td>
+                    <td className="p-2.5 font-bold text-slate-800">{formatRoleName(c.computed_assignee)}</td>
                     <td className="p-2.5 text-emerald-700 font-semibold">{c.computed_due_date}</td>
                   </tr>
                 ))}
@@ -334,7 +329,7 @@ export const VulnTicketingStep: React.FC<VulnTicketingStepProps> = ({
                     <td className="p-2.5">{t.finding_id}</td>
                     <td className="p-2.5">{t.database_name}</td>
                     <td className="p-2.5">{t.severity}</td>
-                    <td className="p-2.5 text-amber-700">{t.assignee || <span className="italic text-rose-500">MISSING</span>}</td>
+                    <td className="p-2.5 text-amber-700">{t.assignee ? formatRoleName(t.assignee) : <span className="italic text-rose-500">MISSING</span>}</td>
                     <td className="p-2.5 text-amber-700">{t.due_date || <span className="italic text-rose-500">MISSING</span>}</td>
                     <td className="p-2.5 font-semibold text-rose-700">{t.ticket_issue}</td>
                     <td className="p-2.5 text-slate-500 italic text-[10px]">{t.note}</td>

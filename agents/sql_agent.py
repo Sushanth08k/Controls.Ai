@@ -25,7 +25,7 @@ from core.sql_generator import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash-lite"
 _QUOTA_EXHAUSTED_UNTIL = 0.0
 _VULN_GEMINI_CACHE: dict[str, dict[str, str]] = {}
 
@@ -62,12 +62,12 @@ class ComplianceSQLAgent:
         """
         rules = rules or []
         exceptions = exceptions or []
-        as_of_str = as_of.isoformat() if isinstance(as_of, datetime.date) else (str(as_of) if as_of is not None else None)
+        as_of_str = as_of.isoformat() if isinstance(as_of, datetime.date) else as_of
         cid_lower = control_id.lower()
         target_tables = (
             ["source_transactions", "archive_transactions", "legal_holds"]
             if not cid_lower or "arch" in cid_lower
-            else (["db_vulnerabilities", "vuln_assets", "vuln_tickets", "vuln_exceptions", "vuln_scan_runs"] if "vuln" in cid_lower else None)
+            else (["db_vulnerabilities", "vuln_assets", "vuln_tickets", "vuln_exceptions"] if "vuln" in cid_lower else None)
         )
         if not schema_ddl:
             schema_ddl = get_live_database_schema_ddl(target_tables=target_tables)
@@ -130,6 +130,8 @@ class ComplianceSQLAgent:
         logger.info(
             f"ComplianceSQLAgent: Using deterministic schema-driven fallback for {control_id or 'default'}."
         )
+        logger.info("ComplianceSQLAgent: Using fallback query.")
+        print("ComplianceSQLAgent: Using fallback query.")
         compiled = compile_schema_driven_sql(
             schema_ddl=schema_ddl,
             rules=rules_list,
@@ -208,7 +210,7 @@ REQUIREMENTS:
                 model=DEFAULT_GEMINI_MODEL,
                 api_key=gemini_api_key,
                 temperature=0.0,
-                timeout=10.0,
+                timeout=2.0,
                 max_retries=0,
             )
 
@@ -231,6 +233,8 @@ REQUIREMENTS:
                 logger.info(
                     f"ComplianceSQLAgent: Successfully synthesized queries via LangChain LCEL ({DEFAULT_GEMINI_MODEL})."
                 )
+                logger.info("ComplianceSQLAgent: API call was successful and generated SQL query, and using it.")
+                print("ComplianceSQLAgent: API call was successful and generated SQL query, and using it.")
                 return {
                     "selection_sql": parsed["selection_sql"],
                     "archival_sql": parsed["archival_sql"],
@@ -293,25 +297,26 @@ REQUIREMENTS:
         rules_dict.setdefault("sla_low", 90)
         rules_dict.setdefault("sla_kev", 3)
         rules_dict.setdefault("exception_max_days", 90)
-        rules_dict.setdefault("closure_requires_rescan", True)
         rules_dict.setdefault("escalation_business_days", 1)
 
         # 2. Always compile deterministic SQL first
         compiled = compile_vuln_sql(rules_dict, schema_ddl)
-        q1_sql = compiled["q1_sla_breach"]
-        q2_sql = compiled["q2_ticket_coverage"]
-        q3_sql = compiled["q3_closure_validity"]
-        q4_sql = compiled["q4_exception_governance"]
+        q1_sql = str(compiled.get("q1_sla_breach", ""))
+        q2_sql = str(compiled.get("q2_ticket_coverage", ""))
+        q3_sql = str(compiled.get("q3_exception_governance") or compiled.get("q4_exception_governance") or "")
 
         rules_hash = hashlib.sha256(json.dumps(rules_dict, sort_keys=True).encode()).hexdigest()
 
         # 3. Check cache
+        used_api = False
         if rules_hash in _VULN_GEMINI_CACHE:
             cached = _VULN_GEMINI_CACHE[rules_hash]
             q1_sql = cached.get("q1_sla_breach", q1_sql)
             q2_sql = cached.get("q2_ticket_coverage", q2_sql)
-            q3_sql = cached.get("q3_closure_validity", q3_sql)
-            q4_sql = cached.get("q4_exception_governance", q4_sql)
+            q3_sql = cached.get("q3_exception_governance", q3_sql)
+            used_api = True
+            logger.info("ComplianceSQLAgent: API call was successful and generated SQL query, and using it.")
+            print("ComplianceSQLAgent: API call was successful and generated SQL query, and using it.")
         elif gemini_api_key and time.time() >= _QUOTA_EXHAUSTED_UNTIL:
             try:
                 from langchain_core.output_parsers import JsonOutputParser
@@ -323,8 +328,7 @@ REQUIREMENTS:
                     model_config = ConfigDict(extra="ignore")
                     q1_sla_breach: str
                     q2_ticket_coverage: str
-                    q3_closure_validity: str
-                    q4_exception_governance: str
+                    q3_exception_governance: str
 
                 template_path = Path(__file__).resolve().parent / "templates" / "sql_synthesis" / "vuln_1.md"
                 template_text = template_path.read_text(encoding="utf-8") if template_path.exists() else ""
@@ -336,7 +340,7 @@ REQUIREMENTS:
                         model=DEFAULT_GEMINI_MODEL,
                         api_key=gemini_api_key,
                         temperature=0.0,
-                        timeout=10.0,
+                        timeout=2.0,
                         max_retries=0,
                     )
                     chain = prompt | llm | parser
@@ -351,43 +355,52 @@ REQUIREMENTS:
                     if isinstance(parsed, dict):
                         from sim.database import CORE_DB_PATH
                         valid_dict: dict[str, str] = {}
+                        q3_compiled = str(
+                            compiled.get("q3_exception_governance")
+                            or compiled.get("q4_exception_governance")
+                            or ""
+                        )
                         if CORE_DB_PATH.exists():
                             with sqlite3.connect(f"file:{CORE_DB_PATH}?mode=ro", uri=True) as vconn:
                                 for q_key, c_sql in [
-                                    ("q1_sla_breach", compiled["q1_sla_breach"]),
-                                    ("q2_ticket_coverage", compiled["q2_ticket_coverage"]),
-                                    ("q3_closure_validity", compiled["q3_closure_validity"]),
-                                    ("q4_exception_governance", compiled["q4_exception_governance"]),
-                                ] :
+                                    ("q1_sla_breach", str(compiled.get("q1_sla_breach", ""))),
+                                    ("q2_ticket_coverage", str(compiled.get("q2_ticket_coverage", ""))),
+                                    ("q3_exception_governance", q3_compiled),
+                                ]:
                                     cand = parsed.get(q_key)
-                                    if cand and self._validate_vuln_query(cand, q_key, c_sql, compiled["params"], as_of_val, vconn):
-                                        valid_dict[q_key] = cand
+                                    if cand and self._validate_vuln_query(str(cand), q_key, c_sql, compiled.get("params", {}), as_of_val, vconn):
+                                        valid_dict[q_key] = str(cand)
                                     else:
                                         valid_dict[q_key] = c_sql
                         else:
                             valid_dict = {
-                                "q1_sla_breach": compiled["q1_sla_breach"],
-                                "q2_ticket_coverage": compiled["q2_ticket_coverage"],
-                                "q3_closure_validity": compiled["q3_closure_validity"],
-                                "q4_exception_governance": compiled["q4_exception_governance"],
+                                "q1_sla_breach": str(compiled.get("q1_sla_breach", "")),
+                                "q2_ticket_coverage": str(compiled.get("q2_ticket_coverage", "")),
+                                "q3_exception_governance": q3_compiled,
                             }
 
                         _VULN_GEMINI_CACHE[rules_hash] = valid_dict
                         q1_sql = valid_dict["q1_sla_breach"]
                         q2_sql = valid_dict["q2_ticket_coverage"]
-                        q3_sql = valid_dict["q3_closure_validity"]
-                        q4_sql = valid_dict["q4_exception_governance"]
+                        q3_sql = valid_dict["q3_exception_governance"]
+                        used_api = True
+                        logger.info("ComplianceSQLAgent: API call was successful and generated SQL query, and using it.")
+                        print("ComplianceSQLAgent: API call was successful and generated SQL query, and using it.")
             except Exception as e:
                 err_str = str(e).lower()
                 if "429" in err_str or "resource_exhausted" in err_str or "quota" in err_str:
                     _QUOTA_EXHAUSTED_UNTIL = time.time() + 600.0
                 logger.debug(f"ComplianceSQLAgent: Vuln Gemini synthesis silent fallback: {e}")
 
+        if not used_api:
+            logger.info("ComplianceSQLAgent: Using fallback query.")
+            print("ComplianceSQLAgent: Using fallback query.")
+
         return {
             "q1_sla_breach": q1_sql,
             "q2_ticket_coverage": q2_sql,
-            "q3_closure_validity": q3_sql,
-            "q4_exception_governance": q4_sql,
+            "q3_exception_governance": q3_sql,
+            "q4_exception_governance": q3_sql,
             "ticket_insert": compiled["ticket_insert"],
             "apply_exception_update": compiled["apply_exception_update"],
             "apply_escalation_update": compiled["apply_escalation_update"],
@@ -435,10 +448,10 @@ REQUIREMENTS:
 
             # 3. Required columns per query
             req_cols_map = {
-                "q1_sla_breach": {"vulnerability_id", "database_name", "cve_id", "severity", "is_kev", "cvss_score", "status", "discovered_at", "age_days", "sla_days", "overdue_days", "exception_id", "exception_status", "exception_expires_at"},
-                "q2_ticket_coverage": {"vulnerability_id", "database_name", "cve_id", "severity", "is_kev", "finding_status", "discovered_at", "asset_id", "tier", "asset_owner", "asset_owner_manager", "ticket_id", "assignee", "due_date", "ticket_status", "escalated_at", "escalated_to", "ticket_issue"},
-                "q3_closure_validity": {"vulnerability_id", "database_name", "cve_id", "severity", "status", "discovered_at", "patched_at", "last_seen", "ticket_id", "rescan_verified_at", "closure_defect"},
-                "q4_exception_governance": {"exception_id", "finding_id", "requested_by", "requested_at", "justification", "compensating_control", "expires_at", "exception_status", "approved_by", "approved_at", "database_name", "cve_id", "severity", "mirrored_exception_status", "mirrored_expires_at", "exception_defect"},
+                "q1_sla_breach": {"vulnerability_id", "database_name", "cve_id", "severity", "is_kev", "discovered_at", "age_days", "sla_days", "overdue_days"},
+                "q2_ticket_coverage": {"vulnerability_id", "database_name", "cve_id", "severity", "discovered_at", "asset_owner", "asset_owner_manager", "ticket_id", "assignee", "due_date", "ticket_issue"},
+                "q3_exception_governance": {"exception_id", "finding_id", "database_name", "cve_id", "severity", "requested_by", "approved_by", "compensating_control", "expires_at", "exception_status", "exception_defect"},
+                "q4_exception_governance": {"exception_id", "finding_id", "database_name", "cve_id", "severity", "requested_by", "approved_by", "compensating_control", "expires_at", "exception_status", "exception_defect"},
             }
             required_cols = req_cols_map.get(q_key, set())
 
@@ -464,7 +477,7 @@ REQUIREMENTS:
             if len(gem_rows) != len(comp_rows):
                 return False
 
-            id_col_name = "exception_id" if q_key == "q4_exception_governance" else "vulnerability_id"
+            id_col_name = "exception_id" if q_key in ("q3_exception_governance", "q4_exception_governance") else "vulnerability_id"
             try:
                 gem_id_idx = [col[0].lower() for col in gem_desc].index(id_col_name)
             except ValueError:

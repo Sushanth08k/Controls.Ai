@@ -6,7 +6,6 @@ import {
   PlayCircle,
   CheckSquare,
   Shield,
-  AlertTriangle,
   History,
   LogOut,
 } from 'lucide-react';
@@ -37,7 +36,6 @@ export const Navigation: React.FC<NavigationProps> = ({
       icon: CheckSquare,
       badge: pendingGatesCount > 0 ? pendingGatesCount : undefined,
     },
-    { to: '/findings', label: 'Security Findings', icon: AlertTriangle },
     { to: '/audit', label: 'Audit Trail', icon: History },
   ];
 

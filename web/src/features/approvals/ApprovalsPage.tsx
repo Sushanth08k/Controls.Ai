@@ -4,6 +4,7 @@ import { GateCard } from '../../components/GateCard';
 import { ControlExecutionModal } from '../library/ControlExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
 import { ShieldCheck, Info } from 'lucide-react';
+import { formatGateTitle } from '../../utils/vulnDisplayNames';
 
 interface ApprovalsPageProps {
   gates: GateItemDTO[];
@@ -28,7 +29,23 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
   const history = gates.filter((g) => g.status !== 'pending');
 
   const selectedControl = resumingGate
-    ? controls?.find((c) => c.control_id === resumingGate.control_id) ?? null
+    ? (controls?.find((c) => c.control_id.toLowerCase() === resumingGate.control_id.toLowerCase()) ?? {
+        control_id: resumingGate.control_id,
+        version: '1.0.0',
+        title: formatGateTitle(resumingGate.gate_name || resumingGate.control_id, resumingGate.control_id),
+        owner_role: 'control_owner',
+        reviewer_role: 'sec_compliance_mgr',
+        risk_rating: 'medium',
+        frequency: 'Daily',
+        archetype: resumingGate.control_id.toLowerCase().includes('arch') ? 'D' : 'A',
+        scope: [],
+        evidence: [],
+        rules: [],
+        severity_policy: {},
+        status: 'approved',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
     : null;
 
   return (
@@ -108,7 +125,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
             control={selectedControl}
             currentUser={currentUser}
             initialRunId={resumingGate.run_id}
-            initialStage="APPROVED"
+            initialStage={resumingGate.status === 'approved' ? 'APPROVED' : 'APPROVAL_PENDING'}
             onClose={() => {
               setResumingGate(null);
               onRefresh?.();

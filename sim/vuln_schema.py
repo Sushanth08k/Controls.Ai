@@ -266,15 +266,7 @@ def reseed_vulnerability_tables(ref_date: datetime.date | None = None) -> dict[s
         cur.execute("DELETE FROM vuln_scan_runs")
         cur.execute("DELETE FROM vuln_assets")
 
-        # Delete control_approvals / audit items where control_id = vuln_control_id
-        cur.execute("DELETE FROM control_approvals WHERE control_id = ?", (vuln_control_id,))
-        cur.execute("DELETE FROM control_findings WHERE control_id = ?", (vuln_control_id,))
-        cur.execute("DELETE FROM control_evidence WHERE control_id = ?", (vuln_control_id,))
-        cur.execute(
-            "DELETE FROM control_audit_steps WHERE run_id IN (SELECT run_id FROM control_audit_runs WHERE control_id = ?)",
-            (vuln_control_id,),
-        )
-        cur.execute("DELETE FROM control_audit_runs WHERE control_id = ?", (vuln_control_id,))
+
 
         res = _populate_vuln_seed_data(conn, cur, ref_date)
         conn.commit()

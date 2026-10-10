@@ -51,6 +51,7 @@ class RunItem(BaseModel):
     policy_filename: str | None = None
     policy_used: dict[str, Any] | None = None
     operator_email: str | None = None
+    executor_email: str | None = None
 
 
 _RUNS_STORE: dict[str, RunItem] = {}
@@ -128,7 +129,25 @@ def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
                 )
             )
         ),
+        executor_email=(
+            meta.get("executor_email")
+            if meta.get("executor_email") and "@" in str(meta.get("executor_email"))
+            else (
+                meta.get("finalized_by")
+                if meta.get("finalized_by") and "@" in str(meta.get("finalized_by"))
+                else (
+                    meta.get("approved_by")
+                    if meta.get("approved_by") and "@" in str(meta.get("approved_by"))
+                    else (
+                        meta.get("decided_by")
+                        if meta.get("decided_by") and "@" in str(meta.get("decided_by"))
+                        else None
+                    )
+                )
+            )
+        ),
     )
+
 
 
 class TriggerRunRequest(BaseModel):
