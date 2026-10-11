@@ -51,6 +51,7 @@ class RunItem(BaseModel):
     policy_filename: str | None = None
     policy_used: dict[str, Any] | None = None
     operator_email: str | None = None
+    executor_email: str | None = None
 
 
 _RUNS_STORE: dict[str, RunItem] = {}
@@ -93,6 +94,37 @@ def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
             "extracted_text": policy_used.get("extracted_text", ""),
             "rules_summary": policy_used.get("rules_summary", ""),
         }
+    elif meta.get("policy_used") and isinstance(meta.get("policy_used"), dict):
+        mpu = meta["policy_used"]
+        p_text = mpu.get("extracted_text") or meta.get("policy_text") or meta.get("document_text") or ""
+        fn = mpu.get("filename") or pol_fname or row.get("policy_filename") or "vulnerability_management_policy_v1.0.txt"
+        pol_id = mpu.get("policy_id") or pol_id or f"POL-{row['run_id'][:8]}"
+        pol_fname = fn
+        policy_used_summary = {
+            "policy_id": pol_id,
+            "filename": fn,
+            "title": mpu.get("title") or fn,
+            "format": mpu.get("format", "TXT" if fn.endswith(".txt") else "PDF"),
+            "file_size": mpu.get("file_size") or f"{max(1, len(p_text) // 1024)} KB",
+            "cloudinary_url": mpu.get("cloudinary_url", ""),
+            "extracted_text": p_text,
+            "rules_summary": mpu.get("rules_summary", ""),
+        }
+    elif (pol_fname or row.get("policy_filename") or meta.get("policy_text")) and (pol_id or pol_fname or row.get("policy_filename")):
+        p_text = meta.get("policy_text") or meta.get("document_text") or ""
+        fn = pol_fname or row.get("policy_filename") or "vulnerability_management_policy_v1.0.txt"
+        pol_id = pol_id or f"POL-{row['run_id'][:8]}"
+        pol_fname = fn
+        policy_used_summary = {
+            "policy_id": pol_id,
+            "filename": fn,
+            "title": fn,
+            "format": "TXT" if fn.endswith(".txt") else "PDF",
+            "file_size": f"{max(1, len(p_text) // 1024)} KB",
+            "cloudinary_url": "",
+            "extracted_text": p_text,
+            "rules_summary": "",
+        }
     else:
         policy_used_summary = None
 
@@ -128,7 +160,25 @@ def _audit_row_to_run_item(row: dict[str, Any]) -> RunItem:
                 )
             )
         ),
+        executor_email=(
+            meta.get("executor_email")
+            if meta.get("executor_email") and "@" in str(meta.get("executor_email"))
+            else (
+                meta.get("finalized_by")
+                if meta.get("finalized_by") and "@" in str(meta.get("finalized_by"))
+                else (
+                    meta.get("approved_by")
+                    if meta.get("approved_by") and "@" in str(meta.get("approved_by"))
+                    else (
+                        meta.get("decided_by")
+                        if meta.get("decided_by") and "@" in str(meta.get("decided_by"))
+                        else None
+                    )
+                )
+            )
+        ),
     )
+
 
 
 class TriggerRunRequest(BaseModel):

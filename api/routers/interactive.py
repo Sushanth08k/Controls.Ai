@@ -186,10 +186,8 @@ def get_control_defaults(control_id: str) -> dict[str, Any]:
             "Rule 1:\n"
             "Operation: ARCHIVE\n"
             "transaction records older than five years must be transferred to immutable archival storage.\n\n"
+            
             "Rule 2:\n"
-            "Operation: ARCHIVE\n"
-            "Records must be retained for eight years prior to any final disposal.\n\n"
-            "Rule 3:\n"
             "Operation: EXCLUDE\n"
             "Condition: legal_hold equals true\n"
             "Records subject to an active legal hold are strictly exempt from archival or cleanup.\n\n"
@@ -690,13 +688,7 @@ async def interpret_document(
     run_id = f"RUN-{uuid.uuid4().hex[:8]}"
 
     ret_years = parsed.get("retention_years", 5)
-    sql_scripts = build_generated_sql_scripts(
-        defn,
-        run_id,
-        retention_years=ret_years,
-        rules=parsed.get("rules", []),
-        exceptions=parsed.get("exceptions", []),
-    )
+    sql_scripts: dict[str, str] = {}
 
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -890,6 +882,7 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
             session["eligible_ids"] = list(eligible_ids)
             session["rules"] = rules
             session["exceptions"] = exceptions
+            session["generated_sql"] = sql_scripts
 
         # Format sample records from real database query matching actual eligibility
         sample_records = []
@@ -941,6 +934,7 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
                 control_id=req.control_id,
                 records_evaluated=total_source_count,
                 records_eligible=eligible_count,
+                metadata_json={"generated_sql": sql_scripts},
             )
 
         return {
@@ -1373,6 +1367,20 @@ async def verify_archival_step(
             or run_record.get("metadata", {}).get("editor_email")
             or "sec_owner_1"
         )
+        total_eval = run_record.get("records_evaluated") or session.get("total_read") or 54
+        arch_payload = {
+            "control_type": "archival",
+            "records_evaluated": total_eval,
+            "records_eligible": records_count,
+            "records_archived": records_count,
+            "exclusions_count": session.get("excluded_count", 3),
+            "source_table": "source_transactions",
+            "target_table": "archive_transactions",
+            "merkle_roots_match": True,
+            "attestation_token": attestation_token,
+            "policy_filename": session.get("filename") or run_record.get("metadata", {}).get("filename") or "core_banking_retention_policy_v2.4.txt",
+            "pending_action": f"Authorizes Step 5: Source Purge (cleanup of {records_count} archived records from source_transactions while preserving legal holds).",
+        }
         save_audit_approval(
             gate_id=gate_id,
             run_id=req.run_id,
@@ -1382,6 +1390,7 @@ async def verify_archival_step(
             maker_id=maker_email,
             approver_role="control_reviewer",
             comment="Independent SHA-256 dual-root Merkle reconciliation passed. Human authorization required prior to source record cleanup.",
+            payload_json=arch_payload,
         )
         now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
         save_audit_step(

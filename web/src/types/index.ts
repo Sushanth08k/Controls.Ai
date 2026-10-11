@@ -22,6 +22,16 @@ export interface ControlDefinitionDTO {
   definition_sha256?: string;
 }
 
+export interface GateStepCompleted {
+  step_id?: string;
+  step_name: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  records_processed?: number;
+  metadata?: Record<string, any>;
+}
+
 export interface GateItemDTO {
   gate_id: string;
   run_id: string;
@@ -46,6 +56,8 @@ export interface GateItemDTO {
     escalations?: any[];
     [key: string]: any;
   };
+  steps_completed?: GateStepCompleted[];
+  run_summary?: any;
 }
 
 export interface RunItemDTO {
@@ -65,6 +77,7 @@ export interface RunItemDTO {
   policy_id?: string;
   policy_filename?: string;
   operator_email?: string;
+  executor_email?: string;
   policy_used?: {
     policy_id: string;
     filename: string;
@@ -85,6 +98,8 @@ export interface FindingDTO {
   severity: RiskRating;
   status: string;
   evidence_ids: string[];
+  target?: string;
+  cve_id?: string;
 }
 
 export interface UserSessionDTO {
@@ -232,6 +247,9 @@ export interface VulnVerificationResult {
   mismatch_count?: number;
   mismatches?: string[];
   verification_banner?: string;
+  source_root?: string;
+  target_root?: string;
+  roots_match?: boolean;
   reconciliation?: {
     required_count: number;
     created_count: number;

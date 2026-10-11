@@ -2,10 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ControlDefinitionDTO, UserSessionDTO } from '../../types';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
-import { SeverityTag } from '../../components/SeverityTag';
-import { formatFrequency } from '../../utils/formatFrequency';
 import { ControlExecutionModal } from './ControlExecutionModal';
 import { VulnerabilityExecutionModal } from './VulnerabilityExecutionModal';
+import { getControlObjective } from '../../utils/vulnDisplayNames';
 import {
   fetchUploadedPolicies,
   uploadPolicyDocument,
@@ -29,6 +28,7 @@ import {
   ExternalLink,
   Shield,
   Lock,
+  Target,
 } from 'lucide-react';
 import { isAuditor } from '../../utils/rbac';
 
@@ -156,10 +156,11 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
   };
 
   const filteredControls = controls.filter((c) => {
+    const objective = getControlObjective(c.control_id, c.title, c.objective);
     const matchesSearch =
       c.title.toLowerCase().includes(search.toLowerCase()) ||
       c.control_id.toLowerCase().includes(search.toLowerCase()) ||
-      (c.objective && c.objective.toLowerCase().includes(search.toLowerCase()));
+      (objective && objective.toLowerCase().includes(search.toLowerCase()));
     return matchesSearch;
   });
 
@@ -222,29 +223,18 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
                     <ArchetypeBadge archetype={c.archetype} />
                   </div>
 
-                  {c.objective && (
-                    <p className="text-xs text-slate-600 mb-4 line-clamp-2">{c.objective}</p>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-2 text-xs py-2 px-3 rounded-lg bg-slate-50 border border-slate-200 mb-4">
-                    <div>
-                      <span className="text-slate-500 block text-[10px] uppercase font-medium">Frequency</span>
-                      <span className="text-slate-800 font-medium">{formatFrequency(c.frequency)}</span>
+                  <div className="mt-3 mb-4 p-3 rounded-lg bg-emerald-50/50 border border-emerald-100/80 text-xs">
+                    <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800 mb-1.5">
+                      <Target className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                      <span>Control Objective</span>
                     </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px] uppercase font-medium">Risk Rating</span>
-                      <SeverityTag severity={c.risk_rating} />
-                    </div>
+                    <p className="text-slate-800 font-medium leading-relaxed">
+                      {getControlObjective(c.control_id, c.title, c.objective)}
+                    </p>
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <span className="text-slate-500 text-[11px] truncate">
-                      Owner: <span className="font-mono text-slate-800 font-medium">{c.owner_role}</span>
-                    </span>
-                  </div>
-
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-end text-xs gap-2">
                   <div className="flex items-center gap-2 shrink-0">
                     {userIsAuditor ? (
                       <span

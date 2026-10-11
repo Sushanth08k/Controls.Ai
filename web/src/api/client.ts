@@ -446,6 +446,7 @@ export async function startVulnerabilityRun(payload: {
   policy_id?: string;
   as_of_date?: string;
   confirmed_ambiguities?: string[];
+  rules?: any;
   operator_email?: string;
   operator_id?: string;
 }): Promise<any> {
@@ -573,11 +574,19 @@ export async function applyVulnerabilityRun(runId: string): Promise<any> {
   return res.json();
 }
 
-export async function finalizeVulnerabilityRun(runId: string): Promise<any> {
+export async function finalizeVulnerabilityRun(runId: string, operatorEmail?: string): Promise<any> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (operatorEmail && operatorEmail.includes('@')) {
+    headers['X-User-Email'] = operatorEmail;
+  }
   const res = await fetch(`${API_BASE}/vulnerability/run/finalize`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ run_id: runId }),
+    headers,
+    body: JSON.stringify({
+      run_id: runId,
+      operator_id: operatorEmail || 'operator@bank.internal',
+      operator_email: operatorEmail || 'operator@bank.internal',
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));

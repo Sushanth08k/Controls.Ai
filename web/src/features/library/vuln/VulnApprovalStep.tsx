@@ -13,6 +13,7 @@ import {
 import { VulnSqlViewer } from './VulnSqlViewer';
 import { UserSessionDTO } from '../../../types';
 import { isApprover } from '../../../utils/rbac';
+import { formatRoleName, formatCompensatingControl } from '../../../utils/vulnDisplayNames';
 
 interface VulnApprovalStepProps {
   currentUser?: UserSessionDTO;
@@ -204,7 +205,7 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
                         </span>
                       </div>
                       <div className="text-slate-600 text-[11px]">
-                        <strong>Compensating Control:</strong> {ex.compensating_control || 'Applied per policy'}
+                        <strong>Compensating Control:</strong> {formatCompensatingControl(ex.compensating_control)}
                       </div>
                       <div className="text-emerald-700 font-semibold text-[11px]">
                         Effect: removed from SLA breach list
@@ -237,7 +238,7 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
                         </span>
                       </div>
                       <div className="text-slate-600 text-[11px]">
-                        Escalated to: <strong className="text-slate-900">{esc.escalated_to || esc.owner_manager || 'VP Engineering'}</strong> (Asset Owner: {esc.owner || 'sec_ops_team'})
+                        Escalated to: <strong className="text-slate-900">{formatRoleName(esc.escalated_to || esc.owner_manager || 'vp_engineering')}</strong> (Asset Owner: {formatRoleName(esc.owner || 'sec_ops_team')})
                       </div>
                       <div className="text-amber-800 font-semibold text-[11px]">
                         Effect: still open, now visible to management
@@ -310,7 +311,7 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
                       <strong>Justification:</strong> {ex.justification || 'Pending business justification'}
                     </p>
                     <p className="text-[11px] text-slate-600">
-                      <strong>Compensating Control:</strong> {ex.compensating_control || 'None specified'}
+                      <strong>Compensating Control:</strong> {formatCompensatingControl(ex.compensating_control)}
                     </p>
                   </div>
                 ))
@@ -343,7 +344,7 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-600 font-mono">
-                      Owner: <strong>{esc.owner || 'sec_ops_team'}</strong> &rarr; Escalating to: <strong className="text-slate-900">{esc.escalated_to || esc.owner_manager || 'VP Engineering'}</strong>
+                      Owner: <strong>{formatRoleName(esc.owner || 'sec_ops_team')}</strong> &rarr; Escalating to: <strong className="text-slate-900">{formatRoleName(esc.escalated_to || esc.owner_manager || 'vp_engineering')}</strong>
                     </p>
                   </div>
                 ))
@@ -386,11 +387,10 @@ export const VulnApprovalStep: React.FC<VulnApprovalStepProps> = ({
               <button
                 onClick={onKeepInQueue}
                 disabled={loading}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer ${
-                  !userCanApprove
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-lg shadow-2xs transition-all cursor-pointer ${!userCanApprove
                     ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20'
                     : 'text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50'
-                }`}
+                  }`}
               >
                 <Clock className="w-4 h-4 text-current" />
                 <span>Keep in Approval Queue & Close</span>

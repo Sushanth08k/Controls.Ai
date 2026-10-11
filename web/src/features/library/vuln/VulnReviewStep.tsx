@@ -2,42 +2,75 @@ import React, { useState } from 'react';
 import {
   ArrowRight,
   ArrowLeft,
-  RefreshCw,
   Code,
   ChevronDown,
   ChevronRight,
-  Loader2,
   CheckCircle2,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import { VulnReviewSnapshot, VulnScopeSummary } from '../../../types';
 import { VulnSqlViewer } from './VulnSqlViewer';
+import { formatRoleName, formatCompensatingControl } from '../../../utils/vulnDisplayNames';
 
 interface VulnReviewStepProps {
   scopeSummary: VulnScopeSummary | null;
   reviewSnapshot: VulnReviewSnapshot | null;
   namedQueries: Record<string, string>;
-  onRunQueries: () => Promise<void>;
+  onRunQueries?: () => Promise<void>;
   onBack: () => void;
   onProceed: () => void;
   loading: boolean;
-  stage: string;
+  stage?: string;
+  defaultsUsed?: string[];
 }
+
+const REQUIRED_COLUMNS_BY_CHECK: Record<string, string[]> = {
+  Q1: ['vulnerability_id', 'database_name', 'cve_id', 'severity', 'is_kev', 'discovered_at', 'age_days', 'sla_days', 'overdue_days'],
+  Q2: ['vulnerability_id', 'database_name', 'cve_id', 'severity', 'discovered_at', 'asset_owner', 'asset_owner_manager', 'ticket_id', 'assignee', 'due_date', 'ticket_issue'],
+  Q3: ['exception_id', 'finding_id', 'database_name', 'cve_id', 'severity', 'requested_by', 'approved_by', 'compensating_control', 'expires_at', 'exception_status', 'exception_defect'],
+};
+
+const COLUMN_HEADERS: Record<string, string> = {
+  vulnerability_id: 'Vulnerability ID',
+  database_name: 'Database Name',
+  cve_id: 'CVE ID',
+  severity: 'Severity',
+  is_kev: 'KEV',
+  discovered_at: 'Discovered Date',
+  age_days: 'Age (Days)',
+  sla_days: 'SLA (Days)',
+  overdue_days: 'Overdue (Days)',
+  asset_owner: 'Asset Owner',
+  asset_owner_manager: 'Asset Owner Manager',
+  ticket_id: 'Ticket ID',
+  assignee: 'Assignee',
+  due_date: 'Due Date',
+  ticket_issue: 'Ticket Issue',
+  exception_id: 'Exception ID',
+  finding_id: 'Finding ID',
+  requested_by: 'Requested By',
+  approved_by: 'Approved By',
+  compensating_control: 'Compensating Control',
+  expires_at: 'Expires At',
+  exception_status: 'Exception Status',
+  exception_defect: 'Exception Defect',
+};
 
 export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   scopeSummary,
   reviewSnapshot,
   namedQueries,
-  onRunQueries,
+  onRunQueries: _onRunQueries,
   onBack,
   onProceed,
   loading,
-  stage,
+  stage: _stage,
+  defaultsUsed,
 }) => {
   const [selectedCheck, setSelectedCheck] = useState<'Q1' | 'Q2' | 'Q3'>('Q1');
   const [showSqlModal, setShowSqlModal] = useState<string | null>(null);
   const [expandScopeReasons, setExpandScopeReasons] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isExecuted = Boolean(reviewSnapshot?.review_executed);
 
@@ -45,12 +78,23 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
   const q2 = reviewSnapshot?.q2_ticket_coverage;
   const q3 = reviewSnapshot?.q3_exception_governance || reviewSnapshot?.q4_exception_governance;
 
+  const rules: any = (reviewSnapshot as any)?.rules || {};
+  const slaKev = rules.sla_kev ?? 3;
+  const slaCrit = rules.sla_critical ?? 7;
+  const slaHigh = rules.sla_high ?? 30;
+  const slaMed = rules.sla_medium ?? 60;
+  const slaLow = rules.sla_low ?? 90;
+  const excMax = rules.exception_max_days ?? 90;
+
+  const q1Description = q1?.description || `Findings exceeding remediation SLA timeframes (KEV ${slaKev}d, Critical ${slaCrit}d, High ${slaHigh}d, Medium ${slaMed}d, Low ${slaLow}d) without approved exception.`;
+  const q4Description = q3?.description || `Exception requests audited for pending approvals, expiration (> ${excMax}d), and compensating control verification.`;
+
   const checks = [
     {
       id: 'Q1' as const,
       num: 'Q1',
       title: 'SLA Breaches',
-      description: 'Findings exceeding remediation SLA timeframes (KEV 3d, Critical 7d, High 30d, Medium 60d) without approved exception.',
+      description: q1Description,
       data: q1,
       sqlKey: 'Q1_SLA_BREACH',
       count: q1?.row_count,
@@ -68,7 +112,7 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
       id: 'Q3' as const,
       num: 'Q3',
       title: 'Exception Governance',
-      description: 'Exception requests audited for pending approvals, expiration, and compensating control verification.',
+      description: q4Description,
       data: q3,
       sqlKey: 'Q3_EXCEPTION_GOVERNANCE',
       count: q3?.row_count,
@@ -88,15 +132,6 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
     reviewSnapshot?.summary?.defective_tickets_count ??
     0;
 
-  const handleRerun = async () => {
-    setErrorMsg(null);
-    try {
-      await onRunQueries();
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to re-run review queries.');
-    }
-  };
-
   // Scope counts and strip message
   const inScopeCount = scopeSummary?.counts?.assets_in_scope ?? 0;
   const testedCount = scopeSummary?.findings_reconciliation?.tested ?? 0;
@@ -106,6 +141,21 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
 
   return (
     <div className="space-y-5">
+      {/* Defaults Used Banner */}
+      {((defaultsUsed && defaultsUsed.length > 0) || ((reviewSnapshot as any)?.defaults_used && (reviewSnapshot as any).defaults_used.length > 0)) && (
+        <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col gap-1 shadow-2xs">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Policy Defaults Used</span>
+          </div>
+          <div className="pl-6 space-y-0.5 text-[11px] text-amber-800">
+            {(defaultsUsed || (reviewSnapshot as any)?.defaults_used || []).map((msg: string, idx: number) => (
+              <div key={idx}>{msg}</div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Scope Strip */}
       <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 shadow-2xs">
         <div className="flex items-center justify-between gap-3 text-xs">
@@ -145,44 +195,12 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
       </div>
 
       {/* Header Banner */}
-      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-              STAGE: {stage}
-            </span>
-            <h3 className="text-sm font-bold text-slate-900">Vulnerability Control Review Checks</h3>
-          </div>
-          <p className="text-xs text-slate-500">
-            Three deterministic governance queries evaluating SLA breaches, ticket coverage, and exception governance.
-          </p>
-        </div>
-
-        <button
-          onClick={handleRerun}
-          disabled={loading}
-          className="flex items-center gap-2 px-3.5 py-2 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 active:bg-slate-100 rounded-lg border border-slate-300 shadow-2xs transition-colors cursor-pointer disabled:opacity-50 shrink-0"
-        >
-          {loading ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
-              <span>Running...</span>
-            </>
-          ) : (
-            <>
-              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-              <span>Re-run Review</span>
-            </>
-          )}
-        </button>
+      <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-2xs">
+        <h3 className="text-sm font-bold text-slate-900">Vulnerability Control Review Checks</h3>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Three deterministic governance queries evaluating SLA breaches, ticket coverage, and exception governance.
+        </p>
       </div>
-
-      {errorMsg && (
-        <div className="p-3 bg-red-50 border border-red-300 rounded-lg text-xs text-red-800 flex items-center gap-2">
-          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-          <span>{errorMsg}</span>
-        </div>
-      )}
 
       {/* 3 Check Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -212,18 +230,18 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
               key={chk.id}
               onClick={() => setSelectedCheck(chk.id)}
               className={`p-3.5 rounded-xl border transition-all cursor-pointer text-left space-y-1.5 ${isSelected
-                  ? 'bg-blue-50/80 border-blue-400 shadow-xs ring-1 ring-blue-300'
-                  : 'bg-white border-slate-200 hover:bg-slate-50/80 hover:border-slate-300'
+                ? 'bg-blue-50/80 border-blue-400 shadow-xs ring-1 ring-blue-300'
+                : 'bg-white border-slate-200 hover:bg-slate-50/80 hover:border-slate-300'
                 }`}
             >
               <div className="flex items-start justify-between gap-1">
                 <span className="text-[11px] font-mono font-bold text-slate-500 uppercase">{chk.num}</span>
                 <span
                   className={`text-xs font-bold px-2 py-0.5 rounded-full ${!isExecuted
-                      ? 'bg-slate-100 text-slate-500'
-                      : hasDefects
-                        ? 'bg-amber-100 text-amber-800'
-                        : 'bg-emerald-100 text-emerald-800'
+                    ? 'bg-slate-100 text-slate-500'
+                    : hasDefects
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-emerald-100 text-emerald-800'
                     }`}
                 >
                   {displayCount}
@@ -251,7 +269,29 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
                   : `(${currentCheck.data?.row_count ?? 0} ${currentCheck.data?.row_count === 1 ? 'row' : 'rows'} detected)`}
               </span>
             </div>
-            <p className="text-xs text-slate-600 mt-1">{currentCheck.description}</p>
+            {currentCheck.id === 'Q1' ? (
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5 text-xs text-slate-600">
+                <span className="font-semibold text-slate-700">Remediation SLA:</span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-rose-100 text-rose-800 border border-rose-300">
+                  KEV: {slaKev}d
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-red-100 text-red-800 border border-red-300">
+                  Critical: {slaCrit}d
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-orange-100 text-orange-800 border border-orange-300">
+                  High: {slaHigh}d
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-300">
+                  Medium: {slaMed}d
+                </span>
+                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-blue-100 text-blue-800 border border-blue-300">
+                  Low: {slaLow}d
+                </span>
+                <span className="text-slate-400 text-[11px] ml-1">(unresolved findings without approved exception)</span>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600 mt-1">{currentCheck.description}</p>
+            )}
           </div>
 
           <button
@@ -265,37 +305,160 @@ export const VulnReviewStep: React.FC<VulnReviewStepProps> = ({
 
         {/* Results Table (Capped at 50) */}
         <div className="overflow-x-auto rounded-lg border border-slate-200 max-h-72">
-          {currentCheck.data?.rows && currentCheck.data.rows.length > 0 ? (
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="bg-slate-100/80 sticky top-0 border-b border-slate-200 text-slate-700 font-semibold">
-                <tr>
-                  {Object.keys(currentCheck.data.rows[0])
-                    .filter((col) => !['raw', 'payload'].includes(col))
-                    .map((header) => (
-                      <th key={header} className="p-2.5 whitespace-nowrap uppercase text-[10px] tracking-wider">
-                        {header.replace(/_/g, ' ')}
-                      </th>
-                    ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-mono text-[11px] text-slate-700">
-                {currentCheck.data.rows.slice(0, 50).map((row: any, idx: number) => {
-                  const firstRow = currentCheck.data?.rows[0] || {};
-                  return (
-                    <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
-                      {Object.keys(firstRow)
-                        .filter((col) => !['raw', 'payload'].includes(col))
-                        .map((colKey) => (
-                          <td key={colKey} className="p-2.5 whitespace-nowrap">
-                            {row[colKey] !== null && row[colKey] !== undefined ? String(row[colKey]) : '-'}
-                          </td>
-                        ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          ) : (
+          {currentCheck.data?.rows && currentCheck.data.rows.length > 0 ? (() => {
+            const firstRow = currentCheck.data.rows[0] || {};
+            const reqCols = REQUIRED_COLUMNS_BY_CHECK[currentCheck.id] || [];
+            const visibleCols = reqCols.filter((col) => col in firstRow).length > 0
+              ? reqCols.filter((col) => col in firstRow)
+              : Object.keys(firstRow).filter((col) => !['raw', 'payload', 'is_kev', 'cvss_score', 'status', 'finding_status', 'exception_id', 'exception_status', 'exception_expires_at', 'mirrored_exception_status', 'mirrored_expires_at', 'requested_at', 'approved_at', 'justification', 'tier', 'asset_id', 'ticket_status', 'escalated_at'].includes(col));
+
+            return (
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-100/80 sticky top-0 border-b border-slate-200 text-slate-700 font-semibold">
+                  <tr>
+                    {visibleCols.map((header) => {
+                      const isResultCol = ['overdue_days', 'ticket_issue', 'exception_defect'].includes(header);
+                      return (
+                        <th
+                          key={header}
+                          className={`p-2.5 whitespace-nowrap uppercase text-[10px] tracking-wider ${isResultCol
+                              ? 'bg-amber-100/80 text-amber-950 font-bold border-x border-amber-200'
+                              : ''
+                            }`}
+                        >
+                          {COLUMN_HEADERS[header] || header.replace(/_/g, ' ')}
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono text-[11px] text-slate-700">
+                  {currentCheck.data.rows.slice(0, 50).map((row: any, idx: number) => {
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                        {visibleCols.map((colKey) => {
+                          const val = row[colKey];
+                          const displayVal = val !== null && val !== undefined ? String(val) : '-';
+
+                          // Highlight Severity
+                          if (colKey === 'severity') {
+                            const sev = String(val || '').toUpperCase();
+                            const badgeColors =
+                              sev === 'CRITICAL'
+                                ? 'bg-red-100 text-red-800 border-red-300'
+                                : sev === 'HIGH'
+                                ? 'bg-orange-100 text-orange-800 border-orange-300'
+                                : sev === 'MEDIUM'
+                                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                : sev === 'LOW'
+                                ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                : 'bg-slate-100 text-slate-700 border-slate-200';
+
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] border shadow-2xs ${badgeColors}`}>
+                                  {sev || displayVal}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // Highlight SLA days
+                          if (colKey === 'sla_days') {
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded font-semibold text-[11px] bg-slate-100 text-slate-700 border border-slate-200">
+                                  {displayVal}d
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // Highlight KEV status
+                          if (colKey === 'is_kev') {
+                            const isKev = val === 1 || val === true || val === '1' || val === 'true';
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                {isKev ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded font-bold text-[10px] bg-rose-100 text-rose-800 border border-rose-300">
+                                    KEV
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 text-xs">No</span>
+                                )}
+                              </td>
+                            );
+                          }
+
+                          // Highlight Q1 result: overdue_days
+                          if (colKey === 'overdue_days') {
+                            const num = Number(val);
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap bg-rose-50/60 border-x border-rose-100">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[11px] bg-rose-100 text-rose-700 border border-rose-200 shadow-2xs">
+                                  {num > 0 ? `+${num}d overdue` : `${num}d`}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // Highlight Q2 result: ticket_issue
+                          if (colKey === 'ticket_issue') {
+                            const isDefect = displayVal !== 'TRACKED';
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap bg-amber-50/60 border-x border-amber-100">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] border shadow-2xs ${isDefect
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                    }`}
+                                >
+                                  {displayVal}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // Highlight Q3 result: exception_defect
+                          if (colKey === 'exception_defect') {
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap bg-purple-50/60 border-x border-purple-100">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded font-bold text-[10px] bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs">
+                                  {displayVal}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          if (['asset_owner', 'asset_owner_manager', 'assignee', 'escalated_to', 'requested_by', 'approved_by'].includes(colKey)) {
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                {displayVal !== '-' ? formatRoleName(displayVal) : '-'}
+                              </td>
+                            );
+                          }
+
+                          if (colKey === 'compensating_control') {
+                            return (
+                              <td key={colKey} className="p-2.5 whitespace-nowrap">
+                                {displayVal !== '-' ? formatCompensatingControl(displayVal) : '-'}
+                              </td>
+                            );
+                          }
+
+                          return (
+                            <td key={colKey} className="p-2.5 whitespace-nowrap">
+                              {displayVal}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            );
+          })() : (
             <div className="py-10 text-center space-y-2">
               <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
               <p className="text-xs text-slate-600 font-medium">No defects detected for this check.</p>

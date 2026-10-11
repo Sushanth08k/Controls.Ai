@@ -42,7 +42,7 @@ def list_findings() -> list[FindingSummary]:
             severity=f["severity"],
             status=f["status"],
             evidence_ids=details.get("evidence_ids", [f"ev-{f['run_id']}"]),
-            target=f.get("affected_record"),
+            target=details.get("database_name") or f.get("affected_record"),
             cve_id=details.get("cve_id"),
             age_days=details.get("age_days"),
             allowed_sla_days=details.get("allowed_sla_days"),

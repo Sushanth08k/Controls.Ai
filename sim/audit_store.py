@@ -133,7 +133,7 @@ def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:
         if "policy_id" not in col_names:
             cur.execute("ALTER TABLE control_audit_runs ADD COLUMN policy_id TEXT")
 
-        # Ensure gate_name, maker_id, approver_role columns exist on existing control_approvals table
+        # Ensure gate_name, maker_id, approver_role, gate_type, payload_json columns exist on existing control_approvals table
         cur.execute("PRAGMA table_info(control_approvals)")
         appr_cols = [col[1] for col in cur.fetchall()]
         if "gate_name" not in appr_cols:
@@ -142,6 +142,10 @@ def init_audit_tables(conn: sqlite3.Connection | None = None) -> None:
             cur.execute("ALTER TABLE control_approvals ADD COLUMN maker_id TEXT DEFAULT 'sec_owner_1'")
         if "approver_role" not in appr_cols:
             cur.execute("ALTER TABLE control_approvals ADD COLUMN approver_role TEXT DEFAULT 'control_reviewer'")
+        if "gate_type" not in appr_cols:
+            cur.execute("ALTER TABLE control_approvals ADD COLUMN gate_type TEXT DEFAULT 'archival_signoff'")
+        if "payload_json" not in appr_cols:
+            cur.execute("ALTER TABLE control_approvals ADD COLUMN payload_json TEXT")
 
         conn.commit()
     finally:
@@ -558,20 +562,23 @@ def save_audit_approval(
     gate_name: str = "operator_signoff",
     maker_id: str = "sec_owner_1",
     approver_role: str = "control_reviewer",
+    gate_type: str | None = None,
+    payload_json: Any | None = None,
 ) -> dict[str, Any]:
     """Persist human approval / gate decision."""
     init_audit_tables()
     conn = get_connection()
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     approved_at = approved_at or (now_iso if status == "approved" else None)
+    payload_str = _safe_json_dumps(payload_json) if payload_json is not None else None
 
     try:
         cur = conn.cursor()
         cur.execute("""
         INSERT INTO control_approvals (
             gate_id, run_id, control_id, status, approved_by, approved_at, comment,
-            gate_name, maker_id, approver_role, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            gate_name, maker_id, approver_role, gate_type, payload_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(gate_id) DO UPDATE SET
             status = excluded.status,
             approved_by = COALESCE(excluded.approved_by, control_approvals.approved_by),
@@ -579,10 +586,12 @@ def save_audit_approval(
             comment = COALESCE(excluded.comment, control_approvals.comment),
             gate_name = COALESCE(excluded.gate_name, control_approvals.gate_name),
             maker_id = COALESCE(excluded.maker_id, control_approvals.maker_id),
-            approver_role = COALESCE(excluded.approver_role, control_approvals.approver_role)
+            approver_role = COALESCE(excluded.approver_role, control_approvals.approver_role),
+            gate_type = COALESCE(excluded.gate_type, control_approvals.gate_type),
+            payload_json = COALESCE(excluded.payload_json, control_approvals.payload_json)
         """, (
             gate_id, run_id, control_id, status, approved_by, approved_at, comment,
-            gate_name, maker_id, approver_role, now_iso,
+            gate_name, maker_id, approver_role, gate_type or "archival_signoff", payload_str, now_iso,
         ))
         conn.commit()
         return {
@@ -596,6 +605,8 @@ def save_audit_approval(
             "gate_name": gate_name,
             "maker_id": maker_id,
             "approver_role": approver_role,
+            "gate_type": gate_type,
+            "payload_json": payload_str,
         }
     finally:
         conn.close()
@@ -676,6 +687,35 @@ def get_full_audit_bundle(run_id: str) -> dict[str, Any] | None:
             "extracted_text": policy_doc.get("extracted_text", ""),
             "rules_summary": policy_doc.get("rules_summary", ""),
             "uploaded_at": policy_doc.get("uploaded_at", ""),
+        }
+    elif meta.get("policy_used") and isinstance(meta.get("policy_used"), dict):
+        mpu = meta["policy_used"]
+        p_text = mpu.get("extracted_text") or meta.get("policy_text") or meta.get("document_text") or ""
+        fn = mpu.get("filename") or meta.get("filename") or run.get("policy_filename") or "vulnerability_management_policy_v1.0.txt"
+        policy_used = {
+            "policy_id": mpu.get("policy_id") or pol_id or f"POL-{run_id[:8]}",
+            "filename": fn,
+            "title": mpu.get("title") or fn,
+            "format": mpu.get("format", "TXT" if fn.endswith(".txt") else "PDF"),
+            "file_size": mpu.get("file_size") or f"{max(1, len(p_text) // 1024)} KB",
+            "cloudinary_url": mpu.get("cloudinary_url", ""),
+            "extracted_text": p_text,
+            "rules_summary": mpu.get("rules_summary", ""),
+            "uploaded_at": mpu.get("uploaded_at", run.get("started_at", "")),
+        }
+    elif (meta.get("filename") or run.get("policy_filename") or meta.get("policy_text")) and (pol_id or meta.get("filename") or run.get("policy_filename")):
+        p_text = meta.get("policy_text") or meta.get("document_text") or ""
+        fn = meta.get("filename") or run.get("policy_filename") or "vulnerability_management_policy_v1.0.txt"
+        policy_used = {
+            "policy_id": pol_id or f"POL-{run_id[:8]}",
+            "filename": fn,
+            "title": fn,
+            "format": "TXT" if fn.endswith(".txt") else "PDF",
+            "file_size": f"{max(1, len(p_text) // 1024)} KB",
+            "cloudinary_url": "",
+            "extracted_text": p_text,
+            "rules_summary": "",
+            "uploaded_at": run.get("started_at", ""),
         }
 
     return {
