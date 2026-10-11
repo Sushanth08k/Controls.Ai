@@ -84,7 +84,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
             <p className="text-xs text-slate-500 mt-1">All control execution gates are currently cleared.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             {pending.map((gate) => (
               <GateCard
                 key={gate.gate_id}
@@ -103,7 +103,7 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
       {history.length > 0 && (
         <div className="space-y-3 pt-4 border-t border-slate-200">
           <h3 className="text-sm font-semibold text-slate-600">Decided Gate History</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
             {history.map((gate) => (
               <GateCard
                 key={gate.gate_id}

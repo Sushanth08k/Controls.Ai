@@ -22,6 +22,16 @@ export interface ControlDefinitionDTO {
   definition_sha256?: string;
 }
 
+export interface GateStepCompleted {
+  step_id?: string;
+  step_name: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  records_processed?: number;
+  metadata?: Record<string, any>;
+}
+
 export interface GateItemDTO {
   gate_id: string;
   run_id: string;
@@ -46,6 +56,8 @@ export interface GateItemDTO {
     escalations?: any[];
     [key: string]: any;
   };
+  steps_completed?: GateStepCompleted[];
+  run_summary?: any;
 }
 
 export interface RunItemDTO {
