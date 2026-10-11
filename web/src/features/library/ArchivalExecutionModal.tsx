@@ -38,7 +38,7 @@ import {
 import { SelectExistingPolicyModal } from './SelectExistingPolicyModal';
 import { isApprover } from '../../utils/rbac';
 
-interface ControlExecutionModalProps {
+interface ArchivalExecutionModalProps {
   control: ControlDefinitionDTO;
   currentUser: UserSessionDTO;
   onClose: () => void;
@@ -50,7 +50,7 @@ interface ControlExecutionModalProps {
   initialStage?: 'EVALUATED' | 'ARCHIVED' | 'VERIFIED' | 'APPROVED' | 'CLEANED' | 'COMPLETED';
 }
 
-export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
+export const ArchivalExecutionModal: React.FC<ArchivalExecutionModalProps> = ({
   control,
   currentUser,
   onClose,
@@ -110,6 +110,17 @@ export const ControlExecutionModal: React.FC<ControlExecutionModalProps> = ({
     }, 20);
     return () => clearTimeout(timer);
   }, [viewMode, runStage]);
+
+  // Auto-resize policy textarea: expand to fit full text if large, with standard min height if small
+  const policyTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (policyTextareaRef.current && viewMode === 1) {
+      policyTextareaRef.current.style.height = 'auto';
+      const targetHeight = Math.max(280, policyTextareaRef.current.scrollHeight);
+      policyTextareaRef.current.style.height = `${targetHeight}px`;
+    }
+  }, [policyText, viewMode]);
 
   // Stats
   const [totalRead, setTotalRead] = useState<number>(50);
@@ -792,13 +803,20 @@ AND legal_hold = 0;`,
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs text-slate-700 block mb-1.5 font-semibold">Policy Specification Text:</label>
+              <div className="flex-1 flex flex-col min-h-[300px]">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs text-slate-700 font-semibold">Policy Specification Text:</label>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    {policyText ? `${policyText.split('\n').length} lines · ${policyText.length} characters` : ''}
+                  </span>
+                </div>
                 <textarea
+                  ref={policyTextareaRef}
                   value={policyText}
                   onChange={(e) => setPolicyText(e.target.value)}
-                  rows={8}
-                  className="w-full text-xs font-mono p-4 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-emerald-600 shadow-xs"
+                  style={{ minHeight: '280px' }}
+                  className="w-full text-xs font-mono p-4 rounded-xl bg-white border border-slate-300 text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600/20 focus:border-emerald-600 shadow-xs leading-relaxed overflow-hidden transition-[height] duration-75"
+                  placeholder="Enter or paste policy specification text..."
                 />
               </div>
 
@@ -1448,6 +1466,15 @@ AND legal_hold = 0;`,
                             {ledgerHash || 'SHA256-42b5e6e7871981a5'}
                           </span>
                         </div>
+                      </div>
+                      <div className="pt-2 flex items-center justify-center gap-3">
+                        <button
+                          onClick={onClose}
+                          className="px-5 py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs shadow-md shadow-emerald-700/20 transition-all cursor-pointer inline-flex items-center gap-2"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>Close & Return</span>
+                        </button>
                       </div>
                     </div>
                   )}

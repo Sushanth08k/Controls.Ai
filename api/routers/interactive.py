@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, File, UploadFile, Form, Header
 from fastapi.responses import RedirectResponse, FileResponse, Response
 from pydantic import BaseModel, ConfigDict
 from core.definitions import default_registry
-from core.merkle import build_merkle_root
+from core.integrity import build_merkle_root
 from core.ledger import Ledger
 from core.policy_parser import parse_policy_specification
 from core.document_extractor import extract_document_content
@@ -239,7 +239,7 @@ def _init_default_policies() -> list[dict[str, Any]]:
             "risk_rating": defn.risk_rating,
             "frequency": defn.frequency,
             "uploaded_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "uploaded_by": "Sushanth (Compliance Analyst)",
+            "uploaded_by": "Compliance Analyst",
             "file_size": f"{max(12, len(defaults.get('policy_text', '')) // 50)} KB",
             "format": fmt,
             "rules_summary": rule_peek,

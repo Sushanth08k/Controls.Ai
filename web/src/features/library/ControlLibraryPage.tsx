@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { ControlDefinitionDTO, UserSessionDTO } from '../../types';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
-import { ControlExecutionModal } from './ControlExecutionModal';
+import { ArchivalExecutionModal } from './ArchivalExecutionModal';
 import { VulnerabilityExecutionModal } from './VulnerabilityExecutionModal';
 import { getControlObjective } from '../../utils/vulnDisplayNames';
 import {
@@ -282,7 +282,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
               }}
             />
           ) : (
-            <ControlExecutionModal
+            <ArchivalExecutionModal
               control={modalControl}
               currentUser={currentUser}
               initialPolicyText={activePolicy?.policy_text}
@@ -673,7 +673,7 @@ export const ControlLibraryPage: React.FC<ControlLibraryPageProps> = ({
             }}
           />
         ) : (
-          <ControlExecutionModal
+          <ArchivalExecutionModal
             control={modalControl}
             currentUser={currentUser}
             initialPolicyText={activePolicy?.policy_text}

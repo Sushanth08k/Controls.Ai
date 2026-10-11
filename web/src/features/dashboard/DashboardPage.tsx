@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ControlDefinitionDTO, FindingDTO, GateItemDTO, RunItemDTO, UserSessionDTO } from '../../types';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
 import { StatusPill } from '../../components/StatusPill';
-import { ControlExecutionModal } from '../library/ControlExecutionModal';
+import { ArchivalExecutionModal } from '../library/ArchivalExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
 import { Plus, ArrowUpRight, Play, PlayCircle, Shield, Clock, RefreshCw, Eye, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -330,7 +330,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             }}
           />
         ) : (
-          <ControlExecutionModal
+          <ArchivalExecutionModal
             control={modalControl}
             currentUser={currentUser}
             onClose={() => setModalControl(null)}

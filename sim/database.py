@@ -4,8 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from core.hashing import compute_row_hash
-from core.merkle import build_merkle_root
+from core.integrity import build_merkle_root, compute_row_hash
 
 DB_DIR = Path(__file__).resolve().parent
 
