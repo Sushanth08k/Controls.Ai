@@ -360,53 +360,7 @@ export async function interpretVulnerabilityPolicy(
   return res.json();
 }
 
-export async function previewVulnerabilityTargets(controlId: string, approvedRules?: any): Promise<any> {
-  const res = await fetch(`${API_BASE}/vulnerability/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      control_id: controlId,
-      approved_rules: approvedRules || null,
-    }),
-  });
-  if (!res.ok) throw new Error(`Failed to preview vulnerability targets: ${res.statusText}`);
-  return res.json();
-}
 
-export async function executeVulnerabilityControl(
-  controlId: string,
-  runId?: string,
-  documentText?: string,
-  customRules?: any,
-  querySql?: string,
-  policyId?: string,
-  filename?: string,
-  userEmail?: string
-): Promise<any> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (userEmail) {
-    headers['X-User-Email'] = userEmail;
-    headers['X-User-Id'] = userEmail;
-  }
-  const res = await fetch(`${API_BASE}/vulnerability/execute`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      control_id: controlId,
-      run_id: runId || null,
-      document_text: documentText || null,
-      custom_rules: customRules || null,
-      query_sql: querySql || null,
-      policy_id: policyId || null,
-      filename: filename || null,
-    }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail || `Vulnerability execution failed with ${res.status}`);
-  }
-  return res.json();
-}
 
 export async function fetchVulnerabilityResults(runId: string): Promise<any> {
   const res = await fetch(`${API_BASE}/vulnerability/results/${encodeURIComponent(runId)}`);

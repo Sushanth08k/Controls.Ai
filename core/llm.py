@@ -33,7 +33,7 @@ def load_template(template_id: str, template_version: str | int) -> str:
     """Load prompt template from agents/templates/<template_id>/<version>.md."""
     template_path = TEMPLATES_DIR / template_id / f"{template_version}.md"
     if not template_path.exists():
-        raise FileNotFoundError(f"Template not found at {template_path}")
+        return ""
     return template_path.read_text(encoding="utf-8")
 
 

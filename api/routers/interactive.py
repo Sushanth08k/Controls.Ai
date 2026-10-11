@@ -166,6 +166,26 @@ def build_generated_sql_scripts(
     }
 
 
+DEFAULT_ARCHIVAL_POLICY = (
+    "GLOBAL BANKING CORPORATION - DATA RETENTION & ARCHIVAL POLICY v2.4\n\n"
+    "POLICY 1: Transaction Data Archival Policy\n"
+    "Source table: source_transactions\n"
+    "Destination table: archive_transactions (sqlite:///bank_archive.db)\n"
+    "date field: transaction_date\n\n"
+    "Rule 1:\n"
+    "Operation: ARCHIVE\n"
+    "transaction records older than five years must be transferred to immutable archival storage.\n\n"
+    "Rule 2:\n"
+    "Operation: EXCLUDE\n"
+    "Condition: legal_hold equals true\n"
+    "Records subject to an active legal hold are strictly exempt from archival or cleanup.\n\n"
+    "GLOBAL REQUIREMENTS:\n"
+    "1. Financial transaction records must be retained per regulatory lifecycle periods.\n"
+    "2. Independent verification and cryptographic SHA-256 validation required before source deletion.\n"
+    "3. Maker-checker dual-human authorization required before source database record cleanup."
+)
+
+
 @router.get("/defaults/{control_id}")
 def get_control_defaults(control_id: str) -> dict[str, Any]:
     """Retrieve control-specific default policy text, filename, and step configurations."""
@@ -173,98 +193,15 @@ def get_control_defaults(control_id: str) -> dict[str, Any]:
     if not defn:
         raise HTTPException(status_code=404, detail="Control not found")
 
-    cid_lower = control_id.lower()
-
-    if defn.archetype == "D":
-        filename = "core_banking_retention_policy_v2.4.txt"
-        policy_text = (
-            "GLOBAL BANKING CORPORATION - DATA RETENTION & ARCHIVAL POLICY v2.4\n\n"
-            "POLICY 1: Transaction Data Archival Policy\n"
-            "Source table: source_transactions\n"
-            "Destination table: archive_transactions (sqlite:///bank_archive.db)\n"
-            "date field: transaction_date\n\n"
-            "Rule 1:\n"
-            "Operation: ARCHIVE\n"
-            "transaction records older than five years must be transferred to immutable archival storage.\n\n"
-            
-            "Rule 2:\n"
-            "Operation: EXCLUDE\n"
-            "Condition: legal_hold equals true\n"
-            "Records subject to an active legal hold are strictly exempt from archival or cleanup.\n\n"
-            "GLOBAL REQUIREMENTS:\n"
-            "1. Financial transaction records must be retained per regulatory lifecycle periods.\n"
-            "2. Independent verification and cryptographic SHA-256 validation required before source deletion.\n"
-            "3. Maker-checker dual-human authorization required before source database record cleanup."
-        )
-        step_labels = {
-            "step1": "Policy Ingestion & Retention Rules",
-            "step2": "Extracted Rules & Cutoff Review",
-            "step3": "Connected DB & Eligible Records",
-            "step4": "Reversible Copy & Merkle Verify",
-            "step5": "Authorized Source Cleanup",
-        }
-    elif "vuln" in cid_lower:
-        filename = "vulnerability_management_policy_v1.0.txt"
-        policy_text = (
-            "VULNERABILITY MANAGEMENT STANDARD v1.0\n\n"
-            "1. Critical vulnerabilities must be remediated within 7 days of identification.\n"
-            "2. High vulnerabilities must be remediated within 30 days.\n"
-            "3. Medium vulnerabilities must be remediated within 60 days.\n"
-            "4. Vulnerabilities with status OPEN or IN_PROGRESS are considered unresolved.\n"
-            "5. PATCHED or CLOSED vulnerabilities are considered remediated."
-        )
-        step_labels = {
-            "step1": "Control / Policy",
-            "step2": "AI Policy Analysis",
-            "step3": "Target Discovery",
-            "step4": "Query Generation",
-            "step5": "Findings Review & Workpaper Sign-off",
-        }
-    elif "priv" in cid_lower:
-        filename = "privileged_identity_access_governance_policy_v1.8.txt"
-        policy_text = (
-            "IDENTITY & ACCESS GOVERNANCE - PRIVILEGED DATABASE ACCESS POLICY v1.8\n\n"
-            "Section 3.1: Superuser privileges across production databases must be reviewed and re-certified on a monthly cadence.\n"
-            "Section 3.2: Only authorized system accounts ('postgres', 'replicator') may possess rolsuper privileges.\n"
-            "Section 3.3: Grants to role 'PUBLIC' on customer, transaction, and balance tables are strictly forbidden."
-        )
-        step_labels = {
-            "step1": "Access Policy Specification",
-            "step2": "Approved Baseline Accounts",
-            "step3": "Target Instance & Role Directory",
-            "step4": "Role Comparison & Drift Detection",
-            "step5": "Attestation & Revocation Gate",
-        }
-    elif defn.archetype == "B":
-        filename = "release_gate_and_api_verification_standard_v4.1.txt"
-        policy_text = (
-            "RELEASE MANAGEMENT - AUTOMATED API SANITY & REGRESSION POLICY v4.1\n\n"
-            "Section 5.1: Any change deployment to core banking services triggers automated execution of the sanity test suite.\n"
-            "Section 5.2: Measured endpoint latencies must not exceed EWMA baseline thresholds by more than 15%.\n"
-            "Section 5.3: Any detected regression on critical payment routes triggers an immediate automated rollback gate."
-        )
-        step_labels = {
-            "step1": "Sanity Test Specification",
-            "step2": "SLA & EWMA Latency Thresholds",
-            "step3": "Service Graph & Critical Endpoints",
-            "step4": "Test Execution & Latency Audit",
-            "step5": "Deployment Gate & Verdict Sign-off",
-        }
-    else:
-        filename = "standard_operating_procedure.txt"
-        policy_text = (
-            f"STANDARD OPERATING PROCEDURE - {defn.title.upper()}\n\n"
-            f"Objective: {defn.objective or 'Ensure recurring compliance with organizational policies.'}\n"
-            f"Frequency: {defn.frequency}\n"
-            f"Risk Rating: {defn.risk_rating.upper()}"
-        )
-        step_labels = {
-            "step1": "Procedure Specification",
-            "step2": "Extracted Rules & Thresholds",
-            "step3": "Target Scope & Inventory",
-            "step4": "Automated Check & Verification",
-            "step5": "Audit Sign-off & Completion",
-        }
+    filename = "core_banking_retention_policy_v2.4.txt"
+    policy_text = DEFAULT_ARCHIVAL_POLICY
+    step_labels = {
+        "step1": "Policy Ingestion & Retention Rules",
+        "step2": "Extracted Rules & Cutoff Review",
+        "step3": "Connected DB & Eligible Records",
+        "step4": "Reversible Copy & Merkle Verify",
+        "step5": "Authorized Source Cleanup",
+    }
 
     return {
         "control_id": control_id,
@@ -951,241 +888,8 @@ async def preview_database_and_records(req: PreviewRequest) -> dict[str, Any]:
             "columns": ["Transaction ID", "Customer Name", "Txn Date", "Amount", "Support Ticket", "Investigation", "Document Ref", "Legal Hold", "Eligible", "Archived", "Verified", "Cleaned"],
         }
 
-    elif "vuln" in cid_lower:
-        connected_databases = {
-            "source": {
-                "instance": "pg_vuln_target (Misconfigured Instance)",
-                "connection": "sqlite:///bank_core.db [database_users, system_config]",
-                "status": "connected",
-                "ssl": False,
-            },
-            "target": {
-                "instance": "pg_core (Hardened Instance)",
-                "connection": "sqlite:///bank_core.db [cis_baseline]",
-                "status": "connected",
-                "ssl": True,
-            },
-        }
-        sample_records = [
-            {
-                "transaction_id": "CHK-001",
-                "account_id": "server_version",
-                "customer_name": "PostgreSQL 15.1",
-                "transaction_date": "2026-09-30",
-                "amount": "CVE-2022-41862",
-                "legal_hold": False,
-                "eligible": True,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "NON-COMPLIANT (Expected: >= 16.0)",
-                "row_hash": hashlib.sha256(b"CHK-001:PostgreSQL 15.1").hexdigest(),
-            },
-            {
-                "transaction_id": "CHK-002",
-                "account_id": "ssl_setting",
-                "customer_name": "ssl = 'off'",
-                "transaction_date": "2026-09-30",
-                "amount": "Wire Plaintext",
-                "legal_hold": False,
-                "eligible": True,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "NON-COMPLIANT (Expected: 'on')",
-                "row_hash": hashlib.sha256(b"CHK-002:ssl:off").hexdigest(),
-            },
-            {
-                "transaction_id": "CHK-003",
-                "account_id": "superuser_root",
-                "customer_name": "unauthorized_root",
-                "transaction_date": "2026-09-30",
-                "amount": "rolsuper=True",
-                "legal_hold": False,
-                "eligible": True,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "NON-COMPLIANT (Rogue Superuser)",
-                "row_hash": hashlib.sha256(b"CHK-003:unauthorized_root").hexdigest(),
-            },
-            {
-                "transaction_id": "CHK-004",
-                "account_id": "pw_enc",
-                "customer_name": "md5",
-                "transaction_date": "2026-09-30",
-                "amount": "Legacy Hash",
-                "legal_hold": False,
-                "eligible": True,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "NON-COMPLIANT (Expected: scram-sha-256)",
-                "row_hash": hashlib.sha256(b"CHK-004:pw:md5").hexdigest(),
-            },
-        ]
-        sql_scripts = build_generated_sql_scripts(defn, "RUN-ACTIVE", 5)
-        return {
-            "control_id": req.control_id,
-            "connected_databases": connected_databases,
-            "total_source_records": 12,
-            "eligible_records_count": 4,
-            "excluded_holds_count": 0,
-            "archived_count": 0,
-            "verified_count": 0,
-            "source_cleaned_count": 0,
-            "sample_records": sample_records,
-            "generated_sql": sql_scripts,
-            "columns": ["Check ID", "Parameter / Account", "Observed Value", "Risk Classification", "Hold Exempt", "Eligible", "Archived", "Verified", "Cleaned"],
-        }
+    raise HTTPException(status_code=400, detail=f"Interactive execution studio is only supported for Archetype D controls, not '{defn.archetype}'")
 
-    elif "priv" in cid_lower:
-        connected_databases = {
-            "source": {
-                "instance": "bank_core.db [database_users]",
-                "connection": str(CORE_DB_PATH),
-                "status": "connected",
-                "ssl": True,
-            },
-            "target": {
-                "instance": "iam_baseline [privileged_access.yaml]",
-                "connection": "catalogs/baselines/privileged_access.yaml",
-                "status": "connected",
-                "ssl": True,
-            },
-        }
-        sample_records = [
-            {
-                "transaction_id": "ROLE-001",
-                "account_id": "postgres",
-                "customer_name": "Primary Superuser",
-                "transaction_date": "2026-09-30",
-                "amount": "rolsuper=True",
-                "legal_hold": False,
-                "eligible": False,
-                "archived": True,
-                "verified": True,
-                "cleaned": False,
-                "status": "COMPLIANT (IAM Whitelist Match)",
-                "row_hash": hashlib.sha256(b"ROLE-001:postgres").hexdigest(),
-            },
-            {
-                "transaction_id": "ROLE-002",
-                "account_id": "replicator",
-                "customer_name": "Replication Role",
-                "transaction_date": "2026-09-30",
-                "amount": "rolreplication=True",
-                "legal_hold": False,
-                "eligible": False,
-                "archived": True,
-                "verified": True,
-                "cleaned": False,
-                "status": "COMPLIANT (Whitelisted)",
-                "row_hash": hashlib.sha256(b"ROLE-002:replicator").hexdigest(),
-            },
-            {
-                "transaction_id": "ROLE-003",
-                "account_id": "unauthorized_root",
-                "customer_name": "Rogue Account",
-                "transaction_date": "2026-09-30",
-                "amount": "rolsuper=True",
-                "legal_hold": False,
-                "eligible": True,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "NON-COMPLIANT (Revocation Candidate)",
-                "row_hash": hashlib.sha256(b"ROLE-003:unauthorized_root").hexdigest(),
-            },
-        ]
-        sql_scripts = build_generated_sql_scripts(defn, "RUN-ACTIVE", 5)
-        return {
-            "control_id": req.control_id,
-            "connected_databases": connected_databases,
-            "total_source_records": 18,
-            "eligible_records_count": 1,
-            "excluded_holds_count": 0,
-            "archived_count": 0,
-            "verified_count": 0,
-            "source_cleaned_count": 0,
-            "sample_records": sample_records,
-            "generated_sql": sql_scripts,
-            "columns": ["Role ID", "Database Role", "Account Type", "Privileges", "Exempt", "Eligible", "Archived", "Verified", "Cleaned"],
-        }
-
-    else:
-        connected_databases = {
-            "source": {
-                "instance": "bank_api (Payment Service)",
-                "connection": "http://localhost:8081/api/v1",
-                "status": "connected",
-                "ssl": True,
-            },
-            "target": {
-                "instance": "webhook_service (Change Management)",
-                "connection": "http://localhost:8082/deployment",
-                "status": "connected",
-                "ssl": True,
-            },
-        }
-        sample_records = [
-            {
-                "transaction_id": "EP-001",
-                "account_id": "/auth/login",
-                "customer_name": "Auth Endpoint",
-                "transaction_date": "2026-09-30",
-                "amount": "Latency: 75ms (SLO: 250ms)",
-                "legal_hold": False,
-                "eligible": True,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "PASS (0.0% Error)",
-                "row_hash": hashlib.sha256(b"EP-001:/auth/login").hexdigest(),
-            },
-            {
-                "transaction_id": "EP-002",
-                "account_id": "/accounts/{id}/balance",
-                "customer_name": "Balance Service",
-                "transaction_date": "2026-09-30",
-                "amount": "Latency: 45ms (SLO: 150ms)",
-                "legal_hold": False,
-                "eligible": True,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "PASS (EWMA < 5% Delta)",
-                "row_hash": hashlib.sha256(b"EP-002:/accounts/balance").hexdigest(),
-            },
-            {
-                "transaction_id": "EP-003",
-                "account_id": "/transfers",
-                "customer_name": "Transfer Gateway",
-                "transaction_date": "2026-09-30",
-                "amount": "Latency: 110ms (SLO: 300ms)",
-                "legal_hold": False,
-                "eligible": True,
-                "archived": False,
-                "verified": False,
-                "cleaned": False,
-                "status": "PASS (Zero Regressions)",
-                "row_hash": hashlib.sha256(b"EP-003:/payments/transfer").hexdigest(),
-            },
-        ]
-        sql_scripts = build_generated_sql_scripts(defn, "RUN-ACTIVE", 5)
-        return {
-            "control_id": req.control_id,
-            "connected_databases": connected_databases,
-            "total_source_records": 15,
-            "eligible_records_count": 3,
-            "excluded_holds_count": 0,
-            "archived_count": 0,
-            "verified_count": 0,
-            "source_cleaned_count": 0,
-            "sample_records": sample_records,
-            "generated_sql": sql_scripts,
-            "columns": ["Endpoint ID", "Route", "Service Name", "Observed Latency vs Baseline", "Hold Exempt", "Eligible", "Archived", "Verified", "Cleaned"],
-        }
 
 
 @router.post("/execute_step")
@@ -1284,50 +988,8 @@ async def execute_archival_step(req: ExecuteStepRequest) -> dict[str, Any]:
             "next_action_label": f"Step 3: Verify {copy_res['copied_count']} Archived Records (Integrity & Cryptographic Check)",
         }
 
-    elif "vuln" in cid_lower:
-        attestation_token = f"ATTEST-VULN-{req.run_id[:8]}"
-        return {
-            "run_id": req.run_id,
-            "control_id": req.control_id,
-            "status": "ARCHIVED",
-            "records_copied": 4,
-            "source_merkle_root": hashlib.sha256(b"vuln-audit").hexdigest(),
-            "archive_merkle_root": hashlib.sha256(b"vuln-audit").hexdigest(),
-            "merkle_roots_match": True,
-            "attestation_token": attestation_token,
-            "summary_message": "Inspection queries dispatched. 4 non-compliant configuration parameters staged for verification.",
-            "next_action_label": "Step 3: Verify 4 Flagged Parameters Against CIS Baseline",
-        }
+    raise HTTPException(status_code=400, detail=f"Archival execution step is only supported for Archetype D controls, not '{defn.archetype}'")
 
-    elif "priv" in cid_lower:
-        attestation_token = f"ATTEST-PRIV-{req.run_id[:8]}"
-        return {
-            "run_id": req.run_id,
-            "control_id": req.control_id,
-            "status": "ARCHIVED",
-            "records_copied": 1,
-            "source_merkle_root": hashlib.sha256(b"priv-audit").hexdigest(),
-            "archive_merkle_root": hashlib.sha256(b"priv-audit").hexdigest(),
-            "merkle_roots_match": True,
-            "attestation_token": attestation_token,
-            "summary_message": "Catalog scan completed. 1 rogue superuser account staged for verification.",
-            "next_action_label": "Step 3: Verify Role Against IAM Baseline",
-        }
-
-    else:
-        attestation_token = f"ATTEST-SAN-{req.run_id[:8]}"
-        return {
-            "run_id": req.run_id,
-            "control_id": req.control_id,
-            "status": "ARCHIVED",
-            "records_copied": 3,
-            "source_merkle_root": hashlib.sha256(b"san-audit").hexdigest(),
-            "archive_merkle_root": hashlib.sha256(b"san-audit").hexdigest(),
-            "merkle_roots_match": True,
-            "attestation_token": attestation_token,
-            "summary_message": "Sanity test suite dispatched across critical endpoints. All runs staged for verification.",
-            "next_action_label": "Step 3: Verify Latencies Against EWMA Baseline",
-        }
 
 
 @router.post("/verify_archival")

@@ -6,7 +6,6 @@ import yaml
 from contracts.models import ControlDefinition
 
 CONTROLS_DIR = Path(__file__).resolve().parent.parent / "controls"
-BASELINES_DIR = Path(__file__).resolve().parent.parent / "catalogs" / "baselines"
 
 
 def compute_definition_hash(defn: ControlDefinition) -> str:
@@ -82,16 +81,17 @@ class DefinitionRegistry:
 
         # 2. Check baseline existence if specified
         if defn.baseline_ref:
-            baseline_path = BASELINES_DIR.parent / defn.baseline_ref
-            # allow relative to catalogs/
+            baseline_path = Path(defn.baseline_ref)
+            if not baseline_path.is_absolute():
+                baseline_path = CONTROLS_DIR.parent / defn.baseline_ref
             if not baseline_path.exists():
                 raise FileNotFoundError(f"Baseline file '{defn.baseline_ref}' does not exist at {baseline_path}")
 
-        # 3. Disallow raw SQL in control definitions (must use catalog_ref)
+        # 3. Disallow raw SQL in control definitions
         raw_dump = json.dumps(defn.model_dump())
         for keyword in ("SELECT ", "INSERT ", "UPDATE ", "DELETE ", "DROP "):
             if keyword in raw_dump:
-                raise ValueError(f"Integrity Error: Raw SQL keyword '{keyword}' found in definition. SQL must reside in catalogs only.")
+                raise ValueError(f"Integrity Error: Raw SQL keyword '{keyword}' found in definition.")
 
     def get_definition(self, control_id: str) -> ControlDefinition | None:
         return self._definitions.get(control_id)

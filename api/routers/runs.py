@@ -283,85 +283,16 @@ async def trigger_run(
         operator_email=editor_email,
     )
 
-    # For Archetype B, execute the automated API sanity test workflow
-    if archetype == "B":
-        from workflows.archetypes.test_exec_wf import TestExecWorkflow
-        from core.ledger import Ledger
-
-        ledger = Ledger()
-        wf_b = TestExecWorkflow(ledger=ledger)
-        critical_endpoints = [
-            {"path": "/auth/login", "slo_ms": 250.0},
-            {"path": "/accounts/{id}/balance", "slo_ms": 150.0},
-            {"path": "/transfers", "slo_ms": 300.0},
-        ]
-        baselines = {
-            "/auth/login": {"mu": 80.0, "sigma": 15.0, "slo_ms": 250.0},
-            "/accounts/{id}/balance": {"mu": 50.0, "sigma": 10.0, "slo_ms": 150.0},
-            "/transfers": {"mu": 120.0, "sigma": 20.0, "slo_ms": 300.0},
-        }
-        test_results = {
-            "/auth/login": [{"status_code": 200, "schema_valid": True, "latency_ms": 75.0}],
-            "/accounts/{id}/balance": [{"status_code": 200, "schema_valid": True, "latency_ms": 45.0}],
-            "/transfers": [{"status_code": 200, "schema_valid": True, "latency_ms": 110.0}],
-        }
-
-        save_audit_step(f"step-{new_id}-1", new_id, "IMPACT_ANALYSIS", "completed", started_at=now_iso, completed_at=now_iso, metadata_json={"endpoints_selected": len(critical_endpoints)})
-        save_audit_step(f"step-{new_id}-2", new_id, "TEST_EXECUTION", "completed", started_at=now_iso, completed_at=now_iso, records_processed=len(critical_endpoints))
-        save_audit_step(f"step-{new_id}-3", new_id, "EWMA_LATENCY_AUDIT", "completed", started_at=now_iso, completed_at=now_iso)
-        save_audit_step(f"step-{new_id}-4", new_id, "DEPLOYMENT_GATE", "completed", started_at=now_iso, completed_at=now_iso)
-
-        exec_res = wf_b.run(
-            change_id="CHG-2024-LIVE",
-            critical_endpoints=critical_endpoints,
-            endpoint_test_results=test_results,
-            ewma_baselines=baselines,
-            run_id=new_id,
-            control_id=req.control_id,
-            control_version=version,
-        )
-
-        completed_iso = datetime.now(timezone.utc).isoformat()
-        item.status = "completed"
-        item.completed_at = completed_iso
-        item.records_scanned = len(critical_endpoints)
-        item.passed = len(critical_endpoints)
-        item.failed = 0
-        ev_id = f"EV-SAN-{new_id[:8]}"
-        item.evidence_id = ev_id
-
-        save_audit_evidence(
-            evidence_id=ev_id,
-            run_id=new_id,
-            control_id=req.control_id,
-            evidence_type="test_execution_verdict",
-            evidence_payload=exec_res,
-        )
-
-        upsert_audit_run(
-            run_id=new_id,
-            control_id=req.control_id,
-            version=version,
-            archetype="B",
-            status="completed",
-            started_at=now_iso,
-            completed_at=completed_iso,
-            records_evaluated=len(critical_endpoints),
-            records_processed=len(critical_endpoints),
-            records_affected=0,
-            metadata_json={"targets": targets, "overall_verdict": exec_res.get("overall_verdict", "verified")},
-        )
-    else:
-        # Initial run registration for other controls
-        upsert_audit_run(
-            run_id=new_id,
-            control_id=req.control_id,
-            version=version,
-            archetype=archetype,
-            status="running",
-            started_at=now_iso,
-            metadata_json={"targets": targets, "operator_email": editor_email, "editor_email": editor_email},
-        )
+    # Register initial run in audit store
+    upsert_audit_run(
+        run_id=new_id,
+        control_id=req.control_id,
+        version=version,
+        archetype=archetype,
+        status="running",
+        started_at=now_iso,
+        metadata_json={"targets": targets, "operator_email": editor_email, "editor_email": editor_email},
+    )
 
     _RUNS_STORE[new_id] = item
     await sse_broker.publish("run.started", item.model_dump())
