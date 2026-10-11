@@ -253,10 +253,10 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                         <div className="truncate max-w-[320px]" title={r.targets.join(', ') || 'Default'}>
                           {r.targets.join(', ') || 'Default'}
                         </div>
-                        {r.policy_filename && (
-                          <div className="text-[10px] text-slate-500 font-mono truncate max-w-[300px] flex items-center gap-1 mt-0.5" title={`Policy: ${r.policy_filename}`}>
+                        {(r.policy_filename || r.policy_used?.filename) && (
+                          <div className="text-[10px] text-slate-500 font-mono truncate max-w-[300px] flex items-center gap-1 mt-0.5" title={`Policy: ${r.policy_filename || r.policy_used?.filename}`}>
                             <FileText className="w-2.5 h-2.5 text-blue-500 shrink-0" />
-                            <span className="truncate">{r.policy_filename}</span>
+                            <span className="truncate">{r.policy_filename || r.policy_used?.filename}</span>
                           </div>
                         )}
                       </td>
@@ -408,7 +408,10 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                               </div>
 
                               {/* Policy Used Historical Audit Card (shown only when recorded) */}
-                              {auditData.policy_used && (
+                              {(auditData.policy_used || r.policy_used) && (() => {
+                                const pol = auditData.policy_used || r.policy_used;
+                                if (!pol) return null;
+                                return (
                                 <div className="bg-white rounded-lg p-4 border border-slate-200 shadow-2xs">
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div>
@@ -419,11 +422,11 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                         <div className="flex items-center gap-1.5 font-bold text-slate-900 font-mono text-xs">
                                           <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
                                           <code className="text-slate-900 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">
-                                            {auditData.policy_used.filename}
+                                            {pol.filename}
                                           </code>
                                         </div>
                                         <div className="text-[11px] text-slate-500 font-mono mt-1">
-                                          Policy ID: <span className="font-semibold text-slate-700">{auditData.policy_used.policy_id}</span>
+                                          Policy ID: <span className="font-semibold text-slate-700">{pol.policy_id}</span>
                                         </div>
                                       </div>
                                     </div>
@@ -431,10 +434,10 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                     <div className="flex items-center gap-2 shrink-0">
                                       <a
                                         href={
-                                          auditData.policy_used.cloudinary_url &&
-                                          !auditData.policy_used.cloudinary_url.includes('/simulated/')
-                                            ? auditData.policy_used.cloudinary_url
-                                            : getPolicyDocumentFileUrl(auditData.policy_used.policy_id)
+                                          pol.cloudinary_url &&
+                                          !pol.cloudinary_url.includes('/simulated/')
+                                            ? pol.cloudinary_url
+                                            : getPolicyDocumentFileUrl(pol.policy_id)
                                         }
                                         target="_blank"
                                         rel="noopener noreferrer"
@@ -444,7 +447,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                         <ExternalLink className="w-3.5 h-3.5" />
                                         <span>View Original</span>
                                       </a>
-                                      {auditData.policy_used.extracted_text && (
+                                      {pol.extracted_text && (
                                         <button
                                           type="button"
                                           onClick={() => setExpandedPolicyTextRunId(expandedPolicyTextRunId === r.run_id ? null : r.run_id)}
@@ -458,23 +461,24 @@ export const RunsPage: React.FC<RunsPageProps> = ({
                                     </div>
                                   </div>
 
-                                  {expandedPolicyTextRunId === r.run_id && auditData.policy_used?.extracted_text && (
+                                  {expandedPolicyTextRunId === r.run_id && pol.extracted_text && (
                                     <div className="mt-3 pt-3 border-t border-slate-100 animate-in fade-in duration-200">
                                       <div className="flex items-center justify-between mb-1.5">
                                         <span className="text-[10px] uppercase font-bold text-slate-500 font-mono tracking-wider">
-                                          Extracted Policy Content ({auditData.policy_used.filename})
+                                          Extracted Policy Content ({pol.filename})
                                         </span>
                                         <span className="text-[10px] text-slate-400 font-mono">
-                                          ID: {auditData.policy_used.policy_id}
+                                          ID: {pol.policy_id}
                                         </span>
                                       </div>
                                       <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
-                                        {auditData.policy_used.extracted_text}
+                                        {pol.extracted_text}
                                       </pre>
                                     </div>
                                   )}
                                 </div>
-                              )}
+                                );
+                              })()}
 
                               {/* Merkle Verification Card (Audit Integrity Check) */}
                               {auditData.merkle_verification?.source_merkle_root && (

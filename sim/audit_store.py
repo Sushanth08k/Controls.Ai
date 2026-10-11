@@ -677,6 +677,35 @@ def get_full_audit_bundle(run_id: str) -> dict[str, Any] | None:
             "rules_summary": policy_doc.get("rules_summary", ""),
             "uploaded_at": policy_doc.get("uploaded_at", ""),
         }
+    elif meta.get("policy_used") and isinstance(meta.get("policy_used"), dict):
+        mpu = meta["policy_used"]
+        p_text = mpu.get("extracted_text") or meta.get("policy_text") or meta.get("document_text") or ""
+        fn = mpu.get("filename") or meta.get("filename") or run.get("policy_filename") or "vulnerability_management_policy_v1.0.txt"
+        policy_used = {
+            "policy_id": mpu.get("policy_id") or pol_id or f"POL-{run_id[:8]}",
+            "filename": fn,
+            "title": mpu.get("title") or fn,
+            "format": mpu.get("format", "TXT" if fn.endswith(".txt") else "PDF"),
+            "file_size": mpu.get("file_size") or f"{max(1, len(p_text) // 1024)} KB",
+            "cloudinary_url": mpu.get("cloudinary_url", ""),
+            "extracted_text": p_text,
+            "rules_summary": mpu.get("rules_summary", ""),
+            "uploaded_at": mpu.get("uploaded_at", run.get("started_at", "")),
+        }
+    elif (meta.get("filename") or run.get("policy_filename") or meta.get("policy_text")) and (pol_id or meta.get("filename") or run.get("policy_filename")):
+        p_text = meta.get("policy_text") or meta.get("document_text") or ""
+        fn = meta.get("filename") or run.get("policy_filename") or "vulnerability_management_policy_v1.0.txt"
+        policy_used = {
+            "policy_id": pol_id or f"POL-{run_id[:8]}",
+            "filename": fn,
+            "title": fn,
+            "format": "TXT" if fn.endswith(".txt") else "PDF",
+            "file_size": f"{max(1, len(p_text) // 1024)} KB",
+            "cloudinary_url": "",
+            "extracted_text": p_text,
+            "rules_summary": "",
+            "uploaded_at": run.get("started_at", ""),
+        }
 
     return {
         "run": run,

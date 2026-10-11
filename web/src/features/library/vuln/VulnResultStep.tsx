@@ -9,16 +9,33 @@ import {
   FileText,
   Copy,
   Check,
+  ExternalLink,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { ControlAssessment } from '../../../types';
 import { VulnSqlViewer } from './VulnSqlViewer';
 import { formatRoleName } from '../../../utils/vulnDisplayNames';
+import { getPolicyDocumentFileUrl } from '../../../api/client';
 
 interface VulnResultStepProps {
   runId: string;
   asOfDate: string;
   policyName: string;
   policyVersion?: string;
+  policyId?: string;
+  policyUsed?: {
+    policy_id: string;
+    filename: string;
+    title?: string;
+    format?: string;
+    file_size?: string;
+    cloudinary_url?: string;
+    extracted_text?: string;
+    rules_summary?: string;
+    uploaded_at?: string;
+  } | null;
+  policyText?: string;
   assessment: ControlAssessment | null;
   afterSnapshot?: any;
   ticketsRaised: number;
@@ -39,6 +56,9 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
   asOfDate,
   policyName,
   policyVersion = '1.0.0',
+  policyId,
+  policyUsed,
+  policyText,
   assessment,
   afterSnapshot,
   ticketsRaised,
@@ -56,6 +76,7 @@ export const VulnResultStep: React.FC<VulnResultStepProps> = ({
   const [showSqlSection, setShowSqlSection] = useState(false);
   const [selectedSqlKey, setSelectedSqlKey] = useState<string>('Q1_SLA_BREACH');
   const [digestCopied, setDigestCopied] = useState(false);
+  const [showPolicyText, setShowPolicyText] = useState(false);
 
   const attributes = assessment?.attributes || {};
 
@@ -385,9 +406,14 @@ WHERE due_date < '${asOfDate}'
           </div>
           <div className="bg-white p-2.5 rounded-lg border border-slate-200">
             <div className="text-[10px] text-slate-400 font-semibold uppercase">Policy</div>
-            <div className="font-semibold text-slate-800 truncate" title={`${policyName} v${policyVersion}`}>
-              v{policyVersion}
+            <div className="font-semibold text-slate-800 truncate" title={`${policyName} (v${policyVersion})`}>
+              {policyName}
             </div>
+            {policyId && (
+              <div className="text-[9px] text-slate-500 font-mono truncate" title={policyId}>
+                {policyId}
+              </div>
+            )}
           </div>
           <div className="bg-white p-2.5 rounded-lg border border-slate-200">
             <div className="text-[10px] text-slate-400 font-semibold uppercase">Tickets Raised</div>
@@ -426,6 +452,89 @@ WHERE due_date < '${asOfDate}'
           </div>
         </div>
       </div>
+
+      {/* Policy Used Historical Audit Card */}
+      {(() => {
+        const pol = policyUsed || (policyName || policyId ? {
+          policy_id: policyId || `POL-${runId.slice(0, 8)}`,
+          filename: policyName,
+          title: policyName,
+          format: policyName.endsWith('.txt') ? 'TXT' : 'PDF',
+          cloudinary_url: '',
+          extracted_text: policyText || '',
+        } : null);
+
+        if (!pol) return null;
+
+        const originalUrl = pol.cloudinary_url && !pol.cloudinary_url.includes('/simulated/')
+          ? pol.cloudinary_url
+          : (pol.policy_id ? getPolicyDocumentFileUrl(pol.policy_id) : '');
+
+        return (
+          <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Policy Used
+                </span>
+                <div className="mt-1">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900 font-mono text-xs">
+                    <FileText className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <code className="text-slate-900 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">
+                      {pol.filename}
+                    </code>
+                  </div>
+                  <div className="text-[11px] text-slate-500 font-mono mt-1">
+                    Policy ID: <span className="font-semibold text-slate-700">{pol.policy_id}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {originalUrl ? (
+                  <a
+                    href={originalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-semibold border border-blue-200 transition-colors shadow-2xs"
+                    title="Open original policy document"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>View Original</span>
+                  </a>
+                ) : null}
+                {(pol.extracted_text || policyText) ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowPolicyText(!showPolicyText)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 text-xs font-semibold border border-slate-200 transition-colors cursor-pointer shadow-2xs"
+                    title="Toggle viewing extracted policy text"
+                  >
+                    {showPolicyText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showPolicyText ? 'Hide Text' : 'View Text'}</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {showPolicyText && (pol.extracted_text || policyText) && (
+              <div className="mt-3 pt-3 border-t border-slate-100 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] uppercase font-bold text-slate-500 font-mono tracking-wider">
+                    Extracted Policy Content ({pol.filename})
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    ID: {pol.policy_id}
+                  </span>
+                </div>
+                <pre className="p-3 bg-slate-50 rounded-lg border border-slate-200 text-[11px] font-mono text-slate-700 whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
+                  {pol.extracted_text || policyText}
+                </pre>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* (b) Before/After Table in Understandable Compliance Language */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 space-y-3">

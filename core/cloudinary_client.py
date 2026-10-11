@@ -9,15 +9,20 @@ import logging
 import os
 import re
 from typing import Any
-import cloudinary
-import cloudinary.uploader
-import cloudinary.api
+try:
+    import cloudinary
+    import cloudinary.uploader
+    import cloudinary.api
+except ImportError:
+    cloudinary = None
 
 logger = logging.getLogger(__name__)
 
 
 def is_cloudinary_configured() -> bool:
     """Check if Cloudinary environment credentials are provided."""
+    if cloudinary is None:
+        return False
     c_url = os.getenv("CLOUDINARY_URL", "").strip()
     c_name = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
     c_key = os.getenv("CLOUDINARY_API_KEY", "").strip()
@@ -27,6 +32,8 @@ def is_cloudinary_configured() -> bool:
 
 def init_cloudinary() -> bool:
     """Initialize Cloudinary configuration from environment variables."""
+    if cloudinary is None:
+        return False
     c_url = os.getenv("CLOUDINARY_URL", "").strip()
     c_name = os.getenv("CLOUDINARY_CLOUD_NAME", "").strip()
     c_key = os.getenv("CLOUDINARY_API_KEY", "").strip()
