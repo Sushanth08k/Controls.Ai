@@ -117,7 +117,12 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
 
         p_summary = p_data.get("summary") if isinstance(p_data, dict) else None
 
-        is_arch = (
+        is_vuln = (
+            "vuln" in a["control_id"].lower()
+            or a.get("gate_name") == "vuln_approval"
+            or a.get("gate_type") == "vuln_approval"
+        )
+        is_arch = not is_vuln and (
             "arch" in a["control_id"].lower()
             or a.get("gate_type") == "archival_signoff"
             or a.get("gate_name") == "archival_signoff"
@@ -189,7 +194,7 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
             gate_id=a["gate_id"],
             run_id=a["run_id"],
             control_id=a["control_id"],
-            gate_name=a.get("gate_name") or "archival_signoff",
+            gate_name=a.get("gate_name") or ("vuln_approval" if is_vuln else "archival_signoff"),
             maker_id=a.get("maker_id") or "sec_owner_1",
             maker_email=maker_val,
             approver_role=a.get("approver_role") or "control_reviewer",
@@ -198,7 +203,7 @@ def list_gates(user: UserSession = Depends(get_current_user)) -> list[GateItem]:
             decided_at=a.get("approved_at"),
             decided_by=decided_by_val or a.get("approved_by"),
             comment=a.get("comment"),
-            gate_type=a.get("gate_type") or "archival_signoff",
+            gate_type="vuln_approval" if is_vuln else (a.get("gate_type") or "archival_signoff"),
             payload_summary=p_summary,
             payload=p_data,
             steps_completed=steps_completed,
