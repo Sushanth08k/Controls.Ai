@@ -13,7 +13,9 @@ import {
   Clock,
   FileText,
   ShieldCheck,
+  Database,
 } from 'lucide-react';
+import { LiveDatabaseModal } from './LiveDatabaseModal';
 import { isApprover, isAuditor, isExecutor, canExecuteControls } from '../utils/rbac';
 import { formatGateTitle, formatApproverRole } from '../utils/vulnDisplayNames';
 
@@ -38,6 +40,7 @@ export const GateCard: React.FC<GateCardProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showFullDetails, setShowFullDetails] = useState(false);
+  const [showDbModal, setShowDbModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'items' | 'steps'>('items');
 
   const defaultResumeLabel =
@@ -57,11 +60,15 @@ export const GateCard: React.FC<GateCardProps> = ({
   const canApprove = gate.status === 'pending' && userIsApprover && !isMaker;
 
   const isVulnControl =
-    gate.control_id.toLowerCase().includes('vuln') || gate.gate_type === 'vuln_approval';
+    gate.control_id.toLowerCase().includes('vuln') ||
+    gate.gate_name === 'vuln_approval' ||
+    gate.gate_type === 'vuln_approval';
+
   const isArchivalControl =
-    gate.control_id.toLowerCase().includes('arch') ||
-    gate.gate_type === 'archival_signoff' ||
-    gate.gate_name === 'archival_signoff';
+    !isVulnControl &&
+    (gate.control_id.toLowerCase().includes('arch') ||
+      gate.gate_type === 'archival_signoff' ||
+      gate.gate_name === 'archival_signoff');
 
   // Extract payload items
   const payload = gate.payload || {};
@@ -272,6 +279,23 @@ export const GateCard: React.FC<GateCardProps> = ({
                 'Review the executor-completed pipeline steps and sign off to proceed.'
               )}
             </p>
+
+            {/* Quick Option to Inspect Live Databases (Archival only) */}
+            {isArchivalControl && (
+              <div className="pt-2.5 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDbModal(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-800 bg-white border border-slate-300 hover:bg-slate-100 hover:border-slate-400 shadow-xs transition-all cursor-pointer"
+                >
+                  <Database className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Inspect Active & Archive DB</span>
+                </button>
+                <span className="text-[11px] text-slate-500">
+                  Inspect live records in source_transactions and archive_transactions
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -310,6 +334,17 @@ export const GateCard: React.FC<GateCardProps> = ({
             >
               Steps Done by Executor ({completedSteps.length})
             </button>
+            {isArchivalControl && (
+              <button
+                type="button"
+                onClick={() => setShowDbModal(true)}
+                className="text-xs font-semibold px-2.5 py-1 rounded-md text-slate-700 hover:text-slate-900 hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer border border-dashed border-slate-300 transition-colors"
+                title="Open live database inspector"
+              >
+                <Database className="w-3 h-3 text-slate-600" />
+                <span>Inspect Live DB</span>
+              </button>
+            )}
           </div>
           <button
             type="button"
@@ -532,9 +567,19 @@ export const GateCard: React.FC<GateCardProps> = ({
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-slate-600 font-medium">Reversible Copy Tables:</span>
-                        <span className="font-mono text-slate-800">
-                          {sourceTable} → {targetTable}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-slate-800">
+                            {sourceTable} → {targetTable}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowDbModal(true)}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium text-[10px] cursor-pointer shadow-xs"
+                          >
+                            <Database className="w-3 h-3 text-slate-500" />
+                            <span>View Records</span>
+                          </button>
+                        </div>
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-slate-600 font-medium">Action Authorized on Sign-off:</span>
@@ -767,6 +812,18 @@ export const GateCard: React.FC<GateCardProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {/* Live Database Inspection Modal */}
+      {isArchivalControl && (
+        <LiveDatabaseModal
+          isOpen={showDbModal}
+          onClose={() => setShowDbModal(false)}
+          controlId={gate.control_id}
+          runId={gate.run_id}
+          sourceTableName={sourceTable}
+          archiveTableName={targetTable}
+        />
       )}
     </div>
   );
