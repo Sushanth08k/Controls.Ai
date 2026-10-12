@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { GateItemDTO, UserSessionDTO, ControlDefinitionDTO, RunItemDTO } from '../../types';
 import { GateCard } from '../../components/GateCard';
-import { ControlExecutionModal } from '../library/ControlExecutionModal';
+import { ArchivalExecutionModal } from '../library/ArchivalExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
 import { ShieldCheck, Info } from 'lucide-react';
 import { formatGateTitle } from '../../utils/vulnDisplayNames';
@@ -131,12 +131,11 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
               onRefresh?.();
             }}
             onRunCompleted={() => {
-              setResumingGate(null);
               onRefresh?.();
             }}
           />
         ) : (
-          <ControlExecutionModal
+          <ArchivalExecutionModal
             control={selectedControl}
             currentUser={currentUser}
             initialRunId={resumingGate.run_id}
@@ -146,7 +145,6 @@ export const ApprovalsPage: React.FC<ApprovalsPageProps> = ({
               onRefresh?.();
             }}
             onRunCompleted={() => {
-              setResumingGate(null);
               onRefresh?.();
             }}
           />

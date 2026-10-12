@@ -5,8 +5,7 @@ from typing import Any
 import yaml
 
 from contracts.models import RuleResult, RuleResultDetails, RuleSpec
-
-CATALOGS_DIR = Path(__file__).resolve().parent.parent.parent / "catalogs"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 # Optional domain evaluator registry: maps primitive/evaluator names to deterministic evaluators
 # Signature: (rows, rule, baseline, severity_policy) -> tuple[bool, RuleResultDetails]
@@ -83,10 +82,10 @@ register_domain_evaluator("sla_remediation", evaluate_vulnerability_sla_rule)
 
 
 def load_baseline(baseline_ref: str | None) -> dict[str, Any]:
-    """Load baseline dictionary from catalogs path."""
+    """Load baseline dictionary from path."""
     if not baseline_ref:
         return {}
-    path = CATALOGS_DIR / baseline_ref if not Path(baseline_ref).is_absolute() else Path(baseline_ref)
+    path = PROJECT_ROOT / baseline_ref if not Path(baseline_ref).is_absolute() else Path(baseline_ref)
     if not path.exists():
         return {}
     with open(path, encoding="utf-8") as f:

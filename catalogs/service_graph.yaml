@@ -1,7 +1,0 @@
-dependencies:
-  /transfers:
-    - /auth/login
-    - /accounts/{id}/balance
-
-  /accounts/{id}/statements:
-    - /accounts/{id}/balance

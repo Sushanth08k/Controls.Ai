@@ -3,8 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict
-from api.auth import UserSession, get_current_user
-from api.rbac import check_gate_authorization
+from api.auth import UserSession, check_gate_authorization, get_current_user
 from api.sse import sse_broker
 
 from sim.audit_store import (

@@ -8,6 +8,8 @@ import {
   EyeOff,
   AlertCircle,
   KeyRound,
+  Shield,
+  ChevronDown,
 } from 'lucide-react';
 import { COMPLIANCE_ROLES } from '../../utils/rbac';
 
@@ -115,7 +117,7 @@ export const AuthPage: React.FC = () => {
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
                     required
-                    placeholder="Sushanth K"
+                    placeholder="Operator Name"
                     className="block w-full pl-9 pr-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-600 focus:border-emerald-600 bg-white"
                   />
                 </div>
@@ -170,21 +172,29 @@ export const AuthPage: React.FC = () => {
             {mode === 'signup' && (
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Compliance Role (Fixed Assignment)
+                  Role
                 </label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="block w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-600 focus:border-emerald-600 bg-white font-medium text-slate-800"
-                >
-                  {COMPLIANCE_ROLES.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label} — {r.desc}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative rounded-lg shadow-2xs">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Shield className="h-4 w-4 text-emerald-600" />
+                  </div>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value)}
+                    className="block w-full pl-9 pr-9 py-2.5 text-xs font-medium text-slate-800 bg-white border border-slate-300 rounded-lg shadow-2xs focus:ring-1 focus:ring-emerald-600 focus:border-emerald-600 cursor-pointer appearance-none transition-colors"
+                  >
+                    {COMPLIANCE_ROLES.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.label} — {r.desc}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-slate-400">
+                    <ChevronDown className="h-4 w-4" />
+                  </div>
+                </div>
                 <p className="mt-1 text-[11px] text-slate-500">
-                  One user, one role: Permissions are permanently assigned to this profile based on role governance.
+                  Permissions are assigned to this profile based on role governance.
                 </p>
               </div>
             )}

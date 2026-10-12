@@ -3,7 +3,7 @@ import { RunItemDTO, ControlDefinitionDTO, UserSessionDTO } from '../../types';
 import { StatusPill } from '../../components/StatusPill';
 import { ArchetypeBadge } from '../../components/ArchetypeBadge';
 import { fetchRunAudit, resumeInteractiveRun, getPolicyDocumentFileUrl } from '../../api/client';
-import { ControlExecutionModal } from '../library/ControlExecutionModal';
+import { ArchivalExecutionModal } from '../library/ArchivalExecutionModal';
 import { VulnerabilityExecutionModal } from '../library/VulnerabilityExecutionModal';
 import { isAuditor } from '../../utils/rbac';
 import {
@@ -676,7 +676,7 @@ export const RunsPage: React.FC<RunsPageProps> = ({
             }}
           />
         ) : (
-          <ControlExecutionModal
+          <ArchivalExecutionModal
             control={resumeModalControl}
             currentUser={currentUser || { user_id: 'reviewer', roles: ['control_reviewer'], email: 'reviewer@bank.internal' }}
             initialRunId={resumeRunId}
@@ -687,9 +687,6 @@ export const RunsPage: React.FC<RunsPageProps> = ({
               setResumeStage(undefined);
             }}
             onRunCompleted={() => {
-              setResumeModalControl(null);
-              setResumeRunId(null);
-              setResumeStage(undefined);
               onRefresh?.();
             }}
           />

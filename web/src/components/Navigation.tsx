@@ -44,15 +44,14 @@ export const Navigation: React.FC<NavigationProps> = ({
     currentUser.displayName ||
     localStorage.getItem(`controls_user_username_${currentUser.user_id}`) ||
     localStorage.getItem('controls_username') ||
-    (currentUser.email?.toLowerCase().includes('sushanth') ? 'Sushanth' : '') ||
     (currentUser.email ? currentUser.email.split('@')[0].replace(/[0-9_.-]/g, '') : '') ||
-    'Sushanth';
+    'User';
 
   const username = rawUsername
     ? rawUsername.charAt(0).toUpperCase() + rawUsername.slice(1)
-    : 'Sushanth';
+    : 'User';
 
-  const userInitial = (username[0] || 'S').toUpperCase();
+  const userInitial = (username[0] || 'U').toUpperCase();
 
   return (
     <aside className="w-64 bg-[#0d281e] border-r border-[#16382b] flex flex-col justify-between p-4 shrink-0 h-screen sticky top-0 text-slate-100 overflow-y-auto">

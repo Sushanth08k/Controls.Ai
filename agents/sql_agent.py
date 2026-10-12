@@ -26,6 +26,7 @@ from core.sql_generator import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash-lite"
+DEFAULT_SQL_AGENT_TIMEOUT = float(os.getenv("SQL_AGENT_TIMEOUT", "1.0"))
 _QUOTA_EXHAUSTED_UNTIL = 0.0
 _VULN_GEMINI_CACHE: dict[str, dict[str, str]] = {}
 
@@ -168,8 +169,13 @@ class ComplianceSQLAgent:
 
             parser = JsonOutputParser(pydantic_object=ComplianceSQLScript)
 
-            prompt = PromptTemplate(
-                template="""You are a principal compliance database engineer and AI security agent.
+            template_path = Path(__file__).resolve().parent / "templates" / "sql_1.md"
+            if template_path.exists():
+                template_text = template_path.read_text(encoding="utf-8")
+                prompt = PromptTemplate.from_template(template_text)
+            else:
+                prompt = PromptTemplate(
+                    template="""You are a principal compliance database engineer and AI security agent.
 Generate 3 distinct, compliant SQL scripts for regulatory control {control_id} (Archetype {archetype}) strictly grounded in the database schema and rules below.
 
 DATABASE SCHEMA:
@@ -193,24 +199,24 @@ REQUIREMENTS:
 
 {format_instructions}
 """,
-                input_variables=[
-                    "control_id",
-                    "archetype",
-                    "schema_ddl",
-                    "rules_json",
-                    "exceptions_json",
-                    "dialect",
-                    "run_id",
-                    "retention_years",
-                ],
-                partial_variables={"format_instructions": parser.get_format_instructions()},
-            )
+                    input_variables=[
+                        "control_id",
+                        "archetype",
+                        "schema_ddl",
+                        "rules_json",
+                        "exceptions_json",
+                        "dialect",
+                        "run_id",
+                        "retention_years",
+                    ],
+                    partial_variables={"format_instructions": parser.get_format_instructions()},
+                )
 
             llm = ChatGoogleGenerativeAI(
                 model=DEFAULT_GEMINI_MODEL,
                 api_key=gemini_api_key,
                 temperature=0.0,
-                timeout=2.0,
+                timeout=DEFAULT_SQL_AGENT_TIMEOUT,
                 max_retries=0,
             )
 
@@ -330,7 +336,7 @@ REQUIREMENTS:
                     q2_ticket_coverage: str
                     q3_exception_governance: str
 
-                template_path = Path(__file__).resolve().parent / "templates" / "sql_synthesis" / "vuln_1.md"
+                template_path = Path(__file__).resolve().parent / "templates" / "vuln_1.md"
                 template_text = template_path.read_text(encoding="utf-8") if template_path.exists() else ""
 
                 if template_text:
@@ -340,7 +346,7 @@ REQUIREMENTS:
                         model=DEFAULT_GEMINI_MODEL,
                         api_key=gemini_api_key,
                         temperature=0.0,
-                        timeout=2.0,
+                        timeout=DEFAULT_SQL_AGENT_TIMEOUT,
                         max_retries=0,
                     )
                     chain = prompt | llm | parser

@@ -8,12 +8,12 @@ owner_role: data_governance_owner
 reviewer_role: control_reviewer
 risk_rating: critical
 scope:
-  - {type: postgres_table, ref: core_banking_sim.public.transactions}
+  - {type: sqlite_table, ref: bank_core.db.source_transactions}
 composition:
   - {step: interpret_policy, archetype: E, params_ref: interpret}
   - {step: verify_copy,      archetype: C, params_ref: verify}
 archetype_params:
-  policy_source: {connector: files, path_glob: "sim/policies/retention/*.txt"}
+  policy_source: {connector: default, name: "core_banking_retention_policy_v2.4.txt"}
   interpret:
     output_contract: PolicyIR
     dual_extraction: {roles: [reasoner, fast]}

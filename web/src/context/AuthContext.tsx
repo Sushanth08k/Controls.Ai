@@ -62,13 +62,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const rawUsername =
       user.displayName ||
       localStorage.getItem(`controls_user_username_${user.uid}`) ||
-      (user.email?.toLowerCase().includes('sushanth') ? 'Sushanth' : '') ||
       (user.email ? user.email.split('@')[0].replace(/[0-9_.-]/g, '') : '') ||
-      'Sushanth';
+      'User';
 
     const cleanUsername = rawUsername
       ? rawUsername.charAt(0).toUpperCase() + rawUsername.slice(1)
-      : 'Sushanth';
+      : 'User';
 
     return {
       user_id: user.uid.substring(0, 16),
