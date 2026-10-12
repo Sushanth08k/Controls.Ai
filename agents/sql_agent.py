@@ -30,6 +30,13 @@ DEFAULT_SQL_AGENT_TIMEOUT = float(os.getenv("SQL_AGENT_TIMEOUT", "1.0"))
 _QUOTA_EXHAUSTED_UNTIL = 0.0
 _VULN_GEMINI_CACHE: dict[str, dict[str, str]] = {}
 
+# Ollama / Local Model Configuration (e.g. Qwen 2.5 Coder running locally or on remote machine)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5-coder")
+OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "30.0"))
+
+
 
 class ComplianceSQLAgent:
     """
@@ -106,6 +113,21 @@ class ComplianceSQLAgent:
         else:
             rules_list = []
 
+        # 2. Archival Controls: Ollama (Qwen 2.5 Coder) -> Gemini -> Deterministic Fallback
+        if LLM_PROVIDER in ("ollama", "qwen") or os.getenv("USE_OLLAMA", "0") == "1":
+            ollama_res = self._call_ollama_archival_synthesis(
+                schema_ddl=schema_ddl,
+                rules=rules_list,
+                exceptions=exceptions,
+                run_id=run_id,
+                retention_years=retention_years,
+                dialect=dialect,
+                control_id=control_id,
+                archetype=archetype,
+            )
+            if ollama_res:
+                return ollama_res
+
         if gemini_api_key:
             try:
                 gemini_res = self._call_langchain_synthesis(
@@ -148,6 +170,185 @@ class ComplianceSQLAgent:
             "model": "deterministic-baseline",
             "schema_used": schema_ddl,
         }
+
+    def _call_ollama_archival_synthesis(
+        self,
+        schema_ddl: str,
+        rules: list[dict[str, Any]],
+        exceptions: list[dict[str, Any]],
+        run_id: str,
+        retention_years: int,
+        dialect: str,
+        control_id: str,
+        archetype: str,
+    ) -> dict[str, Any] | None:
+        """Invokes Ollama (e.g. Qwen 2.5 Coder) via REST API to synthesize archival compliance queries."""
+        try:
+            import httpx
+
+            template_path = Path(__file__).resolve().parent / "templates" / "sql_1.md"
+            if template_path.exists():
+                template_text = template_path.read_text(encoding="utf-8")
+                prompt_content = (
+                    template_text.replace("{control_id}", control_id or "generic_compliance_control")
+                    .replace("{archetype}", archetype)
+                    .replace("{schema_ddl}", schema_ddl)
+                    .replace("{rules_json}", json.dumps(rules, indent=2))
+                    .replace("{exceptions_json}", json.dumps(exceptions, indent=2))
+                    .replace("{dialect}", dialect)
+                    .replace("{run_id}", run_id)
+                    .replace("{retention_years}", str(retention_years))
+                )
+            else:
+                prompt_content = f"""You are a principal compliance database engineer and AI security agent.
+Generate 3 distinct, compliant SQL scripts for regulatory control {control_id} (Archetype {archetype}) strictly grounded in the database schema and rules below.
+
+DATABASE SCHEMA:
+{schema_ddl}
+
+EXTRACTED POLICY RULES:
+{json.dumps(rules, indent=2)}
+
+EXTRACTED EXCEPTIONS & LEGAL HOLDS:
+{json.dumps(exceptions, indent=2)}
+
+PARAMETERS:
+- SQL Dialect: {dialect}
+- Control Run ID: {run_id}
+- Retention Horizon: {retention_years} years
+
+REQUIREMENTS:
+1. "selection_sql": SELECT query identifying records subject to control while strictly excluding records where legal_hold = 1 or active investigations exist.
+2. "archival_sql": INSERT OR REPLACE query into archive table copying verified records with status='ARCHIVED', control_run_id='{run_id}', SHA-256 verification hash, and current timestamp.
+3. "cleanup_sql": DELETE query from source table targeting only records that exist in the archive table for run_id='{run_id}', excluding legal holds.
+
+You MUST respond with a JSON object strictly matching this schema:
+{{
+  "selection_sql": "string",
+  "archival_sql": "string",
+  "cleanup_sql": "string"
+}}
+"""
+
+            timeout_cfg = httpx.Timeout(OLLAMA_TIMEOUT, connect=1.0)
+            logger.info(
+                f"ComplianceSQLAgent: Calling Ollama ({OLLAMA_MODEL}) at {OLLAMA_BASE_URL} for archival SQL synthesis..."
+            )
+            print(f"ComplianceSQLAgent: Connecting to Ollama ({OLLAMA_MODEL} at {OLLAMA_BASE_URL})...")
+
+            with httpx.Client(timeout=timeout_cfg) as client:
+                resp = client.post(
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json={
+                        "model": OLLAMA_MODEL,
+                        "messages": [{"role": "user", "content": prompt_content}],
+                        "format": "json",
+                        "stream": False,
+                        "options": {"temperature": 0.0},
+                    },
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"ComplianceSQLAgent: Ollama HTTP {resp.status_code}: {resp.text}")
+                    return None
+
+                data = resp.json()
+                raw_text = data.get("message", {}).get("content", "").strip()
+                if raw_text.startswith("```"):
+                    raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.MULTILINE)
+                    raw_text = re.sub(r"\s*```$", "", raw_text, flags=re.MULTILINE).strip()
+
+                parsed = json.loads(raw_text)
+                if isinstance(parsed, dict) and "selection_sql" in parsed and "archival_sql" in parsed and "cleanup_sql" in parsed:
+                    logger.info(f"ComplianceSQLAgent: Successfully synthesized archival queries via Ollama ({OLLAMA_MODEL}).")
+                    print(f"ComplianceSQLAgent: Ollama ({OLLAMA_MODEL}) successfully generated compliant SQL queries.")
+                    return {
+                        "selection_sql": parsed["selection_sql"],
+                        "archival_sql": parsed["archival_sql"],
+                        "cleanup_sql": parsed["cleanup_sql"],
+                        "agent": f"ComplianceSQLAgent (Ollama {OLLAMA_MODEL})",
+                        "generator": f"ComplianceSQLAgent (Ollama {OLLAMA_MODEL} at {OLLAMA_BASE_URL})",
+                        "framework": "Ollama / Qwen 2.5 Coder",
+                        "model": OLLAMA_MODEL,
+                        "schema_used": schema_ddl,
+                    }
+        except Exception as e:
+            logger.warning(f"ComplianceSQLAgent: Ollama archival synthesis failed or unreachable ({e}). Falling back.")
+        return None
+
+    def _call_ollama_vulnerability_synthesis(
+        self,
+        schema_ddl: str,
+        rules_dict: dict[str, Any],
+        as_of_val: str,
+        control_id: str,
+    ) -> dict[str, str] | None:
+        """Invokes Ollama (e.g. Qwen 2.5 Coder) via REST API to synthesize vulnerability management queries (Q1-Q3)."""
+        try:
+            import httpx
+
+            template_path = Path(__file__).resolve().parent / "templates" / "vuln_1.md"
+            if template_path.exists():
+                template_text = template_path.read_text(encoding="utf-8")
+                prompt_content = (
+                    template_text.replace("{control_id}", control_id or "VULN_CONTROL")
+                    .replace("{schema_ddl}", schema_ddl)
+                    .replace("{rules}", json.dumps(rules_dict, indent=2))
+                    .replace("{as_of}", as_of_val)
+                    .replace("{dialect}", "SQLITE")
+                )
+            else:
+                prompt_content = f"""You are a principal compliance database engineer and AI security agent.
+Generate 3 distinct, compliant SQL SELECT queries for vulnerability management control ({control_id}).
+Schema:
+{schema_ddl}
+Rules:
+{json.dumps(rules_dict, indent=2)}
+As of: {as_of_val}
+Return JSON strictly:
+{{
+  "q1_sla_breach": "string",
+  "q2_ticket_coverage": "string",
+  "q3_exception_governance": "string"
+}}
+"""
+
+            timeout_cfg = httpx.Timeout(OLLAMA_TIMEOUT, connect=1.0)
+            logger.info(
+                f"ComplianceSQLAgent: Calling Ollama ({OLLAMA_MODEL}) at {OLLAMA_BASE_URL} for vulnerability SQL synthesis..."
+            )
+            print(f"ComplianceSQLAgent: Connecting to Ollama ({OLLAMA_MODEL} at {OLLAMA_BASE_URL})...")
+
+            with httpx.Client(timeout=timeout_cfg) as client:
+                resp = client.post(
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json={
+                        "model": OLLAMA_MODEL,
+                        "messages": [{"role": "user", "content": prompt_content}],
+                        "format": "json",
+                        "stream": False,
+                        "options": {"temperature": 0.0},
+                    },
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"ComplianceSQLAgent: Ollama HTTP {resp.status_code}: {resp.text}")
+                    return None
+
+                data = resp.json()
+                raw_text = data.get("message", {}).get("content", "").strip()
+                if raw_text.startswith("```"):
+                    raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.MULTILINE)
+                    raw_text = re.sub(r"\s*```$", "", raw_text, flags=re.MULTILINE).strip()
+
+                parsed = json.loads(raw_text)
+                if isinstance(parsed, dict) and "q1_sla_breach" in parsed:
+                    return {
+                        "q1_sla_breach": str(parsed.get("q1_sla_breach", "")),
+                        "q2_ticket_coverage": str(parsed.get("q2_ticket_coverage", "")),
+                        "q3_exception_governance": str(parsed.get("q3_exception_governance", "")),
+                    }
+        except Exception as e:
+            logger.warning(f"ComplianceSQLAgent: Ollama vulnerability synthesis failed or unreachable ({e}).")
+        return None
 
     def _call_langchain_synthesis(
         self,
@@ -313,17 +514,63 @@ REQUIREMENTS:
 
         rules_hash = hashlib.sha256(json.dumps(rules_dict, sort_keys=True).encode()).hexdigest()
 
-        # 3. Check cache
+        # 3. Check cache or invoke LLM (Ollama -> Gemini -> Deterministic)
         used_api = False
+        generator_label = "ComplianceSQLAgent"
         if rules_hash in _VULN_GEMINI_CACHE:
             cached = _VULN_GEMINI_CACHE[rules_hash]
             q1_sql = cached.get("q1_sla_breach", q1_sql)
             q2_sql = cached.get("q2_ticket_coverage", q2_sql)
             q3_sql = cached.get("q3_exception_governance", q3_sql)
+            generator_label = cached.get("generator", "ComplianceSQLAgent (Cached)")
             used_api = True
             logger.info("ComplianceSQLAgent: API call was successful and generated SQL query, and using it.")
             print("ComplianceSQLAgent: API call was successful and generated SQL query, and using it.")
-        elif gemini_api_key and time.time() >= _QUOTA_EXHAUSTED_UNTIL:
+        elif LLM_PROVIDER in ("ollama", "qwen") or os.getenv("USE_OLLAMA", "0") == "1":
+            ollama_parsed = self._call_ollama_vulnerability_synthesis(
+                schema_ddl=schema_ddl,
+                rules_dict=rules_dict,
+                as_of_val=as_of_val,
+                control_id=control_id,
+            )
+            if ollama_parsed:
+                from sim.database import CORE_DB_PATH
+                valid_dict: dict[str, str] = {}
+                q3_compiled = str(
+                    compiled.get("q3_exception_governance")
+                    or compiled.get("q4_exception_governance")
+                    or ""
+                )
+                if CORE_DB_PATH.exists():
+                    with sqlite3.connect(f"file:{CORE_DB_PATH}?mode=ro", uri=True) as vconn:
+                        for q_key, c_sql in [
+                            ("q1_sla_breach", str(compiled.get("q1_sla_breach", ""))),
+                            ("q2_ticket_coverage", str(compiled.get("q2_ticket_coverage", ""))),
+                            ("q3_exception_governance", q3_compiled),
+                        ]:
+                            cand = ollama_parsed.get(q_key)
+                            if cand and self._validate_vuln_query(str(cand), q_key, c_sql, compiled.get("params", {}), as_of_val, vconn):
+                                valid_dict[q_key] = str(cand)
+                            else:
+                                valid_dict[q_key] = c_sql
+                else:
+                    valid_dict = {
+                        "q1_sla_breach": str(compiled.get("q1_sla_breach", "")),
+                        "q2_ticket_coverage": str(compiled.get("q2_ticket_coverage", "")),
+                        "q3_exception_governance": q3_compiled,
+                    }
+
+                generator_label = f"ComplianceSQLAgent (Ollama {OLLAMA_MODEL})"
+                valid_dict["generator"] = generator_label
+                _VULN_GEMINI_CACHE[rules_hash] = valid_dict
+                q1_sql = valid_dict["q1_sla_breach"]
+                q2_sql = valid_dict["q2_ticket_coverage"]
+                q3_sql = valid_dict["q3_exception_governance"]
+                used_api = True
+                logger.info(f"ComplianceSQLAgent: Ollama ({OLLAMA_MODEL}) API call was successful and generated SQL query, and using it.")
+                print(f"ComplianceSQLAgent: Ollama ({OLLAMA_MODEL}) API call was successful and generated SQL query, and using it.")
+
+        if not used_api and gemini_api_key and time.time() >= _QUOTA_EXHAUSTED_UNTIL:
             try:
                 from langchain_core.output_parsers import JsonOutputParser
                 from langchain_core.prompts import PromptTemplate
@@ -360,7 +607,7 @@ REQUIREMENTS:
 
                     if isinstance(parsed, dict):
                         from sim.database import CORE_DB_PATH
-                        valid_dict: dict[str, str] = {}
+                        valid_dict = {}
                         q3_compiled = str(
                             compiled.get("q3_exception_governance")
                             or compiled.get("q4_exception_governance")
@@ -385,6 +632,8 @@ REQUIREMENTS:
                                 "q3_exception_governance": q3_compiled,
                             }
 
+                        generator_label = f"ComplianceSQLAgent (LangChain + {DEFAULT_GEMINI_MODEL})"
+                        valid_dict["generator"] = generator_label
                         _VULN_GEMINI_CACHE[rules_hash] = valid_dict
                         q1_sql = valid_dict["q1_sla_breach"]
                         q2_sql = valid_dict["q2_ticket_coverage"]
@@ -412,7 +661,7 @@ REQUIREMENTS:
             "apply_escalation_update": compiled["apply_escalation_update"],
             "params": compiled["params"],
             "agent": "ComplianceSQLAgent",
-            "generator": "ComplianceSQLAgent",
+            "generator": generator_label if used_api else "ComplianceSQLAgent (Deterministic Baseline)",
             "schema_used": schema_ddl,
             # Compatibility aliases
             "selection_sql": q1_sql,
