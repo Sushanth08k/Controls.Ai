@@ -25,7 +25,7 @@ from core.sql_generator import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash-lite"
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL") or "gemini-3.5-flash-lite"
 DEFAULT_SQL_AGENT_TIMEOUT = float(os.getenv("SQL_AGENT_TIMEOUT", "1.0"))
 _QUOTA_EXHAUSTED_UNTIL = 0.0
 _VULN_GEMINI_CACHE: dict[str, dict[str, str]] = {}
