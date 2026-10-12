@@ -606,7 +606,9 @@ export const GateCard: React.FC<GateCardProps> = ({
             {activeTab === 'steps' && (
               <div className="space-y-2">
                 <div className="text-[11px] font-semibold text-slate-600 uppercase tracking-wider mb-1">
-                  Executor Audit Trail Prior to Sign-off Gate
+                  {gate.status === 'pending'
+                    ? 'Executor Audit Trail Prior to Sign-off Gate'
+                    : 'Execution Steps Audit Trail'}
                 </div>
                 {completedSteps.map((step, sIdx) => (
                   <div
@@ -637,27 +639,29 @@ export const GateCard: React.FC<GateCardProps> = ({
                   </div>
                 ))}
 
-                {/* Next step to be authorized */}
-                <div className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 flex items-start justify-between gap-3 text-xs">
-                  <div className="flex items-start gap-2">
-                    <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <div className="font-semibold text-slate-900">
-                        {isArchivalControl
-                          ? 'Step 5: Authorized Source Purge'
-                          : isVulnControl
-                          ? 'Step 4: Apply Approved Exceptions & Escalations'
-                          : 'Final Step: Post-Approval Execution'}
-                      </div>
-                      <div className="text-amber-800 text-[11px] mt-0.5">
-                        Awaiting Approver sign-off to proceed.
+                {/* Next step to be authorized (only while gate is awaiting approval) */}
+                {gate.status === 'pending' && (
+                  <div className="p-2.5 rounded-lg border border-amber-200 bg-amber-50/50 flex items-start justify-between gap-3 text-xs">
+                    <div className="flex items-start gap-2">
+                      <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <div className="font-semibold text-slate-900">
+                          {isArchivalControl
+                            ? 'Step 5: Authorized Source Purge'
+                            : isVulnControl
+                            ? 'Step 4: Apply Approved Exceptions & Escalations'
+                            : 'Final Step: Post-Approval Execution'}
+                        </div>
+                        <div className="text-amber-800 text-[11px] mt-0.5">
+                          Awaiting Approver sign-off to proceed.
+                        </div>
                       </div>
                     </div>
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
+                      Pending Gate
+                    </span>
                   </div>
-                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 whitespace-nowrap">
-                    Pending Gate
-                  </span>
-                </div>
+                )}
               </div>
             )}
           </div>
