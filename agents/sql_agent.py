@@ -66,7 +66,7 @@ class ComplianceSQLAgent:
         as_of_str = as_of.isoformat() if isinstance(as_of, datetime.date) else as_of
         cid_lower = control_id.lower()
         target_tables = (
-            ["source_transactions", "archive_transactions", "legal_holds"]
+            ["source_transactions", "archive_transactions"]
             if not cid_lower or "arch" in cid_lower
             else (["db_vulnerabilities", "vuln_assets", "vuln_tickets", "vuln_exceptions"] if "vuln" in cid_lower else None)
         )
@@ -192,8 +192,16 @@ PARAMETERS:
 - Control Run ID: {run_id}
 - Retention Horizon: {retention_years} years
 
+CRITICAL FILTERING & EXCLUSION RULES:
+1. Target Tables: Ground queries directly on the primary source table (e.g. source_transactions) and archive table (e.g. archive_transactions).
+2. Date Cutoff: In SQLite, use DATE('now', '-{retention_years} years') to match record dates formatted as YYYY-MM-DD.
+3. Row-Level Exclusions:
+   - Use row-level columns directly: check `(legal_hold = 0 OR legal_hold IS NULL)` and `(investigation_status != 'ACTIVE' OR investigation_status IS NULL)`.
+   - Do NOT construct subqueries or joins against auxiliary tables (such as external legal_holds tables) unless explicitly commanded by policy rules, because individual records already carry their legal_hold and investigation flags.
+   - Unified WHERE clause: Combine date criteria and all exception conditions in a single unified WHERE clause with AND boolean logic so overlapping exceptions are evaluated at the row level without over-excluding records.
+
 REQUIREMENTS:
-1. "selection_sql": SELECT query identifying records subject to control while strictly excluding records where legal_hold = 1 or active investigations exist.
+1. "selection_sql": SELECT query identifying records subject to control while strictly excluding records where legal_hold = 1 or active investigations exist directly via row columns.
 2. "archival_sql": INSERT OR REPLACE query into archive table copying verified records with status='ARCHIVED', control_run_id='{run_id}', SHA-256 verification hash, and current timestamp.
 3. "cleanup_sql": DELETE query from source table targeting only records that exist in the archive table for run_id='{run_id}', excluding legal holds.
 
